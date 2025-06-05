@@ -71,7 +71,7 @@ fn main() -> Result<(), String> {
         println!("Gradient w.r.t. w: {:?}", w_grad.data());
     }
     
-    // Demonstrate additional operations following the Python course structure
+    // Demonstrate additional operations
     println!("\n=== Additional Operations Demo ===");
     
     // Create some test tensors
