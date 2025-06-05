@@ -1,6 +1,7 @@
 pub mod op;
 pub mod node;
 pub mod engine;
+pub mod plot;
 
 pub use op::{
   AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,
@@ -9,3 +10,4 @@ pub use op::{
 
 pub use node::{Node, NodeId, next_node_id};
 pub use engine::Engine;
+pub use plot::{GraphVisualizer, EngineVisualization, VisualizationConfig};

@@ -124,6 +124,10 @@ impl Tensor {
         self.data.ndim()
     }
 
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
+
     pub fn len(&self) -> usize {
         self.data.len()
     }

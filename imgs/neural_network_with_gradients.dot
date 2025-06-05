@@ -1,0 +1,24 @@
+digraph ComputationalGraph {
+    rankdir=TB;
+    node [shape=box, style=filled];
+    edge [color=gray];
+    31 [label="31\nSumOp { axis: None }\nShape: []\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    30 [label="30\nExpOp\nShape: [1, 1]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    29 [label="29\nMatMulOp\nShape: [1, 1]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    28 [label="28\nReLUOp\nShape: [1, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    27 [label="27\nAddOp\nShape: [1, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    26 [label="26\nMatMulOp\nShape: [1, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    22 [label="22\nTensor\nShape: [1, 3]\nRequires Grad: true\nHas Gradient", fillcolor="#E8F5E8"];
+    23 [label="23\nTensor\nShape: [3, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#E8F5E8"];
+    24 [label="24\nTensor\nShape: [1, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#E8F5E8"];
+    25 [label="25\nTensor\nShape: [2, 1]\nRequires Grad: true\nHas Gradient", fillcolor="#E8F5E8"];
+    30 -> 31;
+    29 -> 30;
+    28 -> 29;
+    25 -> 29;
+    27 -> 28;
+    26 -> 27;
+    24 -> 27;
+    22 -> 26;
+    23 -> 26;
+}

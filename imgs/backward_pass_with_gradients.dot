@@ -1,0 +1,14 @@
+digraph ComputationalGraph {
+    rankdir=TB;
+    node [shape=box, style=filled];
+    edge [color=gray];
+    4 [label="4\nSumOp { axis: None }\nShape: []\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    3 [label="3\nReLUOp\nShape: [2, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    2 [label="2\nMatMulOp\nShape: [2, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#FFF3E0"];
+    0 [label="0\nTensor\nShape: [2, 3]\nRequires Grad: true\nHas Gradient", fillcolor="#E8F5E8"];
+    1 [label="1\nTensor\nShape: [3, 2]\nRequires Grad: true\nHas Gradient", fillcolor="#E8F5E8"];
+    3 -> 4;
+    2 -> 3;
+    0 -> 2;
+    1 -> 2;
+}
