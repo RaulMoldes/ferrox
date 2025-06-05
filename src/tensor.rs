@@ -1,6 +1,6 @@
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
-
+use std::ops::{Index, IndexMut};
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug, Clone)]
 pub struct Tensor {
@@ -497,6 +497,33 @@ impl Tensor {
     pub fn detach(&self) -> Tensor {
         Tensor::new_with_device(self.data.clone(), self.device.clone())
     }
+
+
+     /// Returns an iterator over elements in row-major order
+     pub fn iter(&self) -> ndarray::iter::Iter<'_, f64, ndarray::IxDyn> {
+        self.data.iter()
+    }
+
+    /// Returns a mutable iterator over elements in row-major order
+    pub fn iter_mut(&mut self) -> ndarray::iter::IterMut<'_, f64, ndarray::IxDyn> {
+        self.data.iter_mut()
+    }
+
+    /// Returns an iterator over elements with their indices
+    pub fn indexed_iter(&self) -> ndarray::iter::IndexedIter<'_, f64, ndarray::IxDyn> {
+        self.data.indexed_iter()
+    }
+
+    /// Returns a mutable iterator over elements with their indices
+    pub fn indexed_iter_mut(&mut self) -> ndarray::iter::IndexedIterMut<'_, f64, ndarray::IxDyn> {
+        self.data.indexed_iter_mut()
+    }
+
+    /// Collect all elements into a Vec in row-major order
+    pub fn to_vec(&self) -> Vec<f64> {
+        self.data.iter().copied().collect()
+    }
+
 }
 
 // Implement equality for testing, and because will be useful in the future.
@@ -507,3 +534,208 @@ impl PartialEq for Tensor {
 }
 
 impl Eq for Tensor {}
+
+
+// Iterator struct that holds the state of iteration
+pub struct TensorIterator {
+    iter: ndarray::iter::Iter<'static, f64, ndarray::IxDyn>,
+}
+
+impl Iterator for TensorIterator {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().copied()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl ExactSizeIterator for TensorIterator {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+// Implementation for owned Tensor (consumes the tensor)
+impl IntoIterator for Tensor {
+    type Item = f64;
+    type IntoIter = TensorIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // We need to leak the data to get a 'static reference for the iterator
+        // This is safe because we're consuming the tensor
+        let leaked_data = Box::leak(Box::new(self.data));
+        TensorIterator {
+            iter: leaked_data.iter(),
+        }
+    }
+}
+
+// Implementation for borrowed Tensor (&Tensor)
+impl<'a> IntoIterator for &'a Tensor {
+    type Item = &'a f64;
+    type IntoIter = ndarray::iter::Iter<'a, f64, ndarray::IxDyn>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
+    }
+}
+
+// Implementation for mutable borrowed Tensor (&mut Tensor)
+impl<'a> IntoIterator for &'a mut Tensor {
+    type Item = &'a mut f64;
+    type IntoIter = ndarray::iter::IterMut<'a, f64, ndarray::IxDyn>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter_mut()
+    }
+}
+
+
+// Implementation for single usize index (for 1D tensors or flattened access)
+impl Index<usize> for Tensor {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl IndexMut<usize> for Tensor {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
+    }
+}
+
+// Implementation for slice of usize (multi-dimensional indexing)
+impl Index<&[usize]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: &[usize]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl IndexMut<&[usize]> for Tensor {
+    fn index_mut(&mut self, indices: &[usize]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+// Implementation for Vec<usize> (convenient alternative to slice)
+impl Index<Vec<usize>> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: Vec<usize>) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl IndexMut<Vec<usize>> for Tensor {
+    fn index_mut(&mut self, indices: Vec<usize>) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+// Implementation for arrays of different sizes (up to 6D for common use cases)
+impl Index<[usize; 1]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: [usize; 1]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl IndexMut<[usize; 1]> for Tensor {
+    fn index_mut(&mut self, indices: [usize; 1]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+impl Index<[usize; 2]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: [usize; 2]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl IndexMut<[usize; 2]> for Tensor {
+    fn index_mut(&mut self, indices: [usize; 2]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+impl Index<[usize; 3]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: [usize; 3]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl IndexMut<[usize; 3]> for Tensor {
+    fn index_mut(&mut self, indices: [usize; 3]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+impl Index<[usize; 4]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: [usize; 4]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl IndexMut<[usize; 4]> for Tensor {
+    fn index_mut(&mut self, indices: [usize; 4]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+// Implementation for tuples (more ergonomic for 2D and 3D)
+impl Index<(usize, usize)> for Tensor {
+    type Output = f64;
+
+    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
+        &self.data[[i, j]]
+    }
+}
+
+impl IndexMut<(usize, usize)> for Tensor {
+    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
+        &mut self.data[[i, j]]
+    }
+}
+
+impl Index<(usize, usize, usize)> for Tensor {
+    type Output = f64;
+
+    fn index(&self, (i, j, k): (usize, usize, usize)) -> &Self::Output {
+        &self.data[[i, j, k]]
+    }
+}
+
+impl IndexMut<(usize, usize, usize)> for Tensor {
+    fn index_mut(&mut self, (i, j, k): (usize, usize, usize)) -> &mut Self::Output {
+        &mut self.data[[i, j, k]]
+    }
+}
+
+impl Index<(usize, usize, usize, usize)> for Tensor {
+    type Output = f64;
+
+    fn index(&self, (i, j, k, l): (usize, usize, usize, usize)) -> &Self::Output {
+        &self.data[[i, j, k, l]]
+    }
+}
+
+impl IndexMut<(usize, usize, usize, usize)> for Tensor {
+    fn index_mut(&mut self, (i, j, k, l): (usize, usize, usize, usize)) -> &mut Self::Output {
+        &mut self.data[[i, j, k, l]]
+    }
+}

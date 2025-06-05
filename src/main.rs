@@ -12,8 +12,11 @@ use crate::tensor::Tensor;
 mod graph;
 use graph::{Engine, next_node_id, GraphVisualizer, EngineVisualization, VisualizationConfig};
 
+mod initializers;
+use initializers::{xavier_uniform, xavier_normal, kaiming_uniform, kaiming_normal,
+    init_tensor_xavier_uniform, init_tensor_xavier_normal, init_tensor_kaiming_uniform, init_tensor_kaiming_normal};
 
-
+mod optim;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example usage of the automatic differentiation engine
@@ -902,5 +905,42 @@ mod tests {
         assert!(a_pos < c_pos);
         assert!(b_pos < c_pos);
         assert!(c_pos < d_pos);
+    }
+
+
+    #[test]
+    fn test_xavier_uniform_bounds() {
+        let fan_in = 100;
+        let fan_out = 50;
+        let gain = 1.0;
+        let expected_bound = gain * (6.0 / (fan_in + fan_out) as f64).sqrt();
+        
+        let init = xavier_uniform(fan_in, fan_out, gain);
+        for _ in 0..1000 {
+            let val = init();
+            assert!(val >= -expected_bound && val <= expected_bound);
+        }
+    }
+
+    #[test]
+    fn test_kaiming_uniform_bounds() {
+        let fan_in = 784;
+        let fan_out = 256;
+        let expected_bound = (6.0 / fan_in as f64).sqrt();
+        
+        let init = kaiming_uniform(fan_in, fan_out, "relu");
+        for _ in 0..1000 {
+            let val = init();
+            assert!(val >= -expected_bound && val <= expected_bound);
+        }
+    }
+
+    #[test]
+    fn test_tensor_initialization() {
+        let shape = [784, 256];
+        let weights = init_tensor_xavier_uniform(&shape, 1.0);
+       
+        assert_eq!(weights.shape(), &[784, 256]);
+        
     }
 }
