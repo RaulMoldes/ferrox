@@ -1,4 +1,3 @@
-
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -10,11 +9,13 @@ mod tensor;
 use crate::tensor::Tensor;
 
 mod graph;
-use graph::{Engine, next_node_id, GraphVisualizer, EngineVisualization, VisualizationConfig};
+use graph::{Engine, EngineVisualization, GraphVisualizer, VisualizationConfig, next_node_id};
 
 mod initializers;
-use initializers::{xavier_uniform, xavier_normal, kaiming_uniform, kaiming_normal,
-    init_tensor_xavier_uniform, init_tensor_xavier_normal, init_tensor_kaiming_uniform, init_tensor_kaiming_normal};
+use initializers::{
+    init_tensor_kaiming_normal, init_tensor_kaiming_uniform, init_tensor_xavier_normal,
+    init_tensor_xavier_uniform, kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform,
+};
 
 mod optim;
 
@@ -291,14 +292,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // === ATTEMPT IMAGE GENERATION ===
     println!("\n=== IMAGE GENERATION ATTEMPTS ===");
-    
+
     // Try to generate PNG images (requires Graphviz)
     match graph.save_graph_image(&[nn_loss], "imgs/neural_network.png") {
         Ok(_) => println!("Successfully saved neural_network.png"),
         Err(e) => println!("Could not save PNG (install Graphviz): {}", e),
     }
 
-    match nn_grad_visualizer.save_image(&graph, &[final_loss], "imgs/complex_computation.png", "png") {
+    match nn_grad_visualizer.save_image(
+        &graph,
+        &[final_loss],
+        "imgs/complex_computation.png",
+        "png",
+    ) {
         Ok(_) => println!("Successfully saved complex_computation.png"),
         Err(e) => println!("Could not save PNG (install Graphviz): {}", e),
     }
@@ -514,11 +520,10 @@ mod tests {
         assert!(grad2.data().iter().all(|&x| (x - 1.0).abs() < 1e-6));
     }
 
-
     #[test]
     fn test_graph_visualization() {
         let mut engine = Engine::new();
-        
+
         // Create some nodes
         let a = engine.tensor_from_vec(vec![1.0, 2.0], &[2], true).unwrap();
         let b = engine.tensor_from_vec(vec![3.0, 4.0], &[2], true).unwrap();
@@ -528,7 +533,7 @@ mod tests {
         // Test DOT generation
         let visualizer = GraphVisualizer::new();
         let dot = visualizer.to_dot(&engine, &[d]);
-        
+
         assert!(dot.contains("digraph"));
         assert!(dot.contains(&format!("{}", a)));
         assert!(dot.contains(&format!("{}", b)));
@@ -539,10 +544,10 @@ mod tests {
     #[test]
     fn test_graph_printing() {
         let mut engine = Engine::new();
-        
+
         let a = engine.tensor_from_vec(vec![1.0], &[1], true).unwrap();
         let b = engine.relu(a).unwrap();
-        
+
         // This shouldn't panic
         engine.plot_graph(&[b]);
     }
@@ -907,14 +912,13 @@ mod tests {
         assert!(c_pos < d_pos);
     }
 
-
     #[test]
     fn test_xavier_uniform_bounds() {
         let fan_in = 100;
         let fan_out = 50;
         let gain = 1.0;
         let expected_bound = gain * (6.0 / (fan_in + fan_out) as f64).sqrt();
-        
+
         let init = xavier_uniform(fan_in, fan_out, gain);
         for _ in 0..1000 {
             let val = init();
@@ -927,7 +931,7 @@ mod tests {
         let fan_in = 784;
         let fan_out = 256;
         let expected_bound = (6.0 / fan_in as f64).sqrt();
-        
+
         let init = kaiming_uniform(fan_in, fan_out, "relu");
         for _ in 0..1000 {
             let val = init();
@@ -939,8 +943,7 @@ mod tests {
     fn test_tensor_initialization() {
         let shape = [784, 256];
         let weights = init_tensor_xavier_uniform(&shape, 1.0);
-       
+
         assert_eq!(weights.shape(), &[784, 256]);
-        
     }
 }

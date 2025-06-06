@@ -1,19 +1,19 @@
-use std::collections::HashMap;
 use crate::tensor::Tensor;
+use std::collections::HashMap;
 /// Trait that all optimizers must implement
 /// If we wanted to create a new optimizer, we would implement this trait
 /// and provide the necessary methods for parameter updates.
 /// This allows for flexibility in choosing different optimization algorithms
 /// such as SGD, Adam, RMSprop, etc.
-/// It also mimics PyTorch and TensorFlow's optimizer interfaces, which you can customize by inheriting 
+/// It also mimics PyTorch and TensorFlow's optimizer interfaces, which you can customize by inheriting
 /// from a base optimizer class.
 pub trait Optimizer {
     /// Update parameters based on gradients
     fn step(&mut self);
-    
+
     /// Reset gradients to zero/None
     fn reset_grad(&mut self);
-    
+
     /// Add parameters to the optimizer
     fn add_param(&mut self, param_id: usize, param: &mut Parameter);
 }
@@ -21,7 +21,7 @@ pub trait Optimizer {
 /// Represents a parameter in the neural network
 #[derive(Debug, Clone)]
 pub struct Parameter {
-    pub data: Tensor,  // Using Tensor type for data representation
+    pub data: Tensor,         // Using Tensor type for data representation
     pub grad: Option<Tensor>, // Gradient of the parameter, None if not computed
     //I use tensors to mimic the graph API in thsis crate which also uses Tensors to represent data or gradients.
     pub shape: Vec<usize>,
@@ -35,11 +35,11 @@ impl Parameter {
             shape,
         }
     }
-    
+
     pub fn zero_grad(&mut self) {
         self.grad = None;
     }
-    
+
     pub fn size(&self) -> usize {
         self.data.len()
     }
@@ -78,16 +78,16 @@ impl SGD {
             u: HashMap::new(),
         }
     }
-    
+
     /// Clips gradient norm of parameters to prevent exploding gradients.
     /// Basicall computes the norm of all gradients and scales them if they exceed max_norm.
     /// This is useful in training deep networks where gradients can become very large.
     /// The clip_coef is computed through the max_norm and the total norm of the gradients.
     pub fn clip_grad_norm(&mut self, max_norm: f64) {
         let mut total_norm_sq = 0.0;
-        
+
         // Calculate total gradient norm
-        for (_, param_ptr) in &self.params {
+        for param_ptr in self.params.values() {
             let param = unsafe { &**param_ptr };
             if let Some(ref grad) = param.grad {
                 for &g in grad {
@@ -95,14 +95,14 @@ impl SGD {
                 }
             }
         }
-        
+
         let total_norm = total_norm_sq.sqrt();
-        
+
         // If norm exceeds max_norm, scale all gradients
         if total_norm > max_norm {
             let clip_coef = max_norm / total_norm;
-            
-            for (_, param_ptr) in &self.params {
+
+            for param_ptr in self.params.values() {
                 let param = unsafe { &mut **param_ptr };
                 if let Some(ref mut grad) = param.grad {
                     for g in grad.iter_mut() {
@@ -112,52 +112,69 @@ impl SGD {
             }
         }
     }
+
+    // Setter for nesterov momentum
+    pub fn set_nesterov(&mut self, nesterov: bool) {
+        self.nesterov = nesterov;
+    }
 }
 
 impl Optimizer for SGD {
     fn step(&mut self) {
-      // Iterate over all parameters and update them
+        // Iterate over all parameters and update them
         // using the stored gradients and momentum buffers.
         for (&param_id, param_ptr) in &self.params {
             let param = unsafe { &mut **param_ptr };
-            print !("Updating parameter {}: ", param_id);
+            print!("Updating parameter {}: ", param_id);
             if let Some(ref grad) = param.grad {
                 // Initialize momentum buffer if not present
                 if !self.u.contains_key(&param_id) {
                     self.u.insert(param_id, vec![0.0; param.size()]);
                 }
                 println!("Momentum buffer initialized for param {}", param_id);
-                
-                /// TODO: implement Nesterov momentum (not done)
+
+                // Get the momentum buffer for this parameter
                 let momentum_buffer = self.u.get_mut(&param_id).unwrap();
-                println!("Momentum buffer for param {}: {:?}", param_id, momentum_buffer);
+                println!(
+                    "Momentum buffer for param {}: {:?}",
+                    param_id, momentum_buffer
+                );
                 for i in 0..param.size() {
-                  println!("Updating parameter {} at index {}: ", param_id, i);
+                    println!("Updating parameter {} at index {}: ", param_id, i);
                     let mut g = grad[i];
                     println!("Gradient for param {}: {}", param_id, g);
-                    
+                
                     // Apply weight decay (L2 regularization)
                     if self.weight_decay != 0.0 {
                         g += self.weight_decay * param.data[i];
                     }
-                    
+                
                     // Update momentum buffer
                     momentum_buffer[i] = self.momentum * momentum_buffer[i] + g;
-                    
+                
+                    // Apply update based on momentum type
+                    let update = if self.nesterov {
+                        // Nesterov momentum: use gradient + momentum * velocity
+                        g + self.momentum * momentum_buffer[i]
+                    } else {
+                        // Standard momentum: use velocity directly
+                        momentum_buffer[i]
+                    };
+                
                     // Update parameter
-                    param.data[i] -= self.lr * momentum_buffer[i];
+                    param.data[i] -= self.lr * update;
                 }
             }
         }
     }
-    
+
     fn reset_grad(&mut self) {
-        for (_, param_ptr) in &self.params {
+        for param_ptr in self.params.values() {
             let param = unsafe { &mut **param_ptr };
             param.zero_grad();
         }
     }
-    
+
     fn add_param(&mut self, param_id: usize, param: &mut Parameter) {
         self.params.insert(param_id, param as *mut Parameter);
     }
@@ -168,12 +185,12 @@ pub struct Adam {
     params: HashMap<usize, *mut Parameter>,
     lr: f64,
     // momentum parameters
-    beta1: f64, 
+    beta1: f64,
     beta2: f64,
     eps: f64, // small constant to prevent division by zero
     // nesterov: bool,  not used on Adam
-    weight_decay: f64, // weight decay (L2 regularization) factor
-    t: u32, // time step
+    weight_decay: f64,           // weight decay (L2 regularization) factor
+    t: u32,                      // time step
     m: HashMap<usize, Vec<f64>>, // first moment estimates
     v: HashMap<usize, Vec<f64>>, // second moment estimates
 }
@@ -204,62 +221,61 @@ impl Adam {
 /// Adam maintains two moment estimates: the first moment (mean) and the second moment (uncentered variance).
 /// It also includes bias correction to account for the initialization of these moments.
 impl Optimizer for Adam {
-  // Adam does not use Nesterov momentum, so we don't need to implement that here.
+    // Adam does not use Nesterov momentum, so we don't need to implement that here.
     fn step(&mut self) {
         self.t += 1;
-        
+
         for (&param_id, param_ptr) in &self.params {
             let param = unsafe { &mut **param_ptr };
-            
+
             if let Some(ref grad) = param.grad {
                 // Initialize moment estimates if not present
                 if !self.m.contains_key(&param_id) {
                     self.m.insert(param_id, vec![0.0; param.size()]);
                     self.v.insert(param_id, vec![0.0; param.size()]);
                 }
-                
+
                 let m_t = self.m.get_mut(&param_id).unwrap();
                 let v_t = self.v.get_mut(&param_id).unwrap();
-                
+
                 for i in 0..param.size() {
                     let mut g = grad[i];
-                    
+
                     // Apply weight decay (L2 regularization)
                     if self.weight_decay != 0.0 {
                         g += self.weight_decay * param.data[i];
                     }
-                    
+
                     // Update biased first moment estimate
                     m_t[i] = self.beta1 * m_t[i] + (1.0 - self.beta1) * g;
-                    
+
                     // Update biased second raw moment estimate
                     v_t[i] = self.beta2 * v_t[i] + (1.0 - self.beta2) * g * g;
-                    
+
                     // Compute bias-corrected first moment estimate
                     let m_hat = m_t[i] / (1.0 - self.beta1.powi(self.t as i32));
-                    
+
                     // Compute bias-corrected second raw moment estimate
                     let v_hat = v_t[i] / (1.0 - self.beta2.powi(self.t as i32));
-                    
+
                     // Update parameter
                     param.data[i] -= self.lr * m_hat / (v_hat.sqrt() + self.eps);
                 }
             }
         }
     }
-    
+
     fn reset_grad(&mut self) {
-        for (_, param_ptr) in &self.params {
+        for param_ptr in self.params.values() {
             let param = unsafe { &mut **param_ptr };
             param.zero_grad();
         }
     }
-    
+
     fn add_param(&mut self, param_id: usize, param: &mut Parameter) {
         self.params.insert(param_id, param as *mut Parameter);
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -273,18 +289,23 @@ mod tests {
         let data = Array::from_shape_vec(IxDyn(&[2, 2]), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
         let tensor = Tensor::new(data);
         let mut param = Parameter::new(tensor, vec![2, 2]);
-        
+
         // Set some gradients (simulating backpropagation)
         let grad_data = Array::from_shape_vec(IxDyn(&[2, 2]), vec![0.1, 0.2, 0.3, 0.4]).unwrap();
         param.grad = Some(Tensor::new(grad_data));
-        
+
         // Create SGD optimizer with learning rate 0.1, no momentum, no weight decay
         let mut sgd = SGD::new(0.1, 0.0, 0.0);
         sgd.add_param(0, &mut param);
-        
+
         // Store original values for comparison
-        let original_values = [param.data[(0, 0)], param.data[(0, 1)], param.data[(1, 0)], param.data[(1, 1)]];
-        
+        let original_values = [
+            param.data[(0, 0)],
+            param.data[(0, 1)],
+            param.data[(1, 0)],
+            param.data[(1, 1)],
+        ];
+
         // Perform one optimization step
         sgd.step();
         /*
@@ -293,22 +314,22 @@ mod tests {
         assert!((param.data[(0, 1)] - (original_values[1] - 0.1 * 0.2)).abs() < 1e-10);
         assert!((param.data[(1, 0)] - (original_values[2] - 0.1 * 0.3)).abs() < 1e-10);
         assert!((param.data[(1, 1)] - (original_values[3] - 0.1 * 0.4)).abs() < 1e-10);
-        
+
         // Test momentum on second step
         let mut sgd_momentum = SGD::new(0.1, 0.9, 0.0);
         sgd_momentum.add_param(0, &mut param);
-        
+
         // Set new gradients
         let grad_data2 = Array::from_shape_vec(IxDyn(&[2, 2]), vec![0.05, 0.1, 0.15, 0.2]).unwrap();
         param.grad = Some(Tensor::new(grad_data2));
-        
+
         let before_momentum = param.data[(0, 0)];
         sgd_momentum.step();
-        
+
         // With momentum, the update should be different than just -lr * grad
         let expected_no_momentum = before_momentum - 0.1 * 0.05;
         assert!((param.data[(0, 0)] - expected_no_momentum).abs() > 1e-10);
-        
+
         // Test reset_grad
         sgd.reset_grad();
         assert!(param.grad.is_none());*/
@@ -320,65 +341,65 @@ mod tests {
         let data = Array::from_shape_vec(IxDyn(&[3]), vec![1.0, -0.5, 2.0]).unwrap();
         let tensor = Tensor::new(data);
         let mut param = Parameter::new(tensor, vec![3]);
-        
+
         // Set gradients
         let grad_data = Array::from_shape_vec(IxDyn(&[3]), vec![0.1, -0.2, 0.3]).unwrap();
         param.grad = Some(Tensor::new(grad_data));
-        
+
         // Create Adam optimizer with standard hyperparameters
         let mut adam = Adam::new(0.001, 0.9, 0.999, 1e-8, 0.0);
         adam.add_param(0, &mut param);
-        
+
         // Store original values
         let original_values = [param.data[0], param.data[1], param.data[2]];
-        
+
         // Perform first optimization step
         adam.step();
-        
+
         // Check that parameters changed (Adam should update all parameters)
         assert!(param.data[0] != original_values[0]);
         assert!(param.data[1] != original_values[1]);
         assert!(param.data[2] != original_values[2]);
-        
+
         // Verify bias correction is working (first step should have larger updates due to bias correction)
         let first_step_change = (param.data[0] - original_values[0]).abs();
-        
+
         // Set same gradients for second step
         let grad_data2 = Array::from_shape_vec(IxDyn(&[3]), vec![0.1, -0.2, 0.3]).unwrap();
         param.grad = Some(Tensor::new(grad_data2));
-        
+
         let before_second = param.data[0];
         adam.step();
-        
+
         let second_step_change = (param.data[0] - before_second).abs();
-        
+
         // Due to bias correction, first step should have larger magnitude change
         // (though this might be subtle with these parameters)
         assert!(first_step_change > 0.0);
         assert!(second_step_change > 0.0);
-        
+
         // Test that Adam maintains separate moment estimates
         // By checking that the internal state has been updated
         assert_eq!(adam.t, 2); // Two steps taken
         assert!(adam.m.contains_key(&0)); // First moment exists
         assert!(adam.v.contains_key(&0)); // Second moment exists
-        
+
         // Test weight decay functionality
         let mut adam_with_decay = Adam::new(0.001, 0.9, 0.999, 1e-8, 0.01);
         let data_decay = Array::from_shape_vec(IxDyn(&[2]), vec![1.0, 2.0]).unwrap();
         let tensor_decay = Tensor::new(data_decay);
         let mut param_decay = Parameter::new(tensor_decay, vec![2]);
-        
+
         let grad_data_decay = Array::from_shape_vec(IxDyn(&[2]), vec![0.0, 0.0]).unwrap(); // Zero gradients
         param_decay.grad = Some(Tensor::new(grad_data_decay));
-        
+
         adam_with_decay.add_param(1, &mut param_decay);
         let before_decay = param_decay.data[0];
         adam_with_decay.step();
-        
+
         // Even with zero gradients, weight decay should cause parameters to decrease
         assert!(param_decay.data[0] < before_decay);
-        
+
         // Test reset_grad
         adam.reset_grad();
         assert!(param.grad.is_none());

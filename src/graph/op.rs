@@ -21,7 +21,7 @@ pub trait Operator: std::fmt::Debug {
 // Basic arithmetic operators
 // Curently all operators are only applyable to my implementation of a tensor written over the Ndarray library.
 // It is critical to make the tensor interface agnostic to the backend implementation to be able to ue other devices and make this thing more efficient.
-// Aditionally, this operations should not be relying on the ndarray library, or either we will have to implement new ones when we 
+// Aditionally, this operations should not be relying on the ndarray library, or either we will have to implement new ones when we
 // extend the backend to support other devices like GPU or TPU.
 // For now I just did it as best as I could but I know it can be improved from a SWE perspective.
 #[derive(Debug, Clone)]

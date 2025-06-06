@@ -1,6 +1,6 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use super::op::Operator;
 use crate::tensor::Tensor;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // Unique ID generator for computational graph nodes
 static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);

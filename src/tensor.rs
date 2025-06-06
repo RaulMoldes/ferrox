@@ -313,19 +313,53 @@ impl Tensor {
             }
         }
     }
-
+    // Sum over the specified axes in reverse sorted order.
+    // This function allows summing over multiple axes at once, which is useful for reducing the dimensionality of the tensor.
+    // Example:
+    // Given tensor [2, 2, 2] with data [1,2,3,4,5,6,7,8]:
+    // [[[1, 2],     <- indices [0,0,:]
+    // [3, 4]],    <- indices [0,1,:]
+    // [[5, 6],     <- indices [1,0,:]
+    // [7, 8]]]    <- indices [1,1,:]
+    // If we sum over axes [0, 2], we get a tensor with shape [2] and data [14, 22]
+    // - Step 1: Sum over axis 2:
+    // [1,2] → 3
+    // [3,4] → 7
+    // [5,6] → 11
+    // [7,8] → 15
+    // Result: [[3,7], [11,15]] with shape [2,2]
+    // - Step 2: Sum over axis 0:
+    // [3,11] → 14
+    // [7,15] → 22
+    // Result: [14, 22] with shape [2]
     pub fn sum_axes(&self, axes: Option<&[usize]>) -> Tensor {
         match axes {
             Some(axes_list) => {
+                // Validate axes are within bounds
+                for &ax in axes_list {
+                    if ax >= self.ndim() {
+                        panic!(
+                            "Axis {} is out of bounds for tensor with {} dimensions",
+                            ax,
+                            self.ndim()
+                        );
+                    }
+                }
+
                 let mut result = self.data.clone();
+
                 // Sort axes in descending order to avoid index shifting issues
                 let mut sorted_axes = axes_list.to_vec();
                 sorted_axes.sort_unstable();
                 sorted_axes.reverse();
 
+                // Remove duplicates to avoid summing the same axis twice
+                sorted_axes.dedup();
+
                 for &ax in &sorted_axes {
                     result = result.sum_axis(Axis(ax));
                 }
+
                 Tensor::new_with_device(result, self.device.clone())
             }
             None => self.sum(None),
@@ -498,9 +532,8 @@ impl Tensor {
         Tensor::new_with_device(self.data.clone(), self.device.clone())
     }
 
-
-     /// Returns an iterator over elements in row-major order
-     pub fn iter(&self) -> ndarray::iter::Iter<'_, f64, ndarray::IxDyn> {
+    /// Returns an iterator over elements in row-major order
+    pub fn iter(&self) -> ndarray::iter::Iter<'_, f64, ndarray::IxDyn> {
         self.data.iter()
     }
 
@@ -523,7 +556,6 @@ impl Tensor {
     pub fn to_vec(&self) -> Vec<f64> {
         self.data.iter().copied().collect()
     }
-
 }
 
 // Implement equality for testing, and because will be useful in the future.
@@ -534,7 +566,6 @@ impl PartialEq for Tensor {
 }
 
 impl Eq for Tensor {}
-
 
 // Iterator struct that holds the state of iteration
 pub struct TensorIterator {
@@ -594,19 +625,30 @@ impl<'a> IntoIterator for &'a mut Tensor {
     }
 }
 
-
-// Implementation for single usize index (for 1D tensors or flattened access)
+// Implementation for single usize index (flat indexing for any dimensional tensor)
+// This attempts to mimic the behavior of NumPy's flat indexing,
+// therefore you could access elements in a multi-dimensional tensor as it was a flat array.
 impl Index<usize> for Tensor {
     type Output = f64;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index]
+        // Convert flat index to multi-dimensional coordinates
+        let flat_data = self
+            .data
+            .as_slice()
+            .expect("Tensor data should be contiguous");
+        &flat_data[index]
     }
 }
 
 impl IndexMut<usize> for Tensor {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.data[index]
+        // Convert flat index to multi-dimensional coordinates
+        let flat_data = self
+            .data
+            .as_slice_mut()
+            .expect("Tensor data should be contiguous");
+        &mut flat_data[index]
     }
 }
 
@@ -737,5 +779,614 @@ impl Index<(usize, usize, usize, usize)> for Tensor {
 impl IndexMut<(usize, usize, usize, usize)> for Tensor {
     fn index_mut(&mut self, (i, j, k, l): (usize, usize, usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j, k, l]]
+    }
+}
+
+// Implementation for references to arrays of different sizes
+impl Index<&[usize; 1]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: &[usize; 1]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl IndexMut<&[usize; 1]> for Tensor {
+    fn index_mut(&mut self, indices: &[usize; 1]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+impl Index<&[usize; 2]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: &[usize; 2]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl IndexMut<&[usize; 2]> for Tensor {
+    fn index_mut(&mut self, indices: &[usize; 2]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+impl Index<&[usize; 3]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: &[usize; 3]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl IndexMut<&[usize; 3]> for Tensor {
+    fn index_mut(&mut self, indices: &[usize; 3]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+impl Index<&[usize; 4]> for Tensor {
+    type Output = f64;
+
+    fn index(&self, indices: &[usize; 4]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl IndexMut<&[usize; 4]> for Tensor {
+    fn index_mut(&mut self, indices: &[usize; 4]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{Device, default_device};
+    use ndarray::{Array, ArrayD, IxDyn};
+    use std::f64::EPSILON;
+
+    // Helper function to compare tensors with floating point tolerance
+    fn tensors_approx_equal(a: &Tensor, b: &Tensor, tolerance: f64) -> bool {
+        if a.shape() != b.shape() {
+            return false;
+        }
+
+        for (val_a, val_b) in a.data().iter().zip(b.data().iter()) {
+            if (val_a - val_b).abs() > tolerance {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[test]
+    fn test_tensor_creation() {
+        // Test basic tensor creation
+        let data =
+            Array::from_shape_vec(IxDyn(&[2, 3]), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let tensor = Tensor::new(data);
+
+        assert_eq!(tensor.shape(), &[2, 3]);
+        assert_eq!(tensor.ndim(), 2);
+        assert_eq!(tensor.len(), 6);
+        assert_eq!(tensor.size(), 6);
+    }
+
+    #[test]
+    fn test_tensor_with_device() {
+        let data = Array::from_shape_vec(IxDyn(&[2, 2]), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let device = default_device();
+        let tensor = Tensor::new_with_device(data, device.clone());
+
+        assert_eq!(tensor.device(), &device);
+        assert_eq!(tensor.shape(), &[2, 2]);
+    }
+
+    #[test]
+    fn test_zeros() {
+        let tensor = Tensor::zeros(&[3, 2]);
+        assert_eq!(tensor.shape(), &[3, 2]);
+
+        for &val in tensor.data().iter() {
+            assert_eq!(val, 0.0);
+        }
+    }
+
+    #[test]
+    fn test_zeros_with_device() {
+        let device = default_device();
+        let tensor = Tensor::zeros_with_device(&[2, 3], device.clone());
+        assert_eq!(tensor.shape(), &[2, 3]);
+        assert_eq!(tensor.device(), &device);
+
+        for &val in tensor.data().iter() {
+            assert_eq!(val, 0.0);
+        }
+    }
+
+    #[test]
+    fn test_ones() {
+        let tensor = Tensor::ones(&[2, 2]);
+        assert_eq!(tensor.shape(), &[2, 2]);
+
+        for &val in tensor.data().iter() {
+            assert_eq!(val, 1.0);
+        }
+    }
+
+    #[test]
+    fn test_ones_with_device() {
+        let device = default_device();
+        let tensor = Tensor::ones_with_device(&[3, 1], device.clone());
+        assert_eq!(tensor.shape(), &[3, 1]);
+        assert_eq!(tensor.device(), &device);
+
+        for &val in tensor.data().iter() {
+            assert_eq!(val, 1.0);
+        }
+    }
+
+    #[test]
+    fn test_randn() {
+        let tensor = Tensor::randn(&[100, 100]);
+        assert_eq!(tensor.shape(), &[100, 100]);
+
+        // Check that values are not all the same (very unlikely with random numbers)
+        let values: Vec<f64> = tensor.data().iter().cloned().collect();
+        let first_val = values[0];
+        let all_same = values.iter().all(|&x| (x - first_val).abs() < EPSILON);
+        assert!(
+            !all_same,
+            "Random tensor should not have all identical values"
+        );
+    }
+
+    #[test]
+    fn test_from_vec_success() {
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let tensor = Tensor::from_vec(data.clone(), &[2, 3]).unwrap();
+
+        assert_eq!(tensor.shape(), &[2, 3]);
+        assert_eq!(tensor.to_vec(), data);
+    }
+
+    #[test]
+    fn test_from_vec_failure() {
+        let data = vec![1.0, 2.0, 3.0];
+        let result = Tensor::from_vec(data, &[2, 3]); // Should need 6 elements
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Data length 3 doesn't match shape")
+        );
+    }
+
+    #[test]
+    fn test_element_wise_add() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+        let b = Tensor::from_vec(vec![5.0, 6.0, 7.0, 8.0], &[2, 2]).unwrap();
+
+        let result = a.add(&b).unwrap();
+        let expected = vec![6.0, 8.0, 10.0, 12.0];
+
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_element_wise_add_shape_mismatch() {
+        let a = Tensor::from_vec(vec![1.0, 2.0], &[2, 1]).unwrap();
+        let b = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3, 1]).unwrap();
+
+        let result = a.add(&b);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Shape mismatch"));
+    }
+
+    #[test]
+    fn test_element_wise_multiply() {
+        let a = Tensor::from_vec(vec![2.0, 3.0, 4.0, 5.0], &[2, 2]).unwrap();
+        let b = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        let result = a.mul(&b).unwrap();
+        let expected = vec![2.0, 6.0, 12.0, 20.0];
+
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_matrix_multiplication() {
+        // 2x3 * 3x2 = 2x2
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let b = Tensor::from_vec(vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0], &[3, 2]).unwrap();
+
+        let result = a.matmul(&b).unwrap();
+        assert_eq!(result.shape(), &[2, 2]);
+
+        // Expected: [[58, 64], [139, 154]]
+        let expected = vec![58.0, 64.0, 139.0, 154.0];
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_matrix_multiplication_shape_error() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+        let b = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3, 1]).unwrap();
+
+        let result = a.matmul(&b);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Matrix multiplication shape mismatch")
+        );
+    }
+
+    #[test]
+    fn test_matrix_multiplication_not_2d() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+        let b = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+
+        let result = a.matmul(&b);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Matrix multiplication requires 2D tensors")
+        );
+    }
+
+    #[test]
+    fn test_relu_activation() {
+        let tensor = Tensor::from_vec(vec![-2.0, -1.0, 0.0, 1.0, 2.0], &[5]).unwrap();
+        let result = tensor.relu();
+        let expected = vec![0.0, 0.0, 0.0, 1.0, 2.0];
+
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_sigmoid_activation() {
+        let tensor = Tensor::from_vec(vec![0.0], &[1]).unwrap();
+        let result = tensor.sigmoid();
+
+        // sigmoid(0) = 0.5
+        assert!((result.to_vec()[0] - 0.5).abs() < EPSILON);
+    }
+
+    #[test]
+    fn test_exp() {
+        let tensor = Tensor::from_vec(vec![0.0, 1.0, 2.0], &[3]).unwrap();
+        let result = tensor.exp();
+        let expected = vec![
+            1.0,
+            std::f64::consts::E,
+            std::f64::consts::E * std::f64::consts::E,
+        ];
+
+        for (actual, expected) in result.to_vec().iter().zip(expected.iter()) {
+            assert!((actual - expected).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_log() {
+        let tensor = Tensor::from_vec(vec![1.0, std::f64::consts::E, 10.0], &[3]).unwrap();
+        let result = tensor.log();
+        let expected = vec![0.0, 1.0, 10.0_f64.ln()];
+
+        for (actual, expected) in result.to_vec().iter().zip(expected.iter()) {
+            assert!((actual - expected).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_negate() {
+        let tensor = Tensor::from_vec(vec![1.0, -2.0, 3.0, -4.0], &[4]).unwrap();
+        let result = tensor.negate();
+        let expected = vec![-1.0, 2.0, -3.0, 4.0];
+
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_division() {
+        let a = Tensor::from_vec(vec![6.0, 8.0, 10.0, 12.0], &[2, 2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0, 4.0, 5.0, 3.0], &[2, 2]).unwrap();
+
+        let result = a.div(&b).unwrap();
+        let expected = vec![3.0, 2.0, 2.0, 4.0];
+
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_power() {
+        let base = Tensor::from_vec(vec![2.0, 3.0, 4.0], &[3]).unwrap();
+        let exp = Tensor::from_vec(vec![2.0, 3.0, 2.0], &[3]).unwrap();
+
+        let result = base.pow(&exp).unwrap();
+        let expected = vec![4.0, 27.0, 16.0];
+
+        assert_eq!(result.to_vec(), expected);
+    }
+
+    #[test]
+    fn test_scalar_operations() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        // Add scalar
+        let add_result = tensor.add_scalar(5.0);
+        assert_eq!(add_result.to_vec(), vec![6.0, 7.0, 8.0, 9.0]);
+
+        // Multiply scalar
+        let mul_result = tensor.mul_scalar(2.0);
+        assert_eq!(mul_result.to_vec(), vec![2.0, 4.0, 6.0, 8.0]);
+
+        // Divide scalar
+        let div_result = tensor.div_scalar(2.0);
+        assert_eq!(div_result.to_vec(), vec![0.5, 1.0, 1.5, 2.0]);
+
+        // Power scalar
+        let pow_result = tensor.power_scalar(2.0);
+        assert_eq!(pow_result.to_vec(), vec![1.0, 4.0, 9.0, 16.0]);
+    }
+
+    #[test]
+    fn test_sum_operations() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Sum all elements
+        let total_sum = tensor.sum(None);
+        assert_eq!(total_sum.to_vec(), vec![21.0]);
+
+        // Sum along axis 0
+        let sum_axis_0 = tensor.sum(Some(0));
+        assert_eq!(sum_axis_0.to_vec(), vec![5.0, 7.0, 9.0]);
+
+        // Sum along axis 1
+        let sum_axis_1 = tensor.sum(Some(1));
+        assert_eq!(sum_axis_1.to_vec(), vec![6.0, 15.0]);
+    }
+
+    #[test]
+    fn test_sum_multiple_axes() {
+        let tensor =
+            Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], &[2, 2, 2]).unwrap();
+
+        let result = tensor.sum_axes(Some(&[0, 2]));
+        println!("Tensor: {:?}", tensor);
+        println!("Result: {:?}", result);
+        // Should sum over axes 0 and 2, leaving axis 1
+        assert_eq!(result.shape(), &[2]);
+        assert_eq!(result.to_vec(), vec![14.0, 22.0]);
+    }
+
+    #[test]
+    fn test_mean_operations() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Mean of all elements
+        let total_mean = tensor.mean(None);
+        assert_eq!(total_mean.to_vec(), vec![3.5]);
+
+        // Mean along axis 0
+        let mean_axis_0 = tensor.mean(Some(0));
+        assert_eq!(mean_axis_0.to_vec(), vec![2.5, 3.5, 4.5]);
+    }
+
+    #[test]
+    fn test_reshape() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        let reshaped = tensor.reshape(&[3, 2]).unwrap();
+        assert_eq!(reshaped.shape(), &[3, 2]);
+        assert_eq!(reshaped.to_vec(), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_reshape_invalid() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        let result = tensor.reshape(&[3, 2]); // 4 elements can't fit in 6 slots
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Cannot reshape tensor with 4 elements")
+        );
+    }
+
+    #[test]
+    fn test_unsqueeze() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+
+        let unsqueezed = tensor.unsqueeze(0);
+        assert_eq!(unsqueezed.shape(), &[1, 3]);
+
+        let unsqueezed2 = tensor.unsqueeze(1);
+        assert_eq!(unsqueezed2.shape(), &[3, 1]);
+    }
+
+    #[test]
+    fn test_squeeze() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[1, 3, 1]).unwrap();
+
+        // Squeeze specific axis
+        let squeezed = tensor.squeeze(Some(0)).unwrap();
+        assert_eq!(squeezed.shape(), &[3, 1]);
+
+        // Squeeze all singleton dimensions
+        let squeezed_all = tensor.squeeze(None).unwrap();
+        assert_eq!(squeezed_all.shape(), &[3]);
+    }
+
+    #[test]
+    fn test_squeeze_invalid() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        let result = tensor.squeeze(Some(0)); // Cannot squeeze axis with size > 1
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Cannot squeeze axis 0 with size 2")
+        );
+    }
+
+    #[test]
+    fn test_transpose_2d() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        let transposed = tensor.transpose(None).unwrap();
+        assert_eq!(transposed.shape(), &[3, 2]);
+        assert_eq!(transposed.to_vec(), vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+    }
+
+    #[test]
+    fn test_transpose_with_axes() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        let transposed = tensor.transpose(Some(&[1, 0])).unwrap();
+        assert_eq!(transposed.shape(), &[2, 2]);
+        assert_eq!(transposed.to_vec(), vec![1.0, 3.0, 2.0, 4.0]);
+    }
+
+    #[test]
+    fn test_transpose_invalid_axes() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        let result = tensor.transpose(Some(&[0, 2])); // Invalid axes for 2D tensor
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid axes permutation"));
+    }
+
+    #[test]
+    fn test_broadcast_to() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0], &[2]).unwrap();
+
+        let broadcasted = tensor.broadcast_to(&[3, 2]).unwrap();
+        assert_eq!(broadcasted.shape(), &[3, 2]);
+        assert_eq!(broadcasted.to_vec(), vec![1.0, 2.0, 1.0, 2.0, 1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_broadcast_invalid() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+
+        let result = tensor.broadcast_to(&[2]); // Cannot broadcast [3] to [2]
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot broadcast"));
+    }
+
+    #[test]
+    fn test_detach() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+        let detached = tensor.detach();
+
+        assert_eq!(tensor.to_vec(), detached.to_vec());
+        assert_eq!(tensor.shape(), detached.shape());
+        assert_eq!(tensor.device(), detached.device());
+    }
+
+    #[test]
+    fn test_indexing() {
+        let mut tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+
+        // Test single index access
+
+        assert_eq!(tensor[0], 1.0);
+
+        assert_eq!(tensor[5], 6.0);
+
+        // Test 2D tuple indexing
+        assert_eq!(tensor[(0, 0)], 1.0);
+        assert_eq!(tensor[(1, 2)], 6.0);
+
+        // Test slice indexing
+        assert_eq!(tensor[&[0, 1]], 2.0);
+        assert_eq!(tensor[&[1, 2]], 6.0);
+
+        // Test mutable indexing
+        tensor[0] = 10.0;
+        assert_eq!(tensor[0], 10.0);
+
+        tensor[(1, 1)] = 20.0;
+        assert_eq!(tensor[(1, 1)], 20.0);
+    }
+
+    #[test]
+    fn test_iterators() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        // Test borrowed iterator
+        let values: Vec<&f64> = (&tensor).into_iter().collect();
+        assert_eq!(values.len(), 4);
+        assert_eq!(*values[0], 1.0);
+
+        // Test owned iterator
+        let owned_values: Vec<f64> = tensor.clone().into_iter().collect();
+        assert_eq!(owned_values, vec![1.0, 2.0, 3.0, 4.0]);
+
+        // Test to_vec method
+        assert_eq!(tensor.to_vec(), vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_mutable_iterator() {
+        let mut tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        // Modify values using mutable iterator
+        for val in &mut tensor {
+            *val *= 2.0;
+        }
+
+        assert_eq!(tensor.to_vec(), vec![2.0, 4.0, 6.0, 8.0]);
+    }
+
+    #[test]
+    fn test_tensor_equality() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+        let b = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+        let c = Tensor::from_vec(vec![1.0, 2.0, 4.0], &[3]).unwrap();
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // Test empty tensor
+        let empty = Tensor::zeros(&[0]);
+        assert_eq!(empty.len(), 0);
+        assert_eq!(empty.shape(), &[0]);
+
+        // Test scalar tensor (0D)
+        let scalar_data = Array::from_shape_vec(IxDyn(&[]), vec![42.0]).unwrap();
+        let scalar = Tensor::new(scalar_data);
+        assert_eq!(scalar.ndim(), 0);
+        assert_eq!(scalar.len(), 1);
+
+        // Test 1D tensor transpose (should be unchanged)
+        let tensor_1d = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+        let transposed_1d = tensor_1d.transpose(None).unwrap();
+        assert_eq!(tensor_1d.shape(), transposed_1d.shape());
+        assert_eq!(tensor_1d.to_vec(), transposed_1d.to_vec());
+    }
+
+    #[test]
+    fn test_large_tensor_operations() {
+        let size = 1000;
+        let a = Tensor::ones(&[size]);
+        let b = Tensor::ones(&[size]);
+
+        let result = a.add(&b).unwrap();
+
+        // All values should be 2.0
+        for &val in result.data().iter() {
+            assert_eq!(val, 2.0);
+        }
     }
 }

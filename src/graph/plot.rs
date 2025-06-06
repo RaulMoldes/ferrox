@@ -66,12 +66,13 @@ impl GraphVisualizer {
             let node = engine.nodes[&node_id].borrow();
             let label = self.create_node_label(engine, node_id, &node);
             let color = self.get_node_color(&node);
-            
+
             writeln!(
                 dot,
                 "    {} [label=\"{}\", fillcolor=\"{}\"];",
                 node_id, label, color
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // Add edges
@@ -173,7 +174,12 @@ impl GraphVisualizer {
     }
 
     /// Save the graph as a DOT file
-    pub fn save_dot(&self, engine: &Engine, output_nodes: &[NodeId], filename: &str) -> Result<(), std::io::Error> {
+    pub fn save_dot(
+        &self,
+        engine: &Engine,
+        output_nodes: &[NodeId],
+        filename: &str,
+    ) -> Result<(), std::io::Error> {
         let dot_content = self.to_dot(engine, output_nodes);
         let mut file = File::create(filename)?;
         file.write_all(dot_content.as_bytes())?;
@@ -181,9 +187,15 @@ impl GraphVisualizer {
     }
 
     /// Generate and save the graph as an image (requires Graphviz)
-    pub fn save_image(&self, engine: &Engine, output_nodes: &[NodeId], filename: &str, format: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_image(
+        &self,
+        engine: &Engine,
+        output_nodes: &[NodeId],
+        filename: &str,
+        format: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let dot_content = self.to_dot(engine, output_nodes);
-        
+
         // Write DOT content to a temporary file
         let temp_dot = format!("{}.dot", filename);
         let mut file = File::create(&temp_dot)?;
@@ -199,7 +211,11 @@ impl GraphVisualizer {
             .output()?;
 
         if !output.status.success() {
-            return Err(format!("Graphviz failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+            return Err(format!(
+                "Graphviz failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
         }
 
         // Clean up temporary file
@@ -219,9 +235,9 @@ impl GraphVisualizer {
         for &node_id in &topo_order {
             if relevant_nodes.contains(&node_id) {
                 let node = engine.nodes[&node_id].borrow();
-                
+
                 print!("Node {}: ", node_id);
-                
+
                 if let Some(ref op) = node.op {
                     print!("{} ", self.get_op_name(op));
                 } else {
@@ -250,8 +266,13 @@ impl GraphVisualizer {
 pub trait EngineVisualization {
     fn visualize(&self) -> GraphVisualizer;
     fn plot_graph(&self, output_nodes: &[NodeId]);
-    fn save_graph_image(&self, output_nodes: &[NodeId], filename: &str) -> Result<(), Box<dyn std::error::Error>>;
-    fn save_graph_dot(&self, output_nodes: &[NodeId], filename: &str) -> Result<(), std::io::Error>;
+    fn save_graph_image(
+        &self,
+        output_nodes: &[NodeId],
+        filename: &str,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+    fn save_graph_dot(&self, output_nodes: &[NodeId], filename: &str)
+    -> Result<(), std::io::Error>;
 }
 
 impl EngineVisualization for Engine {
@@ -264,12 +285,20 @@ impl EngineVisualization for Engine {
         visualizer.print_graph(self, output_nodes);
     }
 
-    fn save_graph_image(&self, output_nodes: &[NodeId], filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn save_graph_image(
+        &self,
+        output_nodes: &[NodeId],
+        filename: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let visualizer = GraphVisualizer::new();
         visualizer.save_image(self, output_nodes, filename, "png")
     }
 
-    fn save_graph_dot(&self, output_nodes: &[NodeId], filename: &str) -> Result<(), std::io::Error> {
+    fn save_graph_dot(
+        &self,
+        output_nodes: &[NodeId],
+        filename: &str,
+    ) -> Result<(), std::io::Error> {
         let visualizer = GraphVisualizer::new();
         visualizer.save_dot(self, output_nodes, filename)
     }
@@ -279,5 +308,4 @@ impl EngineVisualization for Engine {
 mod tests {
     use super::*;
     use crate::graph::Engine;
-
 }

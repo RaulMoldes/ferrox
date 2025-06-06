@@ -1,14 +1,13 @@
+use super::op::{
+    AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,
+    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use super::op::{
-    AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp,
-    NegateOp, Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,
-};
 
 use super::node::{Node, NodeId};
 use crate::tensor::Tensor;
-
 
 // Computational graph engine that manages all nodes and their relationships
 #[derive(Debug)]
@@ -93,7 +92,7 @@ impl Engine {
     /// Any other activation functions or operations can be added as needed.
     /// At the end of each operation, the resulting OPNode is added to the graph and its ID is returned.
     /// This is critical so that tensor operations are recorded on the grph strcture.
-    /// 
+    ///
     // Addition operation
     pub fn add(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
         let data_a = self.nodes[&a].borrow().cached_data.clone();
@@ -395,10 +394,8 @@ impl Engine {
         Ok(())
     }
 
-  
-
     // DFS helper for topological sort.
-    // This is the inner function that performs the  recursive DFS traversal, 
+    // This is the inner function that performs the  recursive DFS traversal,
     // Maintains a visited and a topo_order list.
     // This way it is very easy to avoid recursive cycles.
     pub fn topo_sort_dfs(
