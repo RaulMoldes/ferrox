@@ -1,4 +1,5 @@
 use super::op::Operator;
+use crate::backend::Numeric;
 use crate::tensor::Tensor;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -19,9 +20,12 @@ pub type NodeId = usize;
 // Represents a value in the computational graph
 // A value can be either a leaf node (input tensor) or an intermediate result from an operation.
 #[derive(Debug)]
-pub struct Node {
+pub struct Node<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
     pub id: NodeId,
-    pub op: Option<Box<dyn Operator>>, // Use Box here to allow dynamic dispatch for different operators
+    pub op: Option<Box<dyn Operator<T>>>, // Use Box here to allow dynamic dispatch for different operators
     // Apparently, dynamic dispatch is less efficient than static dispatch, but it allows us to use different operators in the same graph.
     // https://softwaremill.com/rust-static-vs-dynamic-dispatch/
     // The thing is that with static dispatch the compiler will perform monomorphization, which means that it will generate a new version of the code for each type used.
@@ -29,13 +33,16 @@ pub struct Node {
     // I an not sure which one is better for our use case, but I will stick with dynamic dispatch for now.
     // Static dispatch would consume more memory, but would also allow the compiler to perform more optimizations (by means of increasig the compile time).
     pub inputs: Vec<NodeId>,
-    pub cached_data: Tensor,
+    pub cached_data: Tensor<T>,
     pub requires_grad: bool,
 }
 
-impl Node {
+impl<T> Node<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
     // Create a new leaf node in the graph
-    pub fn new(data: Tensor, requires_grad: bool) -> Self {
+    pub fn new(data: Tensor<T>, requires_grad: bool) -> Self {
         Self {
             id: next_node_id(),
             op: None,
@@ -46,7 +53,7 @@ impl Node {
     }
 
     // Create a new node from an operation
-    pub fn from_op(op: Box<dyn Operator>, inputs: Vec<NodeId>, data: Tensor) -> Self {
+    pub fn from_op(op: Box<dyn Operator<T>>, inputs: Vec<NodeId>, data: Tensor<T>) -> Self {
         Self {
             id: next_node_id(),
             op: Some(op),

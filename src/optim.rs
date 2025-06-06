@@ -21,14 +21,14 @@ pub trait Optimizer {
 /// Represents a parameter in the neural network
 #[derive(Debug, Clone)]
 pub struct Parameter {
-    pub data: Tensor,         // Using Tensor type for data representation
-    pub grad: Option<Tensor>, // Gradient of the parameter, None if not computed
+    pub data: Tensor<f64>,         // Using Tensor type for data representation
+    pub grad: Option<Tensor<f64>>, // Gradient of the parameter, None if not computed
     //I use tensors to mimic the graph API in thsis crate which also uses Tensors to represent data or gradients.
     pub shape: Vec<usize>,
 }
 
 impl Parameter {
-    pub fn new(data: Tensor, shape: Vec<usize>) -> Self {
+    pub fn new(data: Tensor<f64>, shape: Vec<usize>) -> Self {
         Self {
             data,
             grad: None,
@@ -143,15 +143,15 @@ impl Optimizer for SGD {
                     println!("Updating parameter {} at index {}: ", param_id, i);
                     let mut g = grad[i];
                     println!("Gradient for param {}: {}", param_id, g);
-                
+
                     // Apply weight decay (L2 regularization)
                     if self.weight_decay != 0.0 {
                         g += self.weight_decay * param.data[i];
                     }
-                
+
                     // Update momentum buffer
                     momentum_buffer[i] = self.momentum * momentum_buffer[i] + g;
-                
+
                     // Apply update based on momentum type
                     let update = if self.nesterov {
                         // Nesterov momentum: use gradient + momentum * velocity
@@ -160,7 +160,7 @@ impl Optimizer for SGD {
                         // Standard momentum: use velocity directly
                         momentum_buffer[i]
                     };
-                
+
                     // Update parameter
                     param.data[i] -= self.lr * update;
                 }

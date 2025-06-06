@@ -3,16 +3,27 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
+use crate::backend::{Float, Numeric};
 use crate::tensor::Tensor;
-
 // All operators in the computational graph implement this trait.
-pub trait Operator: std::fmt::Debug {
+pub trait Operator<T>: std::fmt::Debug
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
     // Defines the interface for operators in the computational graph
     // Compute function computes the output in the computational graph.
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String>;
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String>;
 
     // Gradient function computes the gradient of the output with respect to the inputs.
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String>;
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String>;
 
     // Get number of inputs this operator expects
     fn num_inputs(&self) -> usize;
@@ -27,15 +38,22 @@ pub trait Operator: std::fmt::Debug {
 #[derive(Debug, Clone)]
 pub struct AddOp;
 
-impl Operator for AddOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for AddOp
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
             return Err("AddOp requires exactly 2 inputs".to_string());
         }
         inputs[0].add(&inputs[1])
     }
 
-    fn gradient(&self, grad_output: &Tensor, _inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        _inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of addition: both inputs get the same gradient
         Ok(vec![grad_output.clone(), grad_output.clone()])
     }
@@ -48,15 +66,27 @@ impl Operator for AddOp {
 #[derive(Debug, Clone)]
 pub struct MulOp;
 
-impl Operator for MulOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for MulOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
             return Err("MulOp requires exactly 2 inputs".to_string());
         }
         inputs[0].mul(&inputs[1])
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of multiplication: d(a*b)/da = b, d(a*b)/db = a
         let grad_a = grad_output.mul(&inputs[1])?;
         let grad_b = grad_output.mul(&inputs[0])?;
@@ -71,15 +101,27 @@ impl Operator for MulOp {
 #[derive(Debug, Clone)]
 pub struct MatMulOp;
 
-impl Operator for MatMulOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for MatMulOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
             return Err("MatMulOp requires exactly 2 inputs".to_string());
         }
         inputs[0].matmul(&inputs[1])
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // For C = A @ B:
         // dC/dA = grad_output @ B^T
         // dC/dB = A^T @ grad_output
@@ -117,20 +159,36 @@ impl Operator for MatMulOp {
 #[derive(Debug, Clone)]
 pub struct ReLUOp;
 
-impl Operator for ReLUOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for ReLUOp
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("ReLUOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].relu())
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of ReLU: 1 if input > 0, 0 otherwise
+        let zero = <T as Numeric>::zero();
+        let one = <T as Numeric>::one();
+
         let mask = Tensor::new_with_device(
-            inputs[0].data().mapv(|x| if x > 0.0 { 1.0 } else { 0.0 }),
+            inputs[0].data().mapv(|x| if x > zero { one } else { zero }),
             inputs[0].device().clone(),
         );
+
         let grad = grad_output.mul(&mask)?;
         Ok(vec![grad])
     }
@@ -151,15 +209,28 @@ impl SumOp {
     }
 }
 
-impl Operator for SumOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for SumOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + rand_distr::num_traits::FromPrimitive
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("SumOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].sum(self.axis))
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of sum: broadcast gradient back to original shape
         let input_shape = inputs[0].shape();
 
@@ -186,25 +257,50 @@ impl Operator for SumOp {
 // Additional operators following the Python course pub structure
 
 #[derive(Debug, Clone)]
-pub struct AddScalarOp {
-    scalar: f64,
+pub struct AddScalarOp<T>
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    scalar: T,
 }
 
-impl AddScalarOp {
-    pub fn new(scalar: f64) -> Self {
+impl<T> AddScalarOp<T>
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    pub fn new(scalar: T) -> Self {
         Self { scalar }
     }
 }
 
-impl Operator for AddScalarOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for AddScalarOp<T>
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("AddScalarOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].add_scalar(self.scalar))
     }
 
-    fn gradient(&self, grad_output: &Tensor, _inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        _inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         Ok(vec![grad_output.clone()])
     }
 
@@ -213,26 +309,54 @@ impl Operator for AddScalarOp {
     }
 }
 
+
 #[derive(Debug, Clone)]
-pub struct MulScalarOp {
-    scalar: f64,
+pub struct MulScalarOp<T>
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    scalar: T,
 }
 
-impl MulScalarOp {
-    pub fn new(scalar: f64) -> Self {
+impl<T> MulScalarOp<T>
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    pub fn new(scalar: T) -> Self {
         Self { scalar }
     }
 }
 
-impl Operator for MulScalarOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for MulScalarOp<T>
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("MulScalarOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].mul_scalar(self.scalar))
     }
 
-    fn gradient(&self, grad_output: &Tensor, _inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        _inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         Ok(vec![grad_output.mul_scalar(self.scalar)])
     }
 
@@ -244,15 +368,27 @@ impl Operator for MulScalarOp {
 #[derive(Debug, Clone)]
 pub struct DivOp;
 
-impl Operator for DivOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for DivOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
             return Err("DivOp requires exactly 2 inputs".to_string());
         }
         inputs[0].div(&inputs[1])
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // d(a/b)/da = 1/b, d(a/b)/db = -a/b^2
         let one_over_b = Tensor::ones(inputs[1].shape()).div(&inputs[1])?;
         let grad_a = grad_output.mul(&one_over_b)?;
@@ -272,24 +408,36 @@ impl Operator for DivOp {
 #[derive(Debug, Clone)]
 pub struct PowOp;
 
-impl Operator for PowOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for PowOp
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
             return Err("PowOp requires exactly 2 inputs".to_string());
         }
-        inputs[0].pow(&inputs[1])
+        inputs[0].powf(&inputs[1])
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // d(a^b)/da = b * a^(b-1), d(a^b)/db = a^b * ln(a)
         let a = &inputs[0];
         let b = &inputs[1];
-
-        let b_minus_one = b.add_scalar(-1.0);
-        let a_pow_b_minus_one = a.pow(&b_minus_one)?;
+        let one = <T as Numeric>::one();
+        let b_minus_one = b.add_scalar(-one);
+        let a_pow_b_minus_one = a.powf(&b_minus_one)?;
         let grad_a = grad_output.mul(&b.mul(&a_pow_b_minus_one)?)?;
 
-        let a_pow_b = a.pow(b)?;
+        let a_pow_b = a.powf(b)?;
         let ln_a = a.log();
         let grad_b = grad_output.mul(&a_pow_b.mul(&ln_a)?)?;
 
@@ -304,15 +452,27 @@ impl Operator for PowOp {
 #[derive(Debug, Clone)]
 pub struct ExpOp;
 
-impl Operator for ExpOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for ExpOp
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("ExpOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].exp())
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // d(exp(x))/dx = exp(x)
         let exp_x = inputs[0].exp();
         let grad = grad_output.mul(&exp_x)?;
@@ -327,15 +487,27 @@ impl Operator for ExpOp {
 #[derive(Debug, Clone)]
 pub struct LogOp;
 
-impl Operator for LogOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for LogOp
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("LogOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].log())
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // d(ln(x))/dx = 1/x
         let one_over_x = Tensor::ones(inputs[0].shape()).div(&inputs[0])?;
         let grad = grad_output.mul(&one_over_x)?;
@@ -350,15 +522,27 @@ impl Operator for LogOp {
 #[derive(Debug, Clone)]
 pub struct NegateOp;
 
-impl Operator for NegateOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for NegateOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("NegateOp requires exactly 1 input".to_string());
         }
         Ok(inputs[0].negate())
     }
 
-    fn gradient(&self, grad_output: &Tensor, _inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        _inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // d(-x)/dx = -1
         Ok(vec![grad_output.negate()])
     }
@@ -379,15 +563,28 @@ impl TransposeOp {
     }
 }
 
-impl Operator for TransposeOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for TransposeOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        
+        + rand_distr::num_traits::FromPrimitive
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("TransposeOp requires exactly 1 input".to_string());
         }
         inputs[0].transpose(self.axes.as_deref())
     }
 
-    fn gradient(&self, grad_output: &Tensor, _inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        _inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of transpose is transpose with inverse permutation
         match &self.axes {
             Some(axes_order) => {
@@ -427,15 +624,28 @@ impl ReshapeOp {
     }
 }
 
-impl Operator for ReshapeOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for ReshapeOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + rand_distr::num_traits::FromPrimitive
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("ReshapeOp requires exactly 1 input".to_string());
         }
         inputs[0].reshape(&self.new_shape)
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of reshape is reshape back to original shape
         let original_shape = inputs[0].shape();
         let grad = grad_output.reshape(original_shape)?;
@@ -458,15 +668,28 @@ impl BroadcastToOp {
     }
 }
 
-impl Operator for BroadcastToOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for BroadcastToOp
+where
+    T: Numeric
+        + Clone
+        + rand_distr::num_traits::FromPrimitive
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("BroadcastToOp requires exactly 1 input".to_string());
         }
         inputs[0].broadcast_to(&self.target_shape)
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of broadcast: sum over broadcasted dimensions
         let input_shape = inputs[0].shape();
         let output_shape = grad_output.shape();
@@ -512,8 +735,17 @@ impl SummationOp {
     }
 }
 
-impl Operator for SummationOp {
-    fn compute(&self, inputs: &[Tensor]) -> Result<Tensor, String> {
+impl<T> Operator<T> for SummationOp
+where
+    T: Numeric
+        + rand_distr::num_traits::FromPrimitive
+        + Clone
+        + std::fmt::Debug
+        
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("SummationOp requires exactly 1 input".to_string());
         }
@@ -524,7 +756,11 @@ impl Operator for SummationOp {
         }
     }
 
-    fn gradient(&self, grad_output: &Tensor, inputs: &[Tensor]) -> Result<Vec<Tensor>, String> {
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of sum: broadcast gradient back to original shape
         let input_shape = inputs[0].shape();
 

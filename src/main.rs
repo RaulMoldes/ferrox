@@ -342,15 +342,15 @@ mod tests {
     fn test_device_operations() {
         let device = cpu();
 
-        let zeros = device.zeros(&[2, 3]);
+        let zeros = device.zeros::<f64>(&[2, 3]);
         assert_eq!(zeros.shape(), &[2, 3]);
         assert!(zeros.iter().all(|&x| x == 0.0));
 
-        let ones = device.ones(&[2, 3]);
+        let ones = device.ones::<f64>(&[2, 3]);
         assert_eq!(ones.shape(), &[2, 3]);
         assert!(ones.iter().all(|&x| x == 1.0));
 
-        let full = device.full(&[2, 2], 5.0);
+        let full = device.full::<f64>(&[2, 2], 5.0);
         assert_eq!(full.shape(), &[2, 2]);
         assert!(full.iter().all(|&x| x == 5.0));
     }
@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(tensor.len(), 4);
         assert_eq!(tensor.device(), &cpu());
 
-        let zeros = Tensor::zeros_with_device(&[3, 3], cpu());
+        let zeros = Tensor::<f64>::zeros_with_device(&[3, 3], cpu());
         assert_eq!(zeros.shape(), &[3, 3]);
     }
 
@@ -502,7 +502,7 @@ mod tests {
         // Gradient should have same shape as original tensor
         assert_eq!(grad.shape(), &[2, 3]);
         // Since we're summing, gradient should be all ones
-        assert!(grad.data().iter().all(|&x| (x - 1.0).abs() < 1e-6));
+        assert!(grad.data().iter().all(|&x| (x - 1.0f64).abs() < 1e-6));
 
         // Test custom transpose gradient
         let mut graph2 = Engine::new();

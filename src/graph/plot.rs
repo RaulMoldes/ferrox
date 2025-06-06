@@ -6,6 +6,7 @@ use std::process::Command;
 
 use super::engine::Engine;
 use super::node::{Node, NodeId};
+use crate::backend::numeric::Numeric;
 
 /// Graph visualization module for the computational graph engine
 pub struct GraphVisualizer {
@@ -51,7 +52,10 @@ impl GraphVisualizer {
     }
 
     /// Generate DOT format representation of the computational graph
-    pub fn to_dot(&self, engine: &Engine, output_nodes: &[NodeId]) -> String {
+    pub fn to_dot<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> String
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+    {
         let mut dot = String::new();
         writeln!(dot, "digraph ComputationalGraph {{").unwrap();
         writeln!(dot, "    rankdir=TB;").unwrap();
@@ -88,7 +92,10 @@ impl GraphVisualizer {
     }
 
     /// Find all nodes that are relevant to the given output nodes
-    fn find_relevant_nodes(&self, engine: &Engine, output_nodes: &[NodeId]) -> Vec<NodeId> {
+    fn find_relevant_nodes<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> Vec<NodeId>
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    {
         let mut visited = HashSet::new();
         let mut relevant = Vec::new();
 
@@ -100,13 +107,15 @@ impl GraphVisualizer {
     }
 
     /// DFS to collect all nodes in the computation graph
-    fn collect_nodes_dfs(
+    fn collect_nodes_dfs<T>(
         &self,
-        engine: &Engine,
+        engine: &Engine<T>,
         node_id: NodeId,
         visited: &mut HashSet<NodeId>,
         relevant: &mut Vec<NodeId>,
-    ) {
+    ) where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    {
         if visited.contains(&node_id) {
             return;
         }
@@ -121,7 +130,10 @@ impl GraphVisualizer {
     }
 
     /// Create a descriptive label for a node
-    fn create_node_label(&self, engine: &Engine, node_id: NodeId, node: &Node) -> String {
+    fn create_node_label<T>(&self, engine: &Engine<T>, node_id: NodeId, node: &Node<T>) -> String
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+    {
         let mut label = String::new();
 
         // Node ID and type
@@ -140,7 +152,7 @@ impl GraphVisualizer {
         // Gradient information
         if self.config.show_gradients && node.requires_grad {
             write!(label, "\\nRequires Grad: true").unwrap();
-            if let Some(grad) = engine.get_gradient(node_id) {
+            if let Some(_grad) = engine.get_gradient(node_id) {
                 write!(label, "\\nHas Gradient").unwrap();
             }
         }
@@ -157,7 +169,10 @@ impl GraphVisualizer {
     }
 
     /// Get appropriate color for a node based on its properties
-    fn get_node_color(&self, node: &Node) -> &str {
+    fn get_node_color<T>(&self, node: &Node<T>) -> &str 
+    where 
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    {
         if node.op.is_some() {
             &self.config.op_color
         } else if node.requires_grad {
@@ -168,18 +183,23 @@ impl GraphVisualizer {
     }
 
     /// Get a human-readable name for an operation
-    fn get_op_name(&self, op: &Box<dyn super::op::Operator>) -> String {
-        // This is a very simplstic way to get the operation name.
+    fn get_op_name<T>(&self, op: &Box<dyn super::op::Operator<T>>) -> String 
+    where T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand 
+    {
+        // This is a very simplistic way to get the operation name.
         format!("{:?}", op)
     }
 
     /// Save the graph as a DOT file
-    pub fn save_dot(
+    pub fn save_dot<T>(
         &self,
-        engine: &Engine,
+        engine: &Engine<T>,
         output_nodes: &[NodeId],
         filename: &str,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<(), std::io::Error>
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand+ rand_distr::num_traits::FromPrimitive,
+    {
         let dot_content = self.to_dot(engine, output_nodes);
         let mut file = File::create(filename)?;
         file.write_all(dot_content.as_bytes())?;
@@ -187,13 +207,16 @@ impl GraphVisualizer {
     }
 
     /// Generate and save the graph as an image (requires Graphviz)
-    pub fn save_image(
+    pub fn save_image<T>(
         &self,
-        engine: &Engine,
+        engine: &Engine<T>,
         output_nodes: &[NodeId],
         filename: &str,
         format: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+    {
         let dot_content = self.to_dot(engine, output_nodes);
 
         // Write DOT content to a temporary file
@@ -225,7 +248,10 @@ impl GraphVisualizer {
     }
 
     /// Print the graph to console (simple text representation)
-    pub fn print_graph(&self, engine: &Engine, output_nodes: &[NodeId]) {
+    pub fn print_graph<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId])
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+    {
         println!("Computational Graph:");
         println!("===================");
 
@@ -263,7 +289,10 @@ impl GraphVisualizer {
 }
 
 // Extension trait to add visualization methods directly to Engine
-pub trait EngineVisualization {
+pub trait EngineVisualization<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
     fn visualize(&self) -> GraphVisualizer;
     fn plot_graph(&self, output_nodes: &[NodeId]);
     fn save_graph_image(
@@ -271,11 +300,17 @@ pub trait EngineVisualization {
         output_nodes: &[NodeId],
         filename: &str,
     ) -> Result<(), Box<dyn std::error::Error>>;
-    fn save_graph_dot(&self, output_nodes: &[NodeId], filename: &str)
-    -> Result<(), std::io::Error>;
+    fn save_graph_dot(
+        &self,
+        output_nodes: &[NodeId],
+        filename: &str,
+    ) -> Result<(), std::io::Error>;
 }
 
-impl EngineVisualization for Engine {
+impl<T> EngineVisualization<T> for Engine<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+{
     fn visualize(&self) -> GraphVisualizer {
         GraphVisualizer::new()
     }
@@ -302,10 +337,4 @@ impl EngineVisualization for Engine {
         let visualizer = GraphVisualizer::new();
         visualizer.save_dot(self, output_nodes, filename)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::graph::Engine;
 }
