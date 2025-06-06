@@ -9,21 +9,24 @@
 use ndarray::{Array, ArrayD, IxDyn};
 use rand::Rng;
 
+use super::numeric::Numeric;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Device {
+    /// Represents the CPU device.
     CPU,
 }
 
 impl Device {
     // Allocate a new array with the given shape and fill it with zeros.
-    pub fn zeros(&self, shape: &[usize]) -> ArrayD<f64> {
+    pub fn zeros<T: Numeric + rand_distr::num_traits::Zero>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::zeros(IxDyn(shape)),
         }
     }
 
     // Allocate a new array with the given shape and fill it with ones.
-    pub fn ones(&self, shape: &[usize]) -> ArrayD<f64> {
+    pub fn ones<T: Numeric + rand_distr::num_traits::One>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::ones(IxDyn(shape)),
         }
@@ -43,13 +46,27 @@ impl Device {
         }
     }
 
+    // Allocate a new array with the given shape and fill it with random integer values.
+    pub fn randint(&self, shape: &[usize]) -> ArrayD<i64> {
+        match self {
+            Device::CPU => {
+                let mut rng = rand::rng();
+                let total_elements: usize = shape.iter().product();
+                let data: Vec<i64> = (0..total_elements)
+                    .map(|_| rng.random::<i64>() * 2 - 1) // Simple random between -1 and 1
+                    .collect();
+                Array::from_shape_vec(IxDyn(shape), data).unwrap()
+            }
+        }
+    }
+
     // Allocate a new array with the given shape and fill it with zeroes.
     // This is the same as `zeros`, I would to imitate the numpy.empty function,
     // which does not initialize the array.
     // However ndarray does not have an uninitialized array, so we use zeros for compatibility.
     // If you want to use uninitialized arrays, you can use `Array::uninit` but it is unsafe.
     // For now, we will use `zeros` to keep it safe.
-    pub fn empty(&self, shape: &[usize]) -> ArrayD<f64> {
+    pub fn empty<T: Numeric + rand_distr::num_traits::Zero>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::zeros(IxDyn(shape)), // ndarray doesn't have uninitialized arrays
         }
@@ -57,20 +74,10 @@ impl Device {
 
     // Allocate a new array with the given shape and fill it with a specific value.
     // This is similar to numpy.full.
-    pub fn full(&self, shape: &[usize], fill_value: f64) -> ArrayD<f64> {
+    pub fn full<T: Numeric>(&self, shape: &[usize], fill_value: T) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::from_elem(IxDyn(shape), fill_value),
         }
-    }
-
-    // Allocate a new array with the given shape and fill it with a specific value.
-
-    pub fn one_hot(&self, shape: &[usize], index: usize) -> ArrayD<f64> {
-        let mut arr = self.zeros(shape);
-        if index < arr.len() {
-            arr[index] = 1.0;
-        }
-        arr
     }
 }
 

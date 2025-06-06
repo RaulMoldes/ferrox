@@ -57,7 +57,8 @@ pub fn kaiming_normal(fan_in: usize, _fan_out: usize, nonlinearity: &str) -> imp
 }
 
 // Helper functions to initialize complete tensors
-pub fn init_tensor_xavier_uniform(shape: &[usize], gain: f64) -> Tensor {
+pub fn init_tensor_xavier_uniform(shape: &[usize], gain: f64) -> Tensor<f64> 
+{
     let fan_in = if shape.len() >= 2 {
         shape[shape.len() - 2]
     } else {
@@ -79,7 +80,7 @@ pub fn init_tensor_xavier_uniform(shape: &[usize], gain: f64) -> Tensor {
     }
 }
 
-pub fn init_tensor_xavier_normal(shape: &[usize], gain: f64) -> Tensor {
+pub fn init_tensor_xavier_normal(shape: &[usize], gain: f64) -> Tensor<f64> {
     let fan_in = if shape.len() >= 2 {
         shape[shape.len() - 2]
     } else {
@@ -101,7 +102,7 @@ pub fn init_tensor_xavier_normal(shape: &[usize], gain: f64) -> Tensor {
     }
 }
 
-pub fn init_tensor_kaiming_uniform(shape: &[usize], nonlinearity: &str) -> Tensor {
+pub fn init_tensor_kaiming_uniform(shape: &[usize], nonlinearity: &str) -> Tensor<f64> {
     let fan_in = if shape.len() >= 2 {
         shape[shape.len() - 2]
     } else {
@@ -123,7 +124,7 @@ pub fn init_tensor_kaiming_uniform(shape: &[usize], nonlinearity: &str) -> Tenso
     }
 }
 
-pub fn init_tensor_kaiming_normal(shape: &[usize], nonlinearity: &str) -> Tensor {
+pub fn init_tensor_kaiming_normal(shape: &[usize], nonlinearity: &str) -> Tensor<f64> {
     let fan_in = if shape.len() >= 2 {
         shape[shape.len() - 2]
     } else {
