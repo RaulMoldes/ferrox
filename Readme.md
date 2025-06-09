@@ -14,6 +14,7 @@
 - Graph visualization (requires GraphViz installed).
 - Written 100% in safe Rust
 
+Note: as of now, I am extending the project with a custom nn library on top of the engine.
 
 ---
 
