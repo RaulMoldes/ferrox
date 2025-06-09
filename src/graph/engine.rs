@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::numeric::{Numeric, Float};
+use crate::backend::numeric::{Float, Numeric};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships
@@ -78,12 +78,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        // T must implement Clone and Debug traits
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand, // T must implement Clone and Debug traits
 {
     // Create ones tensor
 
@@ -91,7 +86,6 @@ where
         let tensor = Tensor::ones(shape);
         self.create_tensor(tensor, requires_grad)
     }
-
 }
 impl<T> Engine<T>
 where
@@ -102,7 +96,6 @@ where
         + ndarray::ScalarOperand
         + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
 {
-
     // Main gradient computation function. This can actually be called on any node,
     pub fn compute_gradient_of_variables(
         &mut self,
@@ -190,8 +183,6 @@ where
         self.compute_gradient_of_variables(output_node, None)
     }
 }
-
-
 
 impl<T> Engine<T>
 where
@@ -285,8 +276,6 @@ where
         Ok(self.add_node(node))
     }
 
-    
-
     // Matrix multiplication operation
     pub fn matmul(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
         let data_a = self.nodes[&a].borrow().cached_data.clone();
@@ -299,7 +288,6 @@ where
         Ok(self.add_node(node))
     }
 
-   
     // Negation operation
     pub fn negate(&mut self, a: NodeId) -> Result<NodeId, String> {
         let data_a = self.nodes[&a].borrow().cached_data.clone();
@@ -313,10 +301,11 @@ where
 
     // Division by scalar
     pub fn div_scalar(&mut self, a: NodeId, scalar: T) -> Result<NodeId, String> {
-        unimplemented!("Division by scalar is not implemented yet. Please implement it in the future.");
+        unimplemented!(
+            "Division by scalar is not implemented yet. Please implement it in the future."
+        );
     }
 
-    
     // Division operation with two nodes
     pub fn divide(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
         let data_a = self.nodes[&a].borrow().cached_data.clone();
@@ -326,15 +315,17 @@ where
         let node = Node::from_op(op, vec![a, b], result_data);
         Ok(self.add_node(node))
     }
-
-
 }
 
-impl <T> Engine<T>
+impl<T> Engine<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
 {
-    
     // Sum operation
     pub fn sum(&mut self, a: NodeId, axis: Option<usize>) -> Result<NodeId, String> {
         let data_a = self.nodes[&a].borrow().cached_data.clone();
@@ -486,8 +477,8 @@ where
         Ok(self.add_node(node))
     }
 
-     // ReLU activation
-     pub fn relu(&mut self, a: NodeId) -> Result<NodeId, String> {
+    // ReLU activation
+    pub fn relu(&mut self, a: NodeId) -> Result<NodeId, String> {
         let data_a = self.nodes[&a].borrow().cached_data.clone();
 
         let op = Box::new(ReLUOp);
@@ -518,5 +509,4 @@ where
         let node = Node::from_op(op, vec![a], result_data);
         Ok(self.add_node(node))
     }
-
 }

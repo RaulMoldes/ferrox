@@ -290,16 +290,16 @@ where
     }
 
     // Activation functions
-pub fn relu(&self) -> Tensor<T> {
-    // ReLU activation function: max(0, x)
-    Tensor::new_with_device(
-        self.data.mapv(|x| {
-            let zero = T::zero();
-            if x > zero { x } else { zero }
-        }), 
-        self.device.clone()
-    )
-}
+    pub fn relu(&self) -> Tensor<T> {
+        // ReLU activation function: max(0, x)
+        Tensor::new_with_device(
+            self.data.mapv(|x| {
+                let zero = T::zero();
+                if x > zero { x } else { zero }
+            }),
+            self.device.clone(),
+        )
+    }
 
     // Additional activation functions
     pub fn exp(&self) -> Tensor<T> {

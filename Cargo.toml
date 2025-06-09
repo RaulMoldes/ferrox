@@ -7,3 +7,9 @@ edition = "2024"
 ndarray = "0.16.1"
 rand = "0.9.1"
 rand_distr = "0.5.1"
+
+[examples]
+ferrox_example = { path = "examples/ferrox_example.rs" }
+
+[lib]
+doctest = false

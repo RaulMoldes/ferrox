@@ -57,8 +57,7 @@ pub fn kaiming_normal(fan_in: usize, _fan_out: usize, nonlinearity: &str) -> imp
 }
 
 // Helper functions to initialize complete tensors
-pub fn init_tensor_xavier_uniform(shape: &[usize], gain: f64) -> Tensor<f64> 
-{
+pub fn init_tensor_xavier_uniform(shape: &[usize], gain: f64) -> Tensor<f64> {
     let fan_in = if shape.len() >= 2 {
         shape[shape.len() - 2]
     } else {

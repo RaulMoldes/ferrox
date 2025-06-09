@@ -8,11 +8,7 @@ use crate::tensor::Tensor;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     // Defines the interface for operators in the computational graph
     // Compute function computes the output in the computational graph.
@@ -68,12 +64,7 @@ pub struct MulOp;
 
 impl<T> Operator<T> for MulOp
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -103,12 +94,7 @@ pub struct MatMulOp;
 
 impl<T> Operator<T> for MatMulOp
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -161,12 +147,7 @@ pub struct ReLUOp;
 
 impl<T> Operator<T> for ReLUOp
 where
-    T: Float
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -215,7 +196,6 @@ where
         + Clone
         + std::fmt::Debug
         + rand_distr::num_traits::FromPrimitive
-        
         + ndarray::LinalgScalar
         + ndarray::ScalarOperand,
 {
@@ -259,22 +239,14 @@ where
 #[derive(Debug, Clone)]
 pub struct AddScalarOp<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     scalar: T,
 }
 
 impl<T> AddScalarOp<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -283,11 +255,7 @@ where
 
 impl<T> Operator<T> for AddScalarOp<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -309,27 +277,17 @@ where
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct MulScalarOp<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     scalar: T,
 }
 
 impl<T> MulScalarOp<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -338,12 +296,7 @@ where
 
 impl<T> Operator<T> for MulScalarOp<T>
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -370,12 +323,7 @@ pub struct DivOp;
 
 impl<T> Operator<T> for DivOp
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -410,12 +358,7 @@ pub struct PowOp;
 
 impl<T> Operator<T> for PowOp
 where
-    T: Float
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -454,12 +397,7 @@ pub struct ExpOp;
 
 impl<T> Operator<T> for ExpOp
 where
-    T: Float
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -489,12 +427,7 @@ pub struct LogOp;
 
 impl<T> Operator<T> for LogOp
 where
-    T: Float
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -524,12 +457,7 @@ pub struct NegateOp;
 
 impl<T> Operator<T> for NegateOp
 where
-    T: Numeric
-        + Clone
-        + std::fmt::Debug
-        
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -568,7 +496,6 @@ where
     T: Numeric
         + Clone
         + std::fmt::Debug
-        
         + rand_distr::num_traits::FromPrimitive
         + ndarray::LinalgScalar
         + ndarray::ScalarOperand,
@@ -630,7 +557,6 @@ where
         + Clone
         + std::fmt::Debug
         + rand_distr::num_traits::FromPrimitive
-        
         + ndarray::LinalgScalar
         + ndarray::ScalarOperand,
 {
@@ -674,7 +600,6 @@ where
         + Clone
         + rand_distr::num_traits::FromPrimitive
         + std::fmt::Debug
-        
         + ndarray::LinalgScalar
         + ndarray::ScalarOperand,
 {
@@ -741,7 +666,6 @@ where
         + rand_distr::num_traits::FromPrimitive
         + Clone
         + std::fmt::Debug
-        
         + ndarray::LinalgScalar
         + ndarray::ScalarOperand,
 {

@@ -54,7 +54,12 @@ impl GraphVisualizer {
     /// Generate DOT format representation of the computational graph
     pub fn to_dot<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> String
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+        T: Numeric
+            + Clone
+            + std::fmt::Debug
+            + ndarray::LinalgScalar
+            + ndarray::ScalarOperand
+            + rand_distr::num_traits::FromPrimitive,
     {
         let mut dot = String::new();
         writeln!(dot, "digraph ComputationalGraph {{").unwrap();
@@ -132,7 +137,12 @@ impl GraphVisualizer {
     /// Create a descriptive label for a node
     fn create_node_label<T>(&self, engine: &Engine<T>, node_id: NodeId, node: &Node<T>) -> String
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+        T: Numeric
+            + Clone
+            + std::fmt::Debug
+            + ndarray::LinalgScalar
+            + ndarray::ScalarOperand
+            + rand_distr::num_traits::FromPrimitive,
     {
         let mut label = String::new();
 
@@ -169,8 +179,8 @@ impl GraphVisualizer {
     }
 
     /// Get appropriate color for a node based on its properties
-    fn get_node_color<T>(&self, node: &Node<T>) -> &str 
-    where 
+    fn get_node_color<T>(&self, node: &Node<T>) -> &str
+    where
         T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
     {
         if node.op.is_some() {
@@ -183,8 +193,9 @@ impl GraphVisualizer {
     }
 
     /// Get a human-readable name for an operation
-    fn get_op_name<T>(&self, op: &Box<dyn super::op::Operator<T>>) -> String 
-    where T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand 
+    fn get_op_name<T>(&self, op: &Box<dyn super::op::Operator<T>>) -> String
+    where
+        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
     {
         // This is a very simplistic way to get the operation name.
         format!("{:?}", op)
@@ -198,7 +209,12 @@ impl GraphVisualizer {
         filename: &str,
     ) -> Result<(), std::io::Error>
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand+ rand_distr::num_traits::FromPrimitive,
+        T: Numeric
+            + Clone
+            + std::fmt::Debug
+            + ndarray::LinalgScalar
+            + ndarray::ScalarOperand
+            + rand_distr::num_traits::FromPrimitive,
     {
         let dot_content = self.to_dot(engine, output_nodes);
         let mut file = File::create(filename)?;
@@ -215,7 +231,12 @@ impl GraphVisualizer {
         format: &str,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+        T: Numeric
+            + Clone
+            + std::fmt::Debug
+            + ndarray::LinalgScalar
+            + ndarray::ScalarOperand
+            + rand_distr::num_traits::FromPrimitive,
     {
         let dot_content = self.to_dot(engine, output_nodes);
 
@@ -250,7 +271,12 @@ impl GraphVisualizer {
     /// Print the graph to console (simple text representation)
     pub fn print_graph<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId])
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+        T: Numeric
+            + Clone
+            + std::fmt::Debug
+            + ndarray::LinalgScalar
+            + ndarray::ScalarOperand
+            + rand_distr::num_traits::FromPrimitive,
     {
         println!("Computational Graph:");
         println!("===================");
@@ -300,16 +326,18 @@ where
         output_nodes: &[NodeId],
         filename: &str,
     ) -> Result<(), Box<dyn std::error::Error>>;
-    fn save_graph_dot(
-        &self,
-        output_nodes: &[NodeId],
-        filename: &str,
-    ) -> Result<(), std::io::Error>;
+    fn save_graph_dot(&self, output_nodes: &[NodeId], filename: &str)
+    -> Result<(), std::io::Error>;
 }
 
 impl<T> EngineVisualization<T> for Engine<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive,
 {
     fn visualize(&self) -> GraphVisualizer {
         GraphVisualizer::new()
