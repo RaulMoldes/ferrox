@@ -6,6 +6,8 @@ pub mod layers;
 pub mod module;
 pub mod parameter;
 pub mod activations;
+pub mod loss;
+mod tests;
 // Re-export the main types and traits for convenience
 pub use layers::{Flatten, Identity, Linear, Sequential};
 pub use module::{Module, ModuleList};

@@ -673,4 +673,7 @@ mod tests {
 
         assert_eq!(weights.shape(), &[784, 256]);
     }
+
+    // TESTS FOR THE NEURAL NETWORK MODULE (ADDED ON 2025-06-10)
+    
 }

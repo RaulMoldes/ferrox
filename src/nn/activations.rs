@@ -336,8 +336,8 @@ where
         // Sum along the target dimension
         let sum_exp = graph.summation(exp_input, Some(vec![target_dim]))?;
         
-        // Broadcast to original shape
-        let broadcasted_sum = graph.broadcast_to(sum_exp, input_shape)?;
+        //Reshape back to original shape
+        let broadcasted_sum = graph.reshape(sum_exp, input_shape)?;
         
         // Divide to get probabilities
         graph.div(exp_input, broadcasted_sum)
