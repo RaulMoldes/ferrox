@@ -301,9 +301,7 @@ where
 
     // Division by scalar
     pub fn div_scalar(&mut self, a: NodeId, scalar: T) -> Result<NodeId, String> {
-        unimplemented!(
-            "Division by scalar is not implemented yet. Please implement it in the future."
-        );
+        unimplemented!("Division by scalar is not implemented yet. Will be added in the future.");
     }
 
     // Division operation with two nodes

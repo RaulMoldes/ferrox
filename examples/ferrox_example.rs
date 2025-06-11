@@ -1,17 +1,7 @@
-use ferrox::*;
+use ferrox::graph::{Engine, EngineVisualization, GraphVisualizer, VisualizationConfig};
 
-use ferrox::backend::cpu;
-use ferrox::graph::{
-    Engine, EngineVisualization, GraphVisualizer, VisualizationConfig, next_node_id,
-};
-use ferrox::initializers::{
-    init_tensor_kaiming_normal, init_tensor_kaiming_uniform, init_tensor_xavier_normal,
-    init_tensor_xavier_uniform, kaiming_normal, kaiming_uniform, xavier_normal, xavier_uniform,
-};
 use ferrox::tensor::Tensor;
 
-use ferrox::nn::*;
-use ferrox::optim;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example usage of the automatic differentiation engine
     let mut graph = Engine::new();

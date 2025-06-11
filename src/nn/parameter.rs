@@ -11,11 +11,10 @@ use crate::tensor::Tensor;
 /// # Examples
 ///
 /// ```rust
-/// use ferrox::nn::Parameter;
-/// use ferrox::tensor::Tensor;
+/// use ferrox::Parameter;
+/// use ferrox::Tensor;
 ///
-/// // Create a parameter for a weight matrix
-/// let weight_data = Tensor::randn(&[784, 128]);
+/// let weight_data = Tensor::<f64>::randn(&[784, 128]);
 /// let weight_param = Parameter::new(weight_data);
 /// ```
 #[derive(Debug, Clone)]
@@ -44,7 +43,9 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// let weight_data = Tensor::randn(&[10, 5]);
+    /// use ferrox::Parameter;
+    /// use ferrox::Tensor;
+    /// let weight_data = Tensor::<f64>::randn(&[10, 5]);
     /// let param = Parameter::new(weight_data);
     /// ```
     pub fn new(data: Tensor<T>) -> Self {
@@ -94,11 +95,12 @@ where
     ///
     /// ```rust
     /// use ferrox::nn::init::xavier_uniform;
+    /// use ferrox::Parameter;
     ///
     /// let fan_in = 784;
     /// let fan_out = 128;
     /// let init_fn = xavier_uniform(fan_in, fan_out, 1.0);
-    /// let param = Parameter::from_init(&[fan_in, fan_out], init_fn);
+    /// let param = Parameter::<f64>::from_init(&[fan_in, fan_out], init_fn);
     /// ```
     pub fn from_init<F>(shape: &[usize], mut init_fn: F) -> Self
     where

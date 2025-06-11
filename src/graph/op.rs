@@ -539,14 +539,14 @@ where
 #[derive(Debug, Clone)]
 pub struct ReshapeOp {
     new_shape: Vec<usize>,
-    original_shape: Vec<usize>,
+    //  original_shape: Vec<usize>, For now we will not store the original shape, but it can be added later if needed.
 }
 
 impl ReshapeOp {
     pub fn new(new_shape: Vec<usize>) -> Self {
         Self {
             new_shape,
-            original_shape: Vec::new(), // Will be set during compute
+            //   original_shape: Vec::new(), // Will be set during compute
         }
     }
 }
@@ -573,6 +573,8 @@ where
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of reshape is reshape back to original shape
+        // I would like to store the original shape in the operator, but this would require to
+        // grab a mutable reference to the Operator, which is not possible in the current design, and also probably not worthy.
         let original_shape = inputs[0].shape();
         let grad = grad_output.reshape(original_shape)?;
         Ok(vec![grad])

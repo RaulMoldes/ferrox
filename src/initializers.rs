@@ -1,5 +1,5 @@
-use crate::tensor::{self, Tensor};
-use rand::{Rng, rng};
+use crate::tensor::Tensor;
+use rand::rng;
 use rand_distr::{Distribution, Normal, Uniform};
 
 /// Xavier/Glorot uniform initialization
@@ -143,4 +143,74 @@ pub fn init_tensor_kaiming_normal(shape: &[usize], nonlinearity: &str) -> Tensor
     } else {
         panic!("Failed to create tensor with shape {:?}", shape);
     }
+}
+
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_xavier_uniform() {
+        let shape = vec![3, 3];
+        let tensor = init_tensor_xavier_uniform(&shape, 1.0);
+        assert_eq!(tensor.shape(), &[3, 3]);
+    }
+
+    #[test]
+    fn test_xavier_normal() {
+        let shape = vec![3, 3];
+        let tensor = init_tensor_xavier_normal(&shape, 1.0);
+        assert_eq!(tensor.shape(), &[3, 3]);
+    }
+
+    #[test]
+    fn test_kaiming_uniform() {
+        let shape = vec![3, 3];
+        let tensor = init_tensor_kaiming_uniform(&shape, "relu");
+        assert_eq!(tensor.shape(), &[3, 3]);
+    }
+
+    #[test]
+    fn test_kaiming_normal() {
+        let shape = vec![3, 3];
+        let tensor = init_tensor_kaiming_normal(&shape, "relu");
+        assert_eq!(tensor.shape(), &[3, 3]);
+    }
+    #[test]
+    fn test_xavier_uniform_bounds() {
+        let fan_in = 100;
+        let fan_out = 50;
+        let gain = 1.0;
+        let expected_bound = gain * (6.0 / (fan_in + fan_out) as f64).sqrt();
+
+        let init = xavier_uniform(fan_in, fan_out, gain);
+        for _ in 0..1000 {
+            let val = init();
+            assert!(val >= -expected_bound && val <= expected_bound);
+        }
+    }
+
+    #[test]
+    fn test_kaiming_uniform_bounds() {
+        let fan_in = 784;
+        let fan_out = 256;
+        let expected_bound = (6.0 / fan_in as f64).sqrt();
+
+        let init = kaiming_uniform(fan_in, fan_out, "relu");
+        for _ in 0..1000 {
+            let val = init();
+            assert!(val >= -expected_bound && val <= expected_bound);
+        }
+    }
+
+    #[test]
+    fn test_tensor_initialization() {
+        let shape = [784, 256];
+        let weights = init_tensor_xavier_uniform(&shape, 1.0);
+
+        assert_eq!(weights.shape(), &[784, 256]);
+    }
+
+    // TESTS FOR THE NEURAL NETWORK MODULE (ADDED ON 2025-06-10)
 }

@@ -23,6 +23,7 @@ use std::collections::HashMap;
 /// ```rust
 /// use ferrox::nn::{Module, Parameter};
 /// use ferrox::graph::Engine;
+/// use ferrox::NodeId; 
 ///
 /// struct MyLayer {
 ///     weight: Parameter<f64>,
@@ -148,9 +149,9 @@ where
 /// use ferrox::nn::{ModuleList, Linear};
 ///
 /// let mut layers = ModuleList::new();
-/// layers.push(Box::new(Linear::new(784, 256, true)));
-/// layers.push(Box::new(Linear::new(256, 128, true)));
-/// layers.push(Box::new(Linear::new(128, 10, true)));
+/// layers.push(Box::new(Linear::<f64>::new(784, 256, true)));
+/// layers.push(Box::new(Linear::<f64>::new(256, 128, true)));
+/// layers.push(Box::new(Linear::<f64>::new(128, 10, true)));
 /// ```
 pub struct ModuleList<T>
 where
@@ -269,66 +270,4 @@ where
             module.set_training(training);
         }
     }
-}
-
-/// Macro for creating modules with automatic parameter collection.
-///
-/// This macro simplifies the creation of custom modules by automatically
-/// implementing parameter collection for fields that are Parameters.
-///
-/// # Examples
-///
-/// ```rust
-/// module! {
-///     struct LinearLayer {
-///         weight: Parameter<f64>,
-///         bias: Parameter<f64>,
-///         training: bool,
-///     }
-/// }
-/// ```
-#[macro_export]
-macro_rules! module {
-    (
-        struct $name:ident {
-            $(
-                $field:ident: $field_type:ty
-            ),* $(,)?
-        }
-    ) => {
-        struct $name {
-            $(
-                $field: $field_type,
-            )*
-        }
-
-        impl<T> Module<T> for $name
-        where
-            T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
-        {
-            fn parameters(&self) -> Vec<&Parameter<T>> {
-                let mut params = Vec::new();
-                $(
-                    // This is a simplified version - in practice you'd need
-                    // more sophisticated type checking to determine if a field
-                    // is a Parameter
-                )*
-                params
-            }
-
-            fn training(&self) -> bool {
-                // Assume there's a training field
-                true
-            }
-
-            fn set_training(&mut self, training: bool) {
-                // Set training field if it exists
-            }
-
-            fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
-                // This would need to be implemented by the user
-                unimplemented!("Forward method must be implemented manually")
-            }
-        }
-    };
 }

@@ -1,7 +1,7 @@
 use crate::backend::numeric::Numeric;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
-use crate::initializers::{xavier_normal, xavier_uniform};
+use crate::initializers::xavier_uniform;
 use crate::nn::{Module, Parameter};
 use crate::tensor::Tensor;
 
@@ -67,10 +67,10 @@ where
 /// use ferrox::nn::Linear;
 ///
 /// // Create a linear layer: 784 inputs -> 256 outputs with bias
-/// let linear = Linear::new(784, 256, true);
+/// let linear = Linear::<f64>::new(784, 256, true);
 ///
 /// // Create without bias
-/// let linear_no_bias = Linear::new(784, 256, false);
+/// let linear_no_bias = Linear::<f64>::new(784, 256, false);
 /// ```
 #[derive(Debug)]
 pub struct Linear<T>
@@ -175,10 +175,14 @@ where
 
 impl<T> Module<T> for Linear<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
-        
         // Create weight and bias nodes in the graph
         let weight_node = Parameter::create_in_graph(graph, self.weight.data.clone());
 
@@ -186,12 +190,11 @@ where
         // Transpose the weight node before matmul: (out_features, in_features) -> (in_features, out_features)
         let weight_t = graph.transpose(weight_node, None)?;
         let output = graph.matmul(input, weight_t)?;
-        
+
         // Add bias if present
         if let Some(ref bias_param) = self.bias {
-            
             let output_shape = graph.get_shape(output);
-            
+
             let bias_node = Parameter::create_in_graph(graph, bias_param.data.clone());
             // In order to add bias, we need to broadcast it to the output shape
             let broadcasted_bias_node = graph.broadcast_to(bias_node, output_shape)?;
@@ -301,9 +304,9 @@ where
 /// use ferrox::nn::{Sequential, Linear, ReLU};
 ///
 /// let mut model = Sequential::new();
-/// model.add(Box::new(Linear::new(784, 256, true)));
+/// model.add(Box::new(Linear::<f64>::new(784, 256, true)));
 /// model.add(Box::new(ReLU::new()));
-/// model.add(Box::new(Linear::new(256, 10, true)));
+/// model.add(Box::new(Linear::<f64>::new(256, 10, true)));
 /// ```
 
 pub struct Sequential<T>
@@ -432,33 +435,4 @@ where
             module.set_training(training);
         }
     }
-}
-
-/// Macro for easily creating Sequential models.
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::sequential;
-/// use ferrox::nn::{Linear, ReLU};
-///
-/// let model = sequential![
-///     Linear::new(784, 256, true),
-///     ReLU::new(),
-///     Linear::new(256, 128, true),
-///     ReLU::new(),
-///     Linear::new(128, 10, true)
-/// ];
-/// ```
-#[macro_export]
-macro_rules! sequential {
-    ($($module:expr),* $(,)?) => {
-        {
-            let mut seq = $crate::nn::Sequential::new();
-            $(
-                seq.add(Box::new($module));
-            )*
-            seq
-        }
-    };
 }

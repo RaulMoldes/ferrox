@@ -125,13 +125,12 @@ impl Optimizer for SGD {
         // using the stored gradients and momentum buffers.
         for (&param_id, param_ptr) in &self.params {
             let param = unsafe { &mut **param_ptr };
-            print!("Updating parameter {}: ", param_id);
+
             if let Some(ref grad) = param.grad {
                 // Initialize momentum buffer if not present
                 if !self.u.contains_key(&param_id) {
                     self.u.insert(param_id, vec![0.0; param.size()]);
                 }
-                println!("Momentum buffer initialized for param {}", param_id);
 
                 // Get the momentum buffer for this parameter
                 let momentum_buffer = self.u.get_mut(&param_id).unwrap();
@@ -140,9 +139,7 @@ impl Optimizer for SGD {
                     param_id, momentum_buffer
                 );
                 for i in 0..param.size() {
-                    println!("Updating parameter {} at index {}: ", param_id, i);
                     let mut g = grad[i];
-                    println!("Gradient for param {}: {}", param_id, g);
 
                     // Apply weight decay (L2 regularization)
                     if self.weight_decay != 0.0 {
@@ -160,8 +157,6 @@ impl Optimizer for SGD {
                         // Standard momentum: use velocity directly
                         momentum_buffer[i]
                     };
-
-                    // Update parameter
                     param.data[i] -= self.lr * update;
                 }
             }
@@ -308,7 +303,7 @@ mod tests {
 
         // Perform one optimization step
         sgd.step();
-        /*
+
         // Check that parameters were updated correctly: param = param - lr * grad
         assert!((param.data[(0, 0)] - (original_values[0] - 0.1 * 0.1)).abs() < 1e-10);
         assert!((param.data[(0, 1)] - (original_values[1] - 0.1 * 0.2)).abs() < 1e-10);
@@ -323,16 +318,29 @@ mod tests {
         let grad_data2 = Array::from_shape_vec(IxDyn(&[2, 2]), vec![0.05, 0.1, 0.15, 0.2]).unwrap();
         param.grad = Some(Tensor::new(grad_data2));
 
-        let before_momentum = param.data[(0, 0)];
+        // Will behave like no momentum on first step as the weights are initialized to zero.
         sgd_momentum.step();
+
+        // Set gradients again for second step. We need to call step twice to see momentum effect
+        // This simulates a second optimization step with new gradients
+        let grad_data3 = Array::from_shape_vec(IxDyn(&[2, 2]), vec![0.05, 0.1, 0.15, 0.2]).unwrap();
+        param.grad = Some(Tensor::new(grad_data3));
+
+        let before_momentum = param.data[(0, 0)];
+        sgd_momentum.step(); // Second step - now momentum effect is visible
 
         // With momentum, the update should be different than just -lr * grad
         let expected_no_momentum = before_momentum - 0.1 * 0.05;
+        println!(
+            "Expected no momentum: {}, Actual: {}",
+            expected_no_momentum,
+            param.data[(0, 0)]
+        );
         assert!((param.data[(0, 0)] - expected_no_momentum).abs() > 1e-10);
 
         // Test reset_grad
         sgd.reset_grad();
-        assert!(param.grad.is_none());*/
+        assert!(param.grad.is_none());
     }
 
     #[test]

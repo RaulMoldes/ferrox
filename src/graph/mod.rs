@@ -2,6 +2,7 @@ pub mod engine;
 pub mod node;
 pub mod op;
 pub mod plot;
+mod tests;
 
 pub use op::{
     AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,

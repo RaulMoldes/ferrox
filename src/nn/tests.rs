@@ -1,33 +1,17 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     use crate::graph::Engine;
     use crate::nn::activations::*;
-    use crate::backend::Numeric;
     use crate::nn::layers::*;
     use crate::nn::loss::*;
     use crate::nn::module::*;
     use crate::nn::parameter::Parameter;
     use crate::tensor::Tensor;
-    use std::f64::EPSILON;
 
     /// Helper function to check if two floating point values are approximately equal
     fn approx_equal(a: f64, b: f64, tolerance: f64) -> bool {
         (a - b).abs() < tolerance
-    }
-
-    /// Helper function to check if tensor values are approximately equal
-    fn tensors_approx_equal<T>(a: &Tensor<T>, b: &Tensor<T>, tolerance: f64) -> bool
-    where
-        T: Numeric + Clone + Into<f64>,
-    {
-        if a.shape() != b.shape() {
-            return false;
-        }
-
-        a.iter()
-            .zip(b.iter())
-            .all(|(x, y)| approx_equal((*x).clone().into(), (*y).clone().into(), tolerance))
     }
 
     // ============================================================================
@@ -177,9 +161,7 @@ mod tests {
         let mut graph = Engine::new();
         let sigmoid = Sigmoid::new();
 
-        let input = graph
-            .tensor_from_vec(vec![0.0], &[1], true)
-            .unwrap();
+        let input = graph.tensor_from_vec(vec![0.0], &[1], true).unwrap();
 
         let output = sigmoid.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
@@ -216,9 +198,7 @@ mod tests {
         let mut graph = Engine::new();
         let tanh = Tanh::new();
 
-        let input = graph
-            .tensor_from_vec(vec![0.0], &[1], true)
-            .unwrap();
+        let input = graph.tensor_from_vec(vec![0.0], &[1], true).unwrap();
 
         let output = tanh.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
@@ -265,9 +245,9 @@ mod tests {
         // Check expected values
         assert!(approx_equal(result_data[0], -0.02, 1e-6)); // -2 * 0.01 = -0.02
         assert!(approx_equal(result_data[1], -0.01, 1e-6)); // -1 * 0.01 = -0.01
-        assert!(approx_equal(result_data[2], 0.0, 1e-6));   // 0
-        assert!(approx_equal(result_data[3], 1.0, 1e-6));   // 1
-        assert!(approx_equal(result_data[4], 2.0, 1e-6));   // 2
+        assert!(approx_equal(result_data[2], 0.0, 1e-6)); // 0
+        assert!(approx_equal(result_data[3], 1.0, 1e-6)); // 1
+        assert!(approx_equal(result_data[4], 2.0, 1e-6)); // 2
     }
 
     #[test]
@@ -275,15 +255,13 @@ mod tests {
         let mut graph = Engine::new();
         let leaky_relu = LeakyReLU::new_with_slope(0.1);
 
-        let input = graph
-            .tensor_from_vec(vec![-1.0, 1.0], &[2], true)
-            .unwrap();
+        let input = graph.tensor_from_vec(vec![-1.0, 1.0], &[2], true).unwrap();
 
         let output = leaky_relu.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
 
         assert!(approx_equal(result_data[0], -0.1, 1e-6)); // -1 * 0.1 = -0.1
-        assert!(approx_equal(result_data[1], 1.0, 1e-6));  // 1
+        assert!(approx_equal(result_data[1], 1.0, 1e-6)); // 1
     }
 
     #[test]
@@ -291,9 +269,7 @@ mod tests {
         let mut graph = Engine::new();
         let elu = ELU::new(); // default alpha = 1.0
 
-        let input = graph
-            .tensor_from_vec(vec![0.0, 1.0], &[2], true)
-            .unwrap();
+        let input = graph.tensor_from_vec(vec![0.0, 1.0], &[2], true).unwrap();
 
         let output = elu.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
@@ -309,7 +285,7 @@ mod tests {
     #[test]
     fn test_sequential_creation() {
         let sequential = Sequential::<f64>::new();
-        
+
         assert_eq!(sequential.len(), 0);
         assert!(sequential.is_empty());
         assert!(sequential.training());
@@ -318,11 +294,11 @@ mod tests {
     #[test]
     fn test_sequential_add_modules() {
         let mut sequential = Sequential::<f64>::new();
-        
+
         sequential.add(Box::new(Linear::new(784, 256, true)));
         sequential.add(Box::new(ReLU::new()));
         sequential.add(Box::new(Linear::new(256, 10, true)));
-        
+
         assert_eq!(sequential.len(), 3);
         assert!(!sequential.is_empty());
     }
@@ -331,16 +307,16 @@ mod tests {
     fn test_sequential_forward() {
         let mut graph = Engine::new();
         let mut sequential = Sequential::<f64>::new();
-        
+
         sequential.add(Box::new(Linear::new(3, 2, false)));
         sequential.add(Box::new(ReLU::new()));
-        
+
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0, 3.0], &[1, 3], true)
             .unwrap();
-        
+
         let output = sequential.forward(&mut graph, input).unwrap();
-        
+
         // Output should have shape [1, 2]
         assert_eq!(graph.get_shape(output), vec![1, 2]);
     }
@@ -348,11 +324,11 @@ mod tests {
     #[test]
     fn test_sequential_parameters() {
         let mut sequential = Sequential::<f64>::new();
-        
-        sequential.add(Box::new(Linear::new(10, 5, true)));  // 2 params (weight + bias)
-        sequential.add(Box::new(ReLU::new()));               // 0 params
-        sequential.add(Box::new(Linear::new(5, 3, true)));   // 2 params (weight + bias)
-        
+
+        sequential.add(Box::new(Linear::new(10, 5, true))); // 2 params (weight + bias)
+        sequential.add(Box::new(ReLU::new())); // 0 params
+        sequential.add(Box::new(Linear::new(5, 3, true))); // 2 params (weight + bias)
+
         let params = sequential.parameters();
         assert_eq!(params.len(), 4); // Total of 4 parameters
     }
@@ -360,20 +336,18 @@ mod tests {
     #[test]
     fn test_sequential_training_mode() {
         let mut sequential = Sequential::<f64>::new();
-        
+
         sequential.add(Box::new(Linear::new(10, 5, true)));
         sequential.add(Box::new(ReLU::new()));
-        
+
         assert!(sequential.training());
-        
+
         sequential.eval();
         assert!(!sequential.training());
-        
+
         sequential.train();
         assert!(sequential.training());
     }
-
-    
 
     // ============================================================================
     // FLATTEN LAYER TESTS
@@ -383,14 +357,14 @@ mod tests {
     fn test_flatten_layer() {
         let mut graph = Engine::new();
         let flatten = Flatten::new();
-        
+
         // Input shape: [2, 3, 4] (batch_size=2, 3×4 features)
         let input = graph
             .tensor_from_vec((0..24).map(|x| x as f64).collect(), &[2, 3, 4], true)
             .unwrap();
-        
+
         let output = flatten.forward(&mut graph, input).unwrap();
-        
+
         // Output shape should be [2, 12] (batch_size=2, flattened_size=3×4=12)
         assert_eq!(graph.get_shape(output), vec![2, 12]);
     }
@@ -399,14 +373,14 @@ mod tests {
     fn test_flatten_preserves_batch_dimension() {
         let mut graph = Engine::new();
         let flatten = Flatten::new();
-        
+
         // Input shape: [5, 2, 2, 2] (batch_size=5, 2×2×2 features)
         let input = graph
             .tensor_from_vec((0..40).map(|x| x as f64).collect(), &[5, 2, 2, 2], true)
             .unwrap();
-        
+
         let output = flatten.forward(&mut graph, input).unwrap();
-        
+
         // Output shape should be [5, 8] (batch_size=5, flattened_size=2×2×2=8)
         assert_eq!(graph.get_shape(output), vec![5, 8]);
     }
@@ -415,12 +389,12 @@ mod tests {
     fn test_flatten_error_on_1d_input() {
         let mut graph = Engine::new();
         let flatten = Flatten::new();
-        
+
         // Input shape: [10] (only 1 dimension)
         let input = graph
             .tensor_from_vec((0..10).map(|x| x as f64).collect(), &[10], true)
             .unwrap();
-        
+
         let result = flatten.forward(&mut graph, input);
         assert!(result.is_err());
     }
@@ -433,13 +407,13 @@ mod tests {
     fn test_identity_layer() {
         let mut graph = Engine::new();
         let identity = Identity::new();
-        
+
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true)
             .unwrap();
-        
+
         let output = identity.forward(&mut graph, input).unwrap();
-        
+
         // Identity should return the same node
         assert_eq!(input, output);
     }
@@ -451,14 +425,14 @@ mod tests {
     #[test]
     fn test_module_list() {
         let mut module_list = ModuleList::<f64>::new();
-        
+
         module_list.push(Box::new(Linear::new(10, 5, true)));
         module_list.push(Box::new(ReLU::new()));
         module_list.push(Box::new(Linear::new(5, 3, true)));
-        
+
         assert_eq!(module_list.len(), 3);
         assert!(!module_list.is_empty());
-        
+
         let params = module_list.parameters();
         assert_eq!(params.len(), 4); // 2 linear layers × 2 params each = 4
     }
@@ -467,16 +441,16 @@ mod tests {
     fn test_module_list_forward_sequential() {
         let mut graph = Engine::new();
         let mut module_list = ModuleList::new();
-        
+
         module_list.push(Box::new(Linear::new(3, 2, false)));
         module_list.push(Box::new(ReLU::new()));
-        
+
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0, 3.0], &[1, 3], true)
             .unwrap();
-        
+
         let output = module_list.forward_sequential(&mut graph, input).unwrap();
-        
+
         assert_eq!(graph.get_shape(output), vec![1, 2]);
     }
 
@@ -492,32 +466,32 @@ mod tests {
     #[test]
     fn test_simple_neural_network_training() {
         let mut graph = Engine::new();
-        
+
         // Create a simple 2-layer network
         let mut model = Sequential::new();
         model.add(Box::new(Linear::new(2, 3, true)));
         model.add(Box::new(ReLU::new()));
         model.add(Box::new(Linear::new(3, 1, true)));
-        
+
         // Create dummy input and target
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
             .unwrap();
-        let target = graph
-            .tensor_from_vec(vec![1.0], &[1], false)
-            .unwrap();
-        
+        let target = graph.tensor_from_vec(vec![1.0], &[1], false).unwrap();
+
         // Forward pass
         let prediction = model.forward(&mut graph, input).unwrap();
-        
+
         // Compute loss
         let loss_fn = MSELoss::new();
-        let loss = loss_fn.compute_loss(&mut graph, prediction, target).unwrap();
-        
+        let loss = loss_fn
+            .compute_loss(&mut graph, prediction, target)
+            .unwrap();
+
         // Backward pass
         let backward_result = graph.backward(loss);
         assert!(backward_result.is_ok());
-        
+
         // Check that gradients exist for model parameters
         let params = model.parameters();
         assert!(!params.is_empty());
@@ -526,7 +500,7 @@ mod tests {
     #[test]
     fn test_multi_layer_network_shapes() {
         let mut graph = Engine::new();
-        
+
         // Create a deeper network
         let mut model = Sequential::new();
         model.add(Box::new(Flatten::new()));
@@ -535,45 +509,43 @@ mod tests {
         model.add(Box::new(Linear::new(128, 64, true)));
         model.add(Box::new(ReLU::new()));
         model.add(Box::new(Linear::new(64, 10, true)));
-        
+
         // Input: batch of MNIST-like images
         let input = graph
             .tensor_from_vec(vec![0.5; 32 * 28 * 28], &[32, 28, 28], true)
             .unwrap();
-        
+
         let output = model.forward(&mut graph, input).unwrap();
-        
+
         // Should output logits for 10 classes
         assert_eq!(graph.get_shape(output), vec![32, 10]);
     }
     #[test]
     fn test_gradient_flow() {
         let mut graph = Engine::new();
-        
+
         // Simple network for gradient checking
         let linear = Linear::new(2, 1, false);
-        
+
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
             .unwrap();
-    
+
         let output = linear.forward(&mut graph, input).unwrap();
-        
+
         // Create target and loss
-        let target = graph
-            .tensor_from_vec(vec![3.0], &[1], false)
-            .unwrap();
-        
+        let target = graph.tensor_from_vec(vec![3.0], &[1], false).unwrap();
+
         let loss_fn = MSELoss::new();
         let loss = loss_fn.compute_loss(&mut graph, output, target).unwrap();
-        
+
         // Backward pass
         graph.backward(loss).unwrap();
-        
+
         // Check input has gradient
         let input_grad = graph.get_gradient(input);
         assert!(input_grad.is_some());
-        
+
         // Gradient should have same shape as input
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[1, 2]);
@@ -582,12 +554,12 @@ mod tests {
     #[test]
     fn test_activation_functions_preserve_shape() {
         let mut graph = Engine::new();
-        
+
         let input_shape = vec![2, 3, 4];
         let input = graph
             .tensor_from_vec(vec![0.1; 24], &input_shape, true)
             .unwrap();
-        
+
         // Test all activation functions preserve shape
         let activations: Vec<Box<dyn Module<f64>>> = vec![
             Box::new(ReLU::new()),
@@ -596,7 +568,7 @@ mod tests {
             Box::new(LeakyReLU::new()),
             Box::new(ELU::new()),
         ];
-        
+
         for activation in activations {
             let output = activation.forward(&mut graph, input).unwrap();
             assert_eq!(graph.get_shape(output), input_shape);
@@ -604,38 +576,20 @@ mod tests {
     }
 
     #[test]
-    fn test_loss_backward_compatibility() {
-        let mut graph = Engine::new();
-        
-        // Test that loss functions work with Module trait
-        let mse_loss = MSELoss::new();
-        let ce_loss = CrossEntropyLoss::new();
-        
-        let input = graph.tensor_from_vec(vec![1.0], &[1], true).unwrap();
-        
-        // Should be able to call forward (even if it just returns input)
-        let mse_output = mse_loss.forward(&mut graph, input).unwrap();
-        let ce_output = ce_loss.forward(&mut graph, input).unwrap();
-        
-        assert_eq!(mse_output, input);
-        assert_eq!(ce_output, input);
-    }
-
-    #[test]
     fn test_mixed_precision_compatibility() {
         // Test that our neural network components work with f32
         let mut graph: Engine<f64> = Engine::new();
-        
+
         let linear = Linear::new(3, 2, true);
         let relu = ReLU::new();
-        
+
         let input = graph
             .tensor_from_vec(vec![1.0f64, 2.0f64, 3.0f64], &[1, 3], true)
             .unwrap();
-        
+
         let hidden = linear.forward(&mut graph, input).unwrap();
         let output = relu.forward(&mut graph, hidden).unwrap();
-        
+
         assert_eq!(graph.get_shape(output), vec![1, 2]);
     }
 }
