@@ -556,7 +556,7 @@ mod tests {
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
             .unwrap();
-        
+    
         let output = linear.forward(&mut graph, input).unwrap();
         
         // Create target and loss

@@ -175,19 +175,27 @@ where
 
 impl<T> Module<T> for Linear<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + rand_distr::num_traits::FromPrimitive,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
+        
         // Create weight and bias nodes in the graph
         let weight_node = Parameter::create_in_graph(graph, self.weight.data.clone());
 
         // Compute: output = input @ weight^T
-        let output = graph.matmul(input, weight_node)?;
-
+        // Transpose the weight node before matmul: (out_features, in_features) -> (in_features, out_features)
+        let weight_t = graph.transpose(weight_node, None)?;
+        let output = graph.matmul(input, weight_t)?;
+        
         // Add bias if present
         if let Some(ref bias_param) = self.bias {
+            
+            let output_shape = graph.get_shape(output);
+            
             let bias_node = Parameter::create_in_graph(graph, bias_param.data.clone());
-            graph.add(output, bias_node)
+            // In order to add bias, we need to broadcast it to the output shape
+            let broadcasted_bias_node = graph.broadcast_to(bias_node, output_shape)?;
+            graph.add(output, broadcasted_bias_node)
         } else {
             Ok(output)
         }
