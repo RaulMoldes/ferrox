@@ -63,9 +63,14 @@ You can verify the installation with:
 dot -V
 ```
 
+By default, graph visualizations are saved on the `imgs/` folder.
+
 ## Example usage:
 Examples are in the `examples/` folder. To run them:
 
 ```bash
 cargo run --example ferrox_example
 ```
+
+## Future improvements.
+Currently investigating on how to integrate this with a CUDA based backend for hardware acceleration.
