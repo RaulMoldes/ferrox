@@ -4,52 +4,26 @@ use crate::graph::node::NodeId;
 use crate::nn::parameter::Parameter;
 use std::collections::HashMap;
 
+// While implementing this trait, I have taken inspiration from PyTorch's Module class
+// https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html
+// https://docs.pytorch.org/docs/stable/generated/torch.nn.ModuleList.html
+
 /// The base trait for all neural network modules.
 ///
 /// This trait defines the interface that all neural network components must implement.
 /// It provides methods for parameter management, training/evaluation mode switching,
 /// and the forward pass computation.
 ///
-/// # Design Philosophy
-///
-/// Similar to PyTorch's Module class, this trait allows for:
+/// I have followed a similar approach to PyTorch's Module class, 
+/// this trait allows for:
+/// 
 /// - Hierarchical composition of neural network layers
 /// - Automatic parameter collection and management
 /// - Training/evaluation mode switching
 /// - Clean forward pass interface
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{Module, Parameter};
-/// use ferrox::graph::Engine;
-/// use ferrox::NodeId; 
-///
-/// struct MyLayer {
-///     weight: Parameter<f64>,
-///     bias: Parameter<f64>,
-///     training: bool,
-/// }
-///
-/// impl Module<f64> for MyLayer {
-///     fn forward(&self, graph: &mut Engine<f64>, input: NodeId) -> Result<NodeId, String> {
-///         // Implementation here
-///         Ok(input)
-///     }
-///     
-///     fn parameters(&self) -> Vec<&Parameter<f64>> {
-///         vec![&self.weight, &self.bias]
-///     }
-///     
-///     fn training(&self) -> bool {
-///         self.training
-///     }
-///     
-///     fn set_training(&mut self, training: bool) {
-///         self.training = training;
-///     }
-/// }
-/// ```
+/// 
+/// Other modules can implement this trait to define their own behavior,
+/// while still being compatible with the overall framework.
 pub trait Module<T>
 where
     T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
@@ -142,22 +116,17 @@ where
 ///
 /// This is similar to PyTorch's ModuleList and allows for dynamic
 /// construction of neural networks.
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{ModuleList, Linear};
-///
-/// let mut layers = ModuleList::new();
-/// layers.push(Box::new(Linear::<f64>::new(784, 256, true)));
-/// layers.push(Box::new(Linear::<f64>::new(256, 128, true)));
-/// layers.push(Box::new(Linear::<f64>::new(128, 10, true)));
-/// ```
+/// It looks like duplicated logic if you compare it to `Sequential`, but it is not.
+/// The main difference is that `ModuleList` does not enforce a sequential
+/// forward pass, allowing for more flexible architectures.
+/// In Pytorch the module list is just a generalization of a sequential module,
+/// allowing for any type of module to be stored in the list. 
+/// In Rust we do not have inheritance so I decided to keep both.
 pub struct ModuleList<T>
 where
     T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
-    modules: Vec<Box<dyn Module<T>>>,
+    modules: Vec<Box<dyn Module<T>>>, // Dynamic dispatching modules here allows for any type of module to be stored in the mpdule list.
     training: bool,
 }
 
@@ -236,6 +205,10 @@ where
     }
 }
 
+
+// This is quite tricky, because a module list is itself a module that contains other modules.
+// Therefore, it implements the Module trait, but also contains other modules that implement Module.
+// You know you are deep into computer science when everything gets so recursive that you have to implement a trait for a trait that contains itself.
 impl<T> Module<T> for ModuleList<T>
 where
     T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
@@ -271,3 +244,51 @@ where
         }
     }
 }
+
+// Add indexing and iteration support for ModuleList
+// I decided to ad this because it would be handy to access modules by index
+// also you can check in Pytorch docs that ModuleList supports indexing like a Python list does.
+impl<T> std::ops::Index<usize> for ModuleList<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    type Output = Box<dyn Module<T>>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.modules[index]
+    }
+}
+
+impl<T> std::ops::IndexMut<usize> for ModuleList<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.modules[index]
+    }
+}
+
+impl<T> IntoIterator for ModuleList<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    type Item = Box<dyn Module<T>>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.modules.into_iter()
+    }
+}
+impl<T> From<Vec<Box<dyn Module<T>>>> for ModuleList<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn from(modules: Vec<Box<dyn Module<T>>>) -> Self {
+        Self {
+            modules,
+            training: true,
+        }
+    }
+}
+
+

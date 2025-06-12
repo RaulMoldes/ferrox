@@ -16,9 +16,7 @@
 //!
 pub mod backend;
 pub mod graph;
-pub mod initializers;
 pub mod nn;
-pub mod optim;
 pub mod tensor; // New neural network module
 
 // Re-export commonly used types for convenience
@@ -26,7 +24,7 @@ pub use backend::{Device, Float, Numeric, cpu, default_device};
 pub use graph::{
     Engine, EngineVisualization, GraphVisualizer, NodeId, VisualizationConfig, next_node_id,
 };
-pub use initializers::{
+pub use nn::{
     init_tensor_kaiming_uniform, init_tensor_xavier_uniform, kaiming_uniform, xavier_uniform,
 };
 pub use nn::{Module, Parameter};

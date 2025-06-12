@@ -1,22 +1,14 @@
 use crate::backend::numeric::Numeric;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
-use crate::initializers::xavier_uniform;
+use super::initializers::xavier_uniform;
 use crate::nn::{Module, Parameter};
 use crate::tensor::Tensor;
 
 /// Identity layer that returns the input unchanged.
 ///
 /// This is useful as a placeholder or for skip connections.
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{Identity, Module};
-///
-/// let identity = Identity::new();
-/// // forward pass returns input unchanged
-/// ```
+/// It does not perform any computation and simply passes the input through.
 #[derive(Debug, Clone)]
 pub struct Identity {
     training: bool,
@@ -59,26 +51,14 @@ where
 /// # Parameters
 ///
 /// * `weight` - Weight matrix of shape (out_features, in_features)
-/// * `bias` - Bias vector of shape (out_features,) (optional)
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::Linear;
-///
-/// // Create a linear layer: 784 inputs -> 256 outputs with bias
-/// let linear = Linear::<f64>::new(784, 256, true);
-///
-/// // Create without bias
-/// let linear_no_bias = Linear::<f64>::new(784, 256, false);
-/// ```
+/// * `bias` - Bias vector of shape (out_features,) (optional)`
 #[derive(Debug)]
 pub struct Linear<T>
 where
     T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     pub weight: Parameter<T>,
-    pub bias: Option<Parameter<T>>,
+    pub bias: Option<Parameter<T>>, // Bias is optional as it is common to have layers without bias
     pub in_features: usize,
     pub out_features: usize,
     training: bool,
@@ -106,7 +86,8 @@ where
     /// Weights are initialized using Xavier/Glorot uniform initialization.
     /// Bias is initialized to zeros if present.
     pub fn new(in_features: usize, out_features: usize, bias: bool) -> Self {
-        // Initialize weights using Xavier uniform initialization
+        // Initialize weights using Xavier uniform initialization. 
+        // This should be changed to use a more flexible initializer in the future.
         let weight_init = xavier_uniform(in_features, out_features, 1.0);
         let weight = Parameter::from_init(&[out_features, in_features], weight_init);
 
@@ -127,7 +108,9 @@ where
         }
     }
 
-    /// Creates a new Linear layer with custom weight initialization.
+    /// Creates a new Linear layer with custom weight initialization. 
+    /// Added this for flexibility, whilst keeping backward compatibility. 
+    /// The xavier-glorot initialization, will be kept as the default one.
     ///
     /// # Arguments
     ///
@@ -233,15 +216,6 @@ where
 ///
 /// Flattens all dimensions except the batch dimension (first dimension).
 /// For example, an input of shape (N, C, H, W) becomes (N, C*H*W).
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::Flatten;
-///
-/// let flatten = Flatten::new();
-/// // Input shape: (32, 3, 28, 28) -> Output shape: (32, 2352)
-/// ```
 #[derive(Debug, Clone)]
 pub struct Flatten {
     training: bool,
@@ -297,18 +271,9 @@ where
 ///
 /// Applies modules in the order they were added. Each module's output
 /// becomes the input to the next module.
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{Sequential, Linear, ReLU};
-///
-/// let mut model = Sequential::new();
-/// model.add(Box::new(Linear::<f64>::new(784, 256, true)));
-/// model.add(Box::new(ReLU::new()));
-/// model.add(Box::new(Linear::<f64>::new(256, 10, true)));
-/// ```
-
+/// 
+/// NOTE THAT this should be a module and NOT A MODULE LIST as the module list is a struct.
+/// Rust does not allow tinheritance of structs.
 pub struct Sequential<T>
 where
     T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
@@ -433,6 +398,61 @@ where
         self.training = training;
         for module in &mut self.modules {
             module.set_training(training);
+        }
+    }
+}
+
+// Added index-based access to modules. Utility following the ModuleList impl.
+impl<T> std::ops::Index<usize> for Sequential<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    type Output = Box<dyn Module<T>>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.modules[index]
+    }
+}
+impl<T> std::ops::IndexMut<usize> for Sequential<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.modules[index]
+    }
+}
+
+impl<T> IntoIterator for Sequential<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    type Item = Box<dyn Module<T>>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.modules.into_iter()
+    }
+}
+impl<T> std::iter::FromIterator<Box<dyn Module<T>>> for Sequential<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn from_iter<I: IntoIterator<Item = Box<dyn Module<T>>>>(iter: I) -> Self {
+        Self {
+            modules: iter.into_iter().collect(),
+            training: true,
+        }
+    }
+}
+
+impl<T> From<Vec<Box<dyn Module<T>>>> for Sequential<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn from(modules: Vec<Box<dyn Module<T>>>) -> Self {
+        Self {
+            modules,
+            training: true,
         }
     }
 }

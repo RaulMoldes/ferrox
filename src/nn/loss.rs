@@ -9,8 +9,6 @@ use crate::nn::Module;
 /// providing a scalar value that can be used for optimization. All loss functions
 /// implement the Module trait to integrate seamlessly with the computation graph.
 ///
-/// # Design Philosophy
-///
 /// Similar to PyTorch's loss functions, this trait provides:
 /// - Consistent interface for all loss computations
 /// - Integration with automatic differentiation
@@ -43,6 +41,7 @@ where
 ///
 /// Determines how to aggregate individual sample losses into a single scalar value.
 /// This matches PyTorch's reduction strategies for consistency.
+/// TODO: Probably we should add Median or Log Reduction in the future. For now, we keep it simple.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reduction {
     /// No reduction: return the loss for each sample
@@ -75,34 +74,7 @@ impl Default for Reduction {
 /// - None: Returns individual squared errors
 /// - Mean: `(1/N) * Σᵢ(y_pred_i - y_true_i)²`
 /// - Sum: `Σᵢ(y_pred_i - y_true_i)²`
-///
-/// # Use Cases
-///
-/// - Regression problems
-/// - Continuous target variables
-/// - When outliers should be heavily penalized (quadratic penalty)
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{MSELoss, Loss, Reduction};
-/// use ferrox::graph::Engine;
-///
-/// // Create MSE loss with mean reduction (default)
-/// let mse_loss = MSELoss::new();
-///
-/// // Create MSE loss with sum reduction
-/// let mse_sum = MSELoss::new_with_reduction(Reduction::Sum);
-///
-/// let mut graph = Engine::new();
-///
-/// // Predictions and targets for regression
-/// let predictions = graph.tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true).unwrap();
-/// let targets = graph.tensor_from_vec(vec![1.1, 1.9, 3.2], &[3], false).unwrap();
-///
-/// let loss = mse_loss.compute_loss(&mut graph, predictions, targets).unwrap();
-/// // Loss ≈ ((1.0-1.1)² + (2.0-1.9)² + (3.0-3.2)²) / 3 = (0.01 + 0.01 + 0.04) / 3 = 0.02
-/// ```
+/// Note that it is to be used with continuous targets, not categorical ones.
 #[derive(Debug, Clone)]
 pub struct MSELoss {
     /// Reduction strategy for aggregating batch losses
@@ -222,3 +194,6 @@ where
         }
     }
 }
+
+
+// TODO: Binary Cross Entropy Loss, Categorical Cross Entropy Loss. We currently do not have any implementation of loss functions for categorical targets.

@@ -3,34 +3,11 @@ use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
 
-/// ReLU (Rectified Linear Unit) activation function.
-///
-/// Applies the function ReLU(x) = max(0, x) element-wise.
-/// This is one of the most commonly used activation functions in deep learning.
-///
-/// # Mathematical Definition
-///
-/// ```text
-/// ReLU(x) = max(0, x) = {
-///     x if x > 0
-///     0 if x ≤ 0
-/// }
-/// ```
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{ReLU, Module};
-/// use ferrox::graph::Engine;
-///
-/// let relu = ReLU::new();
-/// let mut graph = Engine::new();
-///
-/// // Create input tensor with negative and positive values
-/// let input = graph.tensor_from_vec(vec![-2.0, -1.0, 0.0, 1.0, 2.0], &[5], true).unwrap();
-/// let output = relu.forward(&mut graph, input).unwrap();
-/// // Output will be [0.0, 0.0, 0.0, 1.0, 2.0]
-/// ```
+// ReLU (Rectified Linear Unit) activation function.
+//
+// Applies the function ReLU(x) = max(0, x) element-wise.
+// This is one of the most commonly used activation functions in deep learning.
+// The expected output is to be zero for all negative inputs and equal to the input for all positive inputs.
 #[derive(Debug, Clone)]
 pub struct ReLU {
     training: bool,
@@ -66,36 +43,10 @@ where
     }
 }
 
-/// Sigmoid activation function.
-///
-/// Applies the sigmoid function element-wise: σ(x) = 1 / (1 + e^(-x))
-/// Maps any real number to a value between 0 and 1, making it useful for binary classification.
-///
-/// # Mathematical Definition
-///
-/// ```text
-/// Sigmoid(x) = σ(x) = 1 / (1 + e^(-x))
-/// ```
-///
-/// # Characteristics
-///
-/// - Output range: (0, 1)
-/// - Derivative: σ'(x) = σ(x) * (1 - σ(x))
-/// - Center point: σ(0) = 0.5
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{Sigmoid, Module};
-/// use ferrox::graph::Engine;
-///
-/// let sigmoid = Sigmoid::new();
-/// let mut graph = Engine::new();
-///
-/// let input = graph.tensor_from_vec(vec![-2.0, 0.0, 2.0], &[3], true).unwrap();
-/// let output = sigmoid.forward(&mut graph, input).unwrap();
-/// // Output will be approximately [0.119, 0.5, 0.881]
-/// ```
+// Sigmoid activation function.
+//
+// Applies the sigmoid function element-wise: σ(x) = 1 / (1 + e^(-x))
+// Maps any real number to a value between 0 and 1, making it useful for binary classification.
 #[derive(Debug, Clone)]
 pub struct Sigmoid {
     training: bool,
@@ -156,36 +107,10 @@ where
     }
 }
 
-/// Tanh (Hyperbolic Tangent) activation function.
-///
-/// Applies the hyperbolic tangent function element-wise: tanh(x) = (e^x - e^(-x)) / (e^x + e^(-x))
-/// Maps any real number to a value between -1 and 1, making it zero-centered.
-///
-/// # Mathematical Definition
-///
-/// ```text
-/// Tanh(x) = (e^x - e^(-x)) / (e^x + e^(-x)) = (e^(2x) - 1) / (e^(2x) + 1)
-/// ```
-///
-/// # Characteristics
-///
-/// - Output range: (-1, 1)
-/// - Zero-centered (unlike sigmoid)
-/// - Derivative: tanh'(x) = 1 - tanh²(x)
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{Tanh, Module};
-/// use ferrox::graph::Engine;
-///
-/// let tanh = Tanh::new();
-/// let mut graph = Engine::new();
-///
-/// let input = graph.tensor_from_vec(vec![-2.0, 0.0, 2.0], &[3], true).unwrap();
-/// let output = tanh.forward(&mut graph, input).unwrap();
-/// // Output will be approximately [-0.964, 0.0, 0.964]
-/// ```
+// Tanh (Hyperbolic Tangent) activation function.
+//
+// Applies the hyperbolic tangent function element-wise: tanh(x) = (e^x - e^(-x)) / (e^x + e^(-x))
+// Maps any real number to a value between -1 and 1, making it zero-centered.
 #[derive(Debug, Clone)]
 pub struct Tanh {
     training: bool,
@@ -249,6 +174,10 @@ where
 }
 
 
+/// I decided to implement LeakyReLU and ELU activation functions as well.
+/// Their standard implementation requires the conditional operation, 
+/// As my `Engine` does not support this, I will implement them on top the ReLU function.
+/// 
 /// LeakyReLU activation function.
 ///
 /// Applies the Leaky ReLU function element-wise. Unlike ReLU, LeakyReLU allows
@@ -268,23 +197,7 @@ where
 /// # Advantages over ReLU
 ///
 /// - Prevents "dying ReLU" problem
-/// - Allows gradients to flow even for negative inputs
-/// - Can help with faster convergence in some cases
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{LeakyReLU, Module};
-/// use ferrox::graph::Engine;
-///
-/// let leaky_relu = LeakyReLU::new(); // Default slope = 0.01
-/// let custom_slope = LeakyReLU::new_with_slope(0.1);
-///
-/// let mut graph = Engine::new();
-/// let input = graph.tensor_from_vec(vec![-2.0, -1.0, 0.0, 1.0, 2.0], &[5], true).unwrap();
-/// let output = leaky_relu.forward(&mut graph, input).unwrap();
-/// // Output with default slope: [-0.02, -0.01, 0.0, 1.0, 2.0]
-/// ```
+/// - Allows gradients to flow even for negative inputs, helping with faster convergence in some cases.
 #[derive(Debug, Clone)]
 pub struct LeakyReLU<T>
 where
@@ -374,7 +287,8 @@ where
 
 /// ELU (Exponential Linear Unit) activation function.
 ///
-/// Applies the ELU function element-wise. ELU has the benefit of having negative values
+/// Applies the ELU function element-wise. ELU has the benefit over ReLU and LeakyReLU
+/// of taking negative values
 /// which pushes the mean of the activations closer to zero, enabling faster learning.
 ///
 /// # Mathematical Definition
@@ -385,29 +299,19 @@ where
 ///     α * (e^x - 1)       if x ≤ 0
 /// }
 /// ```
-///
 /// Where α is a hyperparameter that controls the saturation point for negative inputs.
+/// The idea is to allow the function to have a non-zero output for negative inputs,
+/// which helps to reduce the bias shift effect during training.
+/// Check this conversation on why this happens: https://www.quora.com/Why-do-non-zero-mean-activations-induce-a-bias-shift-for-units-in-the-next-layer-and-why-is-that-bad
+/// Also take a look at my `initialiers.rs` module. 
 ///
-/// # Characteristics
-///
-/// - Smooth everywhere (differentiable at x = 0)
-/// - Negative values push mean activation closer to zero
-/// - Saturates to -α for large negative inputs
-/// - Reduces the bias shift effect
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::nn::{ELU, Module};
-/// use ferrox::graph::Engine;
-///
-/// let elu = ELU::new(); // Default α = 1.0
-/// let custom_alpha = ELU::new_with_alpha(0.5);
-///
-/// let mut graph = Engine::new();
-/// let input = graph.tensor_from_vec(vec![-2.0, -1.0, 0.0, 1.0, 2.0], &[5], true).unwrap();
-/// let output = elu.forward(&mut graph, input).unwrap();
-/// ```
+/// Another advantage of ELU is that it is differentiable everywhere, including at zero, 
+/// which does not occur with standard ReLU.
+/// 
+/// Negative values of the ELU function push mean activation closer to zero
+/// ELU saturates to -α for large negative inputs a.k.a. lim[f(x)] where x -> -∞ is -α
+/// 
+/// 
 #[derive(Debug, Clone)]
 pub struct ELU<T>
 where
@@ -507,3 +411,6 @@ where
         self.training = training;
     }
 }
+
+
+// TODO: Add Softmax activation function.

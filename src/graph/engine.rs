@@ -96,7 +96,15 @@ where
         + ndarray::ScalarOperand
         + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
 {
-    // Main gradient computation function. This can actually be called on any node,
+    // Main gradient computation function. This can actually be called on any node.
+    // Note that my graph implementation is based on reverse-mode automatic differentiation.
+    // It is a Define-By-Run (dynamic) graph, meaning that the graph is built dynamically as operations are performed.
+    // Similarly to other frameworks like PyTorch, TensorFlow 2.X on eager mode, Chainer, etc.
+    // This function computes the gradient of the output node with respect to all input nodes that require gradients.
+    // The main difference between this approach and the Define-And-Run (static) approach (Tensorflow 1.X or Tensorflow graph mode)
+    // is quite well explained here: https://medium.com/@zzemb6/define-and-run-vs-define-by-run-b527d127e13a
+    // Mainly, in Define-By-Run, the graph is built dynamically as operations are performed,
+    // and the gradients are computed in reverse order, starting from the output node.
     pub fn compute_gradient_of_variables(
         &mut self,
         output_tensor: NodeId,
@@ -437,9 +445,27 @@ where
         topo_order.push(node_id);
     }
 
+    /// Set gradient for a node (needed for gradient clipping)
+    pub fn set_gradient(&mut self, node_id: NodeId, gradient: Tensor<T>) {
+        self.gradients.insert(node_id, gradient);
+    }
+
+
     // Get gradient for a node
     pub fn get_gradient(&self, node_id: NodeId) -> Option<Tensor<T>> {
         self.gradients.get(&node_id).cloned()
+    }
+
+    /// Update the data of a node
+    pub fn set_node_data(&mut self, node_id: NodeId, new_data: Tensor<T>) {
+        if let Some(node_ref) = self.nodes.get(&node_id) {
+            node_ref.borrow_mut().cached_data = new_data;
+        }
+    }
+    
+    /// Clear gradient for a node
+    pub fn clear_gradient(&mut self, node_id: NodeId) {
+        self.gradients.remove(&node_id);
     }
 
     // Helper function to sum a list of nodes (useful for loss functions)

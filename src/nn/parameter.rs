@@ -7,16 +7,8 @@ use crate::tensor::Tensor;
 ///
 /// Parameters are automatically included when collecting parameters from a module,
 /// and they always require gradients for training. This is similar to PyTorch's Parameter class.
-///
-/// # Examples
-///
-/// ```rust
-/// use ferrox::Parameter;
-/// use ferrox::Tensor;
-///
-/// let weight_data = Tensor::<f64>::randn(&[784, 128]);
-/// let weight_param = Parameter::new(weight_data);
-/// ```
+/// Parameters can be initialized with specific values, or created from random initialization functions.
+/// They can also be named for easier debugging and visualization.``
 #[derive(Debug, Clone)]
 pub struct Parameter<T>
 where
@@ -39,15 +31,6 @@ where
     /// # Arguments
     ///
     /// * `data` - The tensor data for this parameter
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ferrox::Parameter;
-    /// use ferrox::Tensor;
-    /// let weight_data = Tensor::<f64>::randn(&[10, 5]);
-    /// let param = Parameter::new(weight_data);
-    /// ```
     pub fn new(data: Tensor<T>) -> Self {
         Self {
             data,
@@ -90,18 +73,6 @@ where
     ///
     /// * `shape` - Shape of the parameter tensor
     /// * `init_fn` - Initialization function that returns a value for each element
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ferrox::nn::init::xavier_uniform;
-    /// use ferrox::Parameter;
-    ///
-    /// let fan_in = 784;
-    /// let fan_out = 128;
-    /// let init_fn = xavier_uniform(fan_in, fan_out, 1.0);
-    /// let param = Parameter::<f64>::from_init(&[fan_in, fan_out], init_fn);
-    /// ```
     pub fn from_init<F>(shape: &[usize], mut init_fn: F) -> Self
     where
         F: FnMut() -> f64,
