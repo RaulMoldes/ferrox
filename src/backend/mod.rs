@@ -1,5 +1,6 @@
 pub mod device;
 pub mod numeric;
+
 mod tests;
 
 pub use device::Device;
