@@ -6,7 +6,7 @@ mod tests;
 
 pub use op::{
     AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,
-    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,
+    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp, DivScalarOp
 };
 
 pub use engine::Engine;

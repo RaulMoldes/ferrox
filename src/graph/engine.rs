@@ -1,6 +1,6 @@
 use super::op::{
     AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,
-    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,
+    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,DivScalarOp
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -309,7 +309,19 @@ where
 
     // Division by scalar
     pub fn div_scalar(&mut self, a: NodeId, scalar: T) -> Result<NodeId, String> {
-        unimplemented!("Division by scalar is not implemented yet. Will be added in the future.");
+        let data_a = self.nodes[&a].borrow().cached_data.clone();
+
+        // Check for zero scalar before creating the operation
+        let zero = <T as Numeric>::zero();
+        if scalar == zero {
+            return Err("Cannot divide by zero scalar".to_string());
+        }
+
+        let op = Box::new(DivScalarOp::new(scalar));
+        let result_data = op.compute(&[data_a])?;
+
+        let node = Node::from_op(op, vec![a], result_data);
+        Ok(self.add_node(node))
     }
 
     // Division operation with two nodes

@@ -319,6 +319,66 @@ where
 }
 
 #[derive(Debug, Clone)]
+pub struct DivScalarOp<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    scalar: T,
+}
+
+impl<T> DivScalarOp<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    pub fn new(scalar: T) -> Self {
+        let zero = <T as Numeric>::zero();
+        if scalar == zero {
+            panic!("Cannot create DivScalarOp with zero scalar - this would cause division by zero");
+        }
+        Self { scalar }
+    }
+}
+
+impl<T> Operator<T> for DivScalarOp<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("DivScalarOp requires exactly 1 input".to_string());
+        }
+        
+        let zero = <T as Numeric>::zero();
+        if self.scalar == zero {
+            return Err("Division by zero: scalar divisor is zero".to_string());
+        }
+        
+        Ok(inputs[0].div_scalar(self.scalar))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        _inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // For z = a / scalar:
+        // dz/da = 1/scalar
+        // So grad_a = grad_output * (1/scalar) = grad_output / scalar
+        
+        let zero = <T as Numeric>::zero();
+        if self.scalar == zero {
+            return Err("Cannot compute gradient: scalar divisor is zero".to_string());
+        }
+        
+        Ok(vec![grad_output.div_scalar(self.scalar)])
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct DivOp;
 
 impl<T> Operator<T> for DivOp
