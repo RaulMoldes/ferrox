@@ -9,9 +9,10 @@ pub mod module;
 pub mod parameter;
 pub mod optim;
 pub mod initializers;
+pub mod normalization;
 mod tests;
 
-// Re-export the main types and traits for convenience
+pub use normalization::{BatchNorm1d, LayerNorm};
 pub use layers::{Flatten, Identity, Linear, Sequential};
 pub use module::{Module, ModuleList};
 pub use parameter::{Parameter, ToParameter};

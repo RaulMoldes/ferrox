@@ -8,6 +8,7 @@ mod tests {
     use crate::nn::module::*;
     use crate::nn::parameter::Parameter;
     use crate::tensor::Tensor;
+    use crate::nn::normalization::BatchNorm1d;
 
     /// Helper function to check if two floating point values are approximately equal
     fn approx_equal(a: f64, b: f64, tolerance: f64) -> bool {
@@ -1435,4 +1436,61 @@ fn test_bce_with_logits_loss_functionality() {
 
         assert_eq!(graph.get_shape(output), vec![1, 2]);
     }
+
+    // ============================================================================
+// BATCH NORMALIZATION TESTS
+// ============================================================================
+
+#[test]
+fn test_batch_norm_1d_creation() {
+    let bn = BatchNorm1d::<f64>::default_config(128);
+    
+    assert_eq!(bn.num_features(), 128);
+    assert!(bn.training());
+    assert!(bn.track_running_stats);
+    
+    // Check parameter shapes
+    let params = bn.parameters();
+    assert_eq!(params.len(), 2); // weight and bias
+    assert_eq!(params[0].shape(), &[128]); // weight
+    assert_eq!(params[1].shape(), &[128]); // bias
+    
+    // Check running statistics shapes
+    assert_eq!(bn.running_mean.shape(), &[128]);
+    assert_eq!(bn.running_var.shape(), &[128]);
+}
+
+#[test]
+fn test_batch_norm_1d_forward_training() {
+    let mut graph = Engine::new();
+    let bn = BatchNorm1d::<f64>::default_config(3);
+    
+    // Create input: [batch_size=4, features=3]
+    let input = graph
+        .tensor_from_vec(vec![
+            1.0, 2.0, 3.0,  // sample 1
+            4.0, 5.0, 6.0,  // sample 2
+            7.0, 8.0, 9.0,  // sample 3
+            10.0, 11.0, 12.0, // sample 4
+        ], &[4, 3], true)
+        .unwrap();
+    
+    let output = bn.forward(&mut graph, input).unwrap();
+    let output_shape = graph.get_shape(output);
+    let output_data = graph.get_data(output);
+    
+    // Output shape should match input shape
+    assert_eq!(output_shape, vec![4, 3]);
+    
+    // All output values should be finite
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "BatchNorm output should be finite, got {}", val);
+    }
+    
+    // For this specific input, we can verify that the normalization worked
+    // The mean of each feature across the batch should be approximately 0
+    // and the std should be approximately 1 (before scaling/shifting)
+    println!("BatchNorm output: {:?}", output_data.to_vec());
+}
+
 }
