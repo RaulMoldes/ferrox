@@ -1,6 +1,7 @@
 use super::op::{
     AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,
-    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,DivScalarOp
+    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,DivScalarOp,
+    MinOp, MaxOp, ClampOp, AbsOp, SqrtOp,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -399,6 +400,61 @@ where
         Ok(self.add_node(node))
     }
 
+    /// Element-wise minimum operation between two tensors.
+    ///
+    /// Computes min(a, b) element-wise. Both tensors must have the same shape.
+    pub fn min(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
+        let data_a = self.nodes[&a].borrow().cached_data.clone();
+        let data_b = self.nodes[&b].borrow().cached_data.clone();
+
+        let op = Box::new(MinOp);
+        let result_data = op.compute(&[data_a, data_b])?;
+
+        let node = Node::from_op(op, vec![a, b], result_data);
+        Ok(self.add_node(node))
+    }
+
+    /// Element-wise maximum operation between two tensors.
+    ///
+    /// Computes max(a, b) element-wise. Both tensors must have the same shape.
+    pub fn max(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
+        let data_a = self.nodes[&a].borrow().cached_data.clone();
+        let data_b = self.nodes[&b].borrow().cached_data.clone();
+
+        let op = Box::new(MaxOp);
+        let result_data = op.compute(&[data_a, data_b])?;
+
+        let node = Node::from_op(op, vec![a, b], result_data);
+        Ok(self.add_node(node))
+    }
+
+    /// Clamp operation that constrains tensor values to a specified range.
+    ///
+    /// Clamps all elements in the input tensor to the range [min_val, max_val].
+    /// This is essential for numerical stability, especially in loss functions.
+    pub fn clamp(&mut self, input: NodeId, min_val: T, max_val: T) -> Result<NodeId, String> {
+        let data_input = self.nodes[&input].borrow().cached_data.clone();
+
+        let op = Box::new(ClampOp::new(min_val, max_val));
+        let result_data = op.compute(&[data_input])?;
+
+        let node = Node::from_op(op, vec![input], result_data);
+        Ok(self.add_node(node))
+    }
+
+    /// Element-wise absolute value operation.
+    ///
+    /// Computes the absolute value of each element in the input tensor.
+    pub fn abs(&mut self, input: NodeId) -> Result<NodeId, String> {
+        let data_input = self.nodes[&input].borrow().cached_data.clone();
+
+        let op = Box::new(AbsOp);
+        let result_data = op.compute(&[data_input])?;
+
+        let node = Node::from_op(op, vec![input], result_data);
+        Ok(self.add_node(node))
+    }
+
     // Get data from a node
     pub fn get_data(&self, node_id: NodeId) -> Tensor<T> {
         self.nodes[&node_id].borrow().cached_data.clone()
@@ -544,5 +600,66 @@ where
 
         let node = Node::from_op(op, vec![a], result_data);
         Ok(self.add_node(node))
+    }
+
+
+     /// Element-wise square root operation.
+    ///
+    /// Computes the square root of each element in the input tensor.
+    /// Input values must be non-negative.
+    pub fn sqrt(&mut self, input: NodeId) -> Result<NodeId, String> {
+        let data_input = self.nodes[&input].borrow().cached_data.clone();
+
+        let op = Box::new(SqrtOp);
+        let result_data = op.compute(&[data_input])?;
+
+        let node = Node::from_op(op, vec![input], result_data);
+        Ok(self.add_node(node))
+    }
+}
+
+impl<T> Engine<T>
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
+{
+    /// Convenience method to clamp probabilities for numerical stability.
+    ///
+    /// This is a specialized version of clamp specifically designed for probability
+    /// values, clamping them to [eps, 1-eps] to prevent numerical issues in
+    /// logarithmic operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `probabilities` - Input probability tensor
+    /// * `eps` - Small epsilon value (default: 1e-8)
+    pub fn clamp_probabilities(&mut self, probabilities: NodeId, eps: f64) -> Result<NodeId, String> {
+        let eps_val = <T as Numeric>::from_f64(eps)
+            .ok_or("Failed to convert epsilon to tensor type")?;
+        let one_minus_eps = <T as Numeric>::from_f64(1.0 - eps)
+            .ok_or("Failed to convert 1-epsilon to tensor type")?;
+        
+        self.clamp(probabilities, eps_val, one_minus_eps)
+    }
+
+    /// Convenience method for computing L2 norm of a tensor.
+    ///
+    /// Computes the L2 (Euclidean) norm: sqrt(sum(x^2))
+    pub fn l2_norm(&mut self, input: NodeId) -> Result<NodeId, String> {
+        let squared = self.mul(input, input)?;
+        let sum_squared = self.sum(squared, None)?;
+        self.sqrt(sum_squared)
+    }
+
+    /// Convenience method for computing L1 norm of a tensor.
+    ///
+    /// Computes the L1 (Manhattan) norm: sum(abs(x))
+    pub fn l1_norm(&mut self, input: NodeId) -> Result<NodeId, String> {
+        let abs_values = self.abs(input)?;
+        self.sum(abs_values, None)
     }
 }

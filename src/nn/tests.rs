@@ -15,6 +15,166 @@ mod tests {
     }
 
     // ============================================================================
+    // LINEAR LAYER TESTS
+    // ============================================================================
+
+
+    #[test]
+    fn test_linear_layer_output_dimensions() {
+        let mut graph = Engine::new();
+        
+        // Test various input/output combinations
+        let test_cases = vec![
+            (784, 256, 32),   // MNIST-like: 784 -> 256, batch_size=32
+            (128, 64, 16),    // Medium layer: 128 -> 64, batch_size=16
+            (10, 1, 5),       // Small layer: 10 -> 1, batch_size=5
+            (3, 100, 2),      // Small to large: 3 -> 100, batch_size=2
+            (1000, 10, 1),    // Large to small: 1000 -> 10, batch_size=1
+        ];
+
+        for (in_features, out_features, batch_size) in test_cases {
+            println!("Testing: {} -> {}, batch_size={}", in_features, out_features, batch_size);
+            
+            let linear = Linear::new(in_features, out_features, true);
+            
+            // Create random input with correct shape
+            let input_data: Vec<f64> = (0..batch_size * in_features)
+                .map(|i| (i as f64) * 0.01)
+                .collect();
+            
+            let input = graph
+                .tensor_from_vec(input_data, &[batch_size, in_features], true)
+                .unwrap();
+
+            let output = linear.forward(&mut graph, input).unwrap();
+            let output_shape = graph.get_shape(output);
+
+            // Verify output shape is exactly [batch_size, out_features]
+            assert_eq!(
+                output_shape,
+                vec![batch_size, out_features],
+                "Failed for case: {} -> {}, batch_size={}",
+                in_features, out_features, batch_size
+            );
+            
+            // Verify output tensor has the correct number of elements
+            let output_data = graph.get_data(output);
+            assert_eq!(
+                output_data.size(),
+                batch_size * out_features,
+                "Output tensor size mismatch for case: {} -> {}, batch_size={}",
+                in_features, out_features, batch_size
+            );
+        }
+    }
+
+    #[test]
+    fn test_linear_layer_mathematical_correctness() {
+        let mut graph = Engine::new();
+        
+        // Create a simple, deterministic case for manual verification
+        let linear = Linear::with_init(2, 3, true, || 0.1); // All weights = 0.1, bias = 0.0
+        
+        // Input: batch_size=1, features=2, values=[1.0, 2.0]
+        let input = graph
+            .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
+            .unwrap();
+
+        let output = linear.forward(&mut graph, input).unwrap();
+        let output_data = graph.get_data(output);
+        
+        // Verify output shape
+        assert_eq!(graph.get_shape(output), vec![1, 3]);
+        
+        // Manual calculation:
+        // Weight matrix (3x2): [[0.1, 0.1], [0.1, 0.1], [0.1, 0.1]]
+        // Input (1x2): [[1.0, 2.0]]
+        // Output = Input @ Weight.T = [1.0, 2.0] @ [[0.1, 0.1, 0.1], [0.1, 0.1, 0.1]]
+        // = [1.0*0.1 + 2.0*0.1, 1.0*0.1 + 2.0*0.1, 1.0*0.1 + 2.0*0.1]
+        // = [0.3, 0.3, 0.3] + bias[0.0, 0.0, 0.0] = [0.3, 0.3, 0.3]
+        
+        for i in 0..3 {
+            assert!(
+                approx_equal(output_data[i], 0.3, 1e-6),
+                "Expected 0.3, got {} at position {}",
+                output_data[i], i
+            );
+        }
+    }
+
+    #[test]
+    fn test_linear_layer_bias_effect() {
+        let mut graph = Engine::new();
+        
+        // Test with bias
+        let linear_with_bias = Linear::with_init(2, 2, true, || 0.0); // Zero weights
+        let input = graph
+            .tensor_from_vec(vec![1.0, 1.0], &[1, 2], true)
+            .unwrap();
+
+        let output_with_bias = linear_with_bias.forward(&mut graph, input).unwrap();
+        let output_data_with_bias = graph.get_data(output_with_bias);
+        
+        // With zero weights, output should be just the bias (initialized to zeros)
+        assert!(approx_equal(output_data_with_bias[0], 0.0, 1e-6));
+        assert!(approx_equal(output_data_with_bias[1], 0.0, 1e-6));
+
+        // Test without bias
+        let linear_without_bias = Linear::with_init(2, 2, false, || 0.0); // Zero weights, no bias
+        let input2 = graph
+            .tensor_from_vec(vec![1.0, 1.0], &[1, 2], true)
+            .unwrap();
+
+        let output_without_bias = linear_without_bias.forward(&mut graph, input2).unwrap();
+        let output_data_without_bias = graph.get_data(output_without_bias);
+        
+        // With zero weights and no bias, output should be zero
+        assert!(approx_equal(output_data_without_bias[0], 0.0, 1e-6));
+        assert!(approx_equal(output_data_without_bias[1], 0.0, 1e-6));
+    }
+
+    #[test]
+    fn test_linear_layer_batch_processing() {
+        let mut graph = Engine::new();
+        
+        let linear = Linear::with_init(3, 2, false, || 1.0); // All weights = 1.0, no bias
+        
+        // Test with different batch sizes
+        let batch_sizes = vec![1, 5, 10, 32];
+        
+        for batch_size in batch_sizes {
+            let input_data: Vec<f64> = vec![1.0; batch_size * 3]; // All ones
+            let input = graph
+                .tensor_from_vec(input_data, &[batch_size, 3], true)
+                .unwrap();
+
+            let output = linear.forward(&mut graph, input).unwrap();
+            let output_shape = graph.get_shape(output);
+            let output_data = graph.get_data(output);
+
+            // Verify shape
+            assert_eq!(output_shape, vec![batch_size, 2]);
+            
+            // Verify each sample in the batch
+            // Each output should be [3.0, 3.0] since we're multiplying [1,1,1] by weights [1,1,1; 1,1,1]
+            for batch_idx in 0..batch_size {
+                let sample_start = batch_idx * 2;
+                assert!(
+                    approx_equal(output_data[sample_start], 3.0, 1e-6),
+                    "Batch {}, output 0: expected 3.0, got {}",
+                    batch_idx, output_data[sample_start]
+                );
+                assert!(
+                    approx_equal(output_data[sample_start + 1], 3.0, 1e-6),
+                    "Batch {}, output 1: expected 3.0, got {}",
+                    batch_idx, output_data[sample_start + 1]
+                );
+            }
+        }
+    }
+
+
+    // ============================================================================
     // PARAMETER TESTS
     // ============================================================================
 
@@ -477,7 +637,7 @@ mod tests {
         let input = graph
             .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
             .unwrap();
-        let target = graph.tensor_from_vec(vec![1.0], &[1], false).unwrap();
+        let target = graph.tensor_from_vec(vec![1.0], &[1,1], false).unwrap();
 
         // Forward pass
         let prediction = model.forward(&mut graph, input).unwrap();
@@ -534,11 +694,11 @@ mod tests {
         let output = linear.forward(&mut graph, input).unwrap();
 
         // Create target and loss
-        let target = graph.tensor_from_vec(vec![3.0], &[1], false).unwrap();
-
+        let target = graph.tensor_from_vec(vec![3.0], &[1,1], false).unwrap();
+        
         let loss_fn = MSELoss::new();
         let loss = loss_fn.compute_loss(&mut graph, output, target).unwrap();
-
+        
         // Backward pass
         graph.backward(loss).unwrap();
 

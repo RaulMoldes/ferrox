@@ -9,6 +9,11 @@ mod tests {
     use std::sync::Barrier;
     use std::thread;
 
+    /// Helper function to check if two floating point values are approximately equal
+    fn approx_equal(a: f64, b: f64, tolerance: f64) -> bool {
+        (a - b).abs() < tolerance
+    }
+
     #[test]
     fn test_transpose_gradient() {
         let mut graph = Engine::new();
@@ -378,5 +383,361 @@ mod tests {
         assert!(a_pos < c_pos);
         assert!(b_pos < c_pos);
         assert!(c_pos < d_pos);
+    }
+
+
+    /// TESTS FOR COMPLEX GRAPH OPERATIONS
+    /// These tests cover more advanced features like
+    /// clamping, l1/l2 norms etc.
+    #[test]
+    fn test_min_operation() {
+        let mut graph = Engine::new();
+
+        let a = graph
+            .tensor_from_vec(vec![1.0, 5.0, 3.0, -2.0], &[4], true)
+            .unwrap();
+        let b = graph
+            .tensor_from_vec(vec![2.0, 1.0, 4.0, -1.0], &[4], true)
+            .unwrap();
+
+        let min_result = graph.min(a, b).unwrap();
+        let result_data = graph.get_data(min_result);
+
+        let expected = Tensor::from_vec(vec![1.0, 1.0, 3.0, -2.0], &[4]).unwrap();
+        assert_eq!(result_data, expected);
+    }
+
+    #[test]
+    fn test_max_operation() {
+        let mut graph = Engine::new();
+
+        let a = graph
+            .tensor_from_vec(vec![1.0, 5.0, 3.0, -2.0], &[4], true)
+            .unwrap();
+        let b = graph
+            .tensor_from_vec(vec![2.0, 1.0, 4.0, -1.0], &[4], true)
+            .unwrap();
+
+        let max_result = graph.max(a, b).unwrap();
+        let result_data = graph.get_data(max_result);
+
+        let expected = Tensor::from_vec(vec![2.0, 5.0, 4.0, -1.0], &[4]).unwrap();
+        assert_eq!(result_data, expected);
+    }
+
+    #[test]
+    fn test_clamp_operation() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![-2.0, -0.5, 0.0, 0.5, 1.5, 2.0], &[6], true)
+            .unwrap();
+
+        let clamped = graph.clamp(input, 0.0, 1.0).unwrap();
+        let result_data = graph.get_data(clamped);
+
+        let expected = Tensor::from_vec(vec![0.0, 0.0, 0.0, 0.5, 1.0, 1.0], &[6]).unwrap();
+        assert_eq!(result_data, expected);
+    }
+
+    #[test]
+    fn test_sqrt_operation() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![0.0, 1.0, 4.0, 9.0, 16.0], &[5], true)
+            .unwrap();
+
+        let sqrt_result = graph.sqrt(input).unwrap();
+        let result_data = graph.get_data(sqrt_result);
+
+        let expected = Tensor::from_vec(vec![0.0, 1.0, 2.0, 3.0, 4.0], &[5]).unwrap();
+        assert_eq!(result_data, expected);
+    }
+
+    #[test]
+    fn test_sqrt_negative_error() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![1.0, -1.0, 4.0], &[3], true)
+            .unwrap();
+
+        let sqrt_result = graph.sqrt(input);
+        assert!(sqrt_result.is_err());
+        assert!(sqrt_result.unwrap_err().contains("negative values"));
+    }
+
+    #[test]
+    fn test_abs_operation() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![-3.0, -1.0, 0.0, 2.0, -5.0], &[5], true)
+            .unwrap();
+
+        let abs_result = graph.abs(input).unwrap();
+        let result_data = graph.get_data(abs_result);
+
+        let expected = Tensor::from_vec(vec![3.0, 1.0, 0.0, 2.0, 5.0], &[5]).unwrap();
+        assert_eq!(result_data, expected);
+    }
+
+    #[test]
+    fn test_min_max_gradients() {
+        let mut graph = Engine::new();
+
+        let a = graph
+            .tensor_from_vec(vec![1.0, 5.0], &[2], true)
+            .unwrap();
+        let b = graph
+            .tensor_from_vec(vec![3.0, 2.0], &[2], true)
+            .unwrap();
+
+        // Test min gradients
+        let min_result = graph.min(a, b).unwrap();
+        let loss = graph.sum(min_result, None).unwrap();
+
+        graph.backward(loss).unwrap();
+
+        let a_grad = graph.get_gradient(a).unwrap();
+        let b_grad = graph.get_gradient(b).unwrap();
+
+        // For min: a gets gradient where a <= b, b gets gradient where a > b
+        // a = [1.0, 5.0], b = [3.0, 2.0]
+        // min = [1.0, 2.0]
+        // a_grad should be [1.0, 0.0] (a[0] <= b[0], a[1] > b[1])
+        // b_grad should be [0.0, 1.0]
+        assert_eq!(a_grad, Tensor::from_vec(vec![1.0, 0.0], &[2]).unwrap());
+        assert_eq!(b_grad, Tensor::from_vec(vec![0.0, 1.0], &[2]).unwrap());
+    }
+
+    #[test]
+    fn test_clamp_gradients() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![-1.0, 0.5, 2.0], &[3], true)
+            .unwrap();
+
+        let clamped = graph.clamp(input, 0.0, 1.0).unwrap();
+        let loss = graph.sum(clamped, None).unwrap();
+
+        graph.backward(loss).unwrap();
+
+        let input_grad = graph.get_gradient(input).unwrap();
+
+        // Gradient should be 0 where clamped, 1 where not clamped
+        // input = [-1.0, 0.5, 2.0], clamped to [0.0, 1.0]
+        // clamped = [0.0, 0.5, 1.0]
+        // gradient should be [0.0, 1.0, 0.0] (only middle value is within bounds)
+        assert_eq!(input_grad, Tensor::from_vec(vec![0.0, 1.0, 0.0], &[3]).unwrap());
+    }
+
+    #[test]
+    fn test_sqrt_gradients() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![1.0, 4.0, 9.0], &[3], true)
+            .unwrap();
+
+        let sqrt_result = graph.sqrt(input).unwrap();
+        let loss = graph.sum(sqrt_result, None).unwrap();
+
+        graph.backward(loss).unwrap();
+
+        let input_grad = graph.get_gradient(input).unwrap();
+
+        // Gradient of sqrt(x) is 1/(2*sqrt(x))
+        // For x = [1.0, 4.0, 9.0], sqrt(x) = [1.0, 2.0, 3.0]
+        // Gradient = [1/(2*1), 1/(2*2), 1/(2*3)] = [0.5, 0.25, 1/6]
+        assert!(approx_equal(input_grad[0], 0.5, 1e-6));
+        assert!(approx_equal(input_grad[1], 0.25, 1e-6));
+        assert!(approx_equal(input_grad[2], 1.0/6.0, 1e-6));
+    }
+
+    #[test]
+    fn test_abs_gradients() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![-2.0, 3.0, 0.0], &[3], true)
+            .unwrap();
+
+        let abs_result = graph.abs(input).unwrap();
+        let loss = graph.sum(abs_result, None).unwrap();
+
+        graph.backward(loss).unwrap();
+
+        let input_grad = graph.get_gradient(input).unwrap();
+
+        // Gradient of abs(x): -1 for x < 0, 1 for x > 0, 0 for x = 0
+        // For x = [-2.0, 3.0, 0.0]
+        // Gradient = [-1.0, 1.0, 0.0]
+        assert_eq!(input_grad, Tensor::from_vec(vec![-1.0, 1.0, 0.0], &[3]).unwrap());
+    }
+
+    #[test]
+    fn test_clamp_probabilities_convenience() {
+        let mut graph = Engine::new();
+
+        let probs = graph
+            .tensor_from_vec(vec![0.0, 0.5, 1.0], &[3], true)
+            .unwrap();
+
+        let safe_probs = graph.clamp_probabilities(probs, 1e-8).unwrap();
+        let result_data = graph.get_data(safe_probs);
+
+        // Should clamp 0.0 to 1e-8 and 1.0 to 1.0-1e-8
+        assert!(approx_equal(result_data[0], 1e-8, 1e-10));
+        assert!(approx_equal(result_data[1], 0.5, 1e-6));
+        assert!(approx_equal(result_data[2], 1.0 - 1e-8, 1e-10));
+    }
+
+    #[test]
+    fn test_l2_norm_convenience() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![3.0, 4.0], &[2], true)
+            .unwrap();
+
+        let norm = graph.l2_norm(input).unwrap();
+        let result_data = graph.get_data(norm);
+
+        // L2 norm of [3, 4] should be sqrt(3^2 + 4^2) = sqrt(25) = 5
+        assert!(approx_equal(result_data[0], 5.0, 1e-6));
+    }
+
+    #[test]
+    fn test_l1_norm_convenience() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![-3.0, 4.0, -1.0], &[3], true)
+            .unwrap();
+
+        let norm = graph.l1_norm(input).unwrap();
+        let result_data = graph.get_data(norm);
+
+        // L1 norm of [-3, 4, -1] should be |−3| + |4| + |−1| = 3 + 4 + 1 = 8
+        assert!(approx_equal(result_data[0], 8.0, 1e-6));
+    }
+
+    #[test]
+    fn test_shape_mismatch_errors() {
+        let mut graph = Engine::new();
+
+        let a = graph
+            .tensor_from_vec(vec![1.0, 2.0], &[2], true)
+            .unwrap();
+        let b = graph
+            .tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true)
+            .unwrap();
+
+        // Min and Max should fail with shape mismatch
+        assert!(graph.min(a, b).is_err());
+        assert!(graph.max(a, b).is_err());
+    }
+
+    #[test]
+    fn test_clamp_invalid_bounds() {
+        // This should panic due to min_val > max_val in ClampOp::new
+        let result = std::panic::catch_unwind(|| {
+            let mut graph = Engine::new();
+            let input = graph
+                .tensor_from_vec(vec![1.0, 2.0], &[2], true)
+                .unwrap();
+            graph.clamp(input, 1.0, 0.5)
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_numerical_stability_operations() {
+        let mut graph = Engine::new();
+
+        // Test operations with very small numbers
+        let small_input = graph
+            .tensor_from_vec(vec![1e-10, 1e-8, 1e-6], &[3], true)
+            .unwrap();
+
+        let sqrt_small = graph.sqrt(small_input).unwrap();
+        let result_data = graph.get_data(sqrt_small);
+
+        // Should handle very small numbers correctly
+        assert!(result_data[0] > 0.0);
+        assert!(result_data[1] > 0.0);
+        assert!(result_data[2] > 0.0);
+
+        // Test that sqrt of small numbers is larger than the original
+        assert!(result_data[0] > 1e-10);
+        assert!(result_data[1] > 1e-8);
+        assert!(result_data[2] > 1e-6);
+    }
+
+    #[test]
+    fn test_complex_operation_chain() {
+        let mut graph = Engine::new();
+
+        // Create a complex chain: clamp -> abs -> sqrt -> max with constant
+        let input = graph
+            .tensor_from_vec(vec![-2.0, 0.5, 3.0], &[3], true)
+            .unwrap();
+
+        let clamped = graph.clamp(input, -1.0, 2.0).unwrap();  // [-1.0, 0.5, 2.0]
+        let abs_vals = graph.abs(clamped).unwrap();            // [1.0, 0.5, 2.0]
+        let sqrt_vals = graph.sqrt(abs_vals).unwrap();         // [1.0, ~0.707, ~1.414]
+        
+        let constant = graph
+            .tensor_from_vec(vec![1.0, 1.0, 1.0], &[3], false)
+            .unwrap();
+        let max_vals = graph.max(sqrt_vals, constant).unwrap(); // [1.0, 1.0, ~1.414]
+
+        let result_data = graph.get_data(max_vals);
+        
+        assert!(approx_equal(result_data[0], 1.0, 1e-6));
+        assert!(approx_equal(result_data[1], 1.0, 1e-6));  // max(sqrt(0.5), 1.0) = 1.0
+        assert!(result_data[2] > 1.0);  // sqrt(2) > 1
+    }
+
+    #[test]
+    fn test_edge_cases_sqrt_zero() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![0.0], &[1], true)
+            .unwrap();
+
+        let sqrt_result = graph.sqrt(input).unwrap();
+        let loss = graph.sum(sqrt_result, None).unwrap();
+
+        // This should not panic and should handle gradient at zero correctly
+        graph.backward(loss).unwrap();
+
+        let input_grad = graph.get_gradient(input).unwrap();
+        
+        // Gradient at zero should be 0 (by convention to avoid infinity)
+        assert_eq!(input_grad[0], 0.0);
+    }
+
+    #[test]
+    fn test_edge_cases_abs_zero() {
+        let mut graph = Engine::new();
+
+        let input = graph
+            .tensor_from_vec(vec![0.0], &[1], true)
+            .unwrap();
+
+        let abs_result = graph.abs(input).unwrap();
+        let loss = graph.sum(abs_result, None).unwrap();
+
+        graph.backward(loss).unwrap();
+
+        let input_grad = graph.get_gradient(input).unwrap();
+        
+        // Gradient of abs at zero should be 0 (by convention)
+        assert_eq!(input_grad[0], 0.0);
     }
 }

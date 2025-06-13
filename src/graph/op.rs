@@ -772,3 +772,379 @@ where
         1
     }
 }
+
+// Raúl Moldes Castillo: added on Jun-13-2025
+// ------------------ ADDITIONAL OPERATORS ------------------ //
+
+/// Minimum operation between two tensors (element-wise).
+///
+/// Computes the element-wise minimum between two tensors of the same shape.
+/// This is essential for implementing clamping operations and numerical stability
+/// in loss functions.
+///
+/// # Mathematical Definition
+///
+/// ```text
+/// min(a, b) = a if a <= b else b
+/// ```
+#[derive(Debug, Clone)]
+pub struct MinOp;
+
+impl<T> Operator<T> for MinOp
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 2 {
+            return Err("MinOp requires exactly 2 inputs".to_string());
+        }
+        
+        if inputs[0].shape() != inputs[1].shape() {
+            return Err(format!(
+                "Shape mismatch in MinOp: {:?} vs {:?}",
+                inputs[0].shape(),
+                inputs[1].shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(inputs[0].data())
+            .and(inputs[1].data())
+            .map_collect(|&a, &b| if a <= b { a } else { b });
+
+        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // Gradient of min(a, b):
+        // ∂min(a,b)/∂a = 1 if a <= b else 0
+        // ∂min(a,b)/∂b = 0 if a <= b else 1
+        // When a == b, we assign gradient to the first input (arbitrary choice)
+
+        let zero = <T as Numeric>::zero();
+
+
+        let grad_a = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(inputs[1].data())
+                .and(grad_output.data())
+                .map_collect(|&a, &b, &grad| if a <= b {grad} else { zero }),
+            inputs[0].device().clone(),
+        );
+
+        let grad_b = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(inputs[1].data())
+                .and(grad_output.data())
+                .map_collect(|&a, &b, &grad| if a > b { grad } else { zero }),
+            inputs[1].device().clone(),
+        );
+
+        Ok(vec![grad_a, grad_b])
+    }
+
+    fn num_inputs(&self) -> usize {
+        2
+    }
+}
+
+/// Maximum operation between two tensors (element-wise).
+///
+/// Computes the element-wise maximum between two tensors of the same shape.
+/// This is essential for implementing clamping operations and ReLU-like functions.
+///
+/// # Mathematical Definition
+///
+/// ```text
+/// max(a, b) = a if a >= b else b
+/// ```
+#[derive(Debug, Clone)]
+pub struct MaxOp;
+
+impl<T> Operator<T> for MaxOp
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 2 {
+            return Err("MaxOp requires exactly 2 inputs".to_string());
+        }
+        
+        if inputs[0].shape() != inputs[1].shape() {
+            return Err(format!(
+                "Shape mismatch in MaxOp: {:?} vs {:?}",
+                inputs[0].shape(),
+                inputs[1].shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(inputs[0].data())
+            .and(inputs[1].data())
+            .map_collect(|&a, &b| if a >= b { a } else { b });
+
+        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // Gradient of max(a, b):
+        // ∂max(a,b)/∂a = 1 if a >= b else 0
+        // ∂max(a,b)/∂b = 0 if a >= b else 1
+        // When a == b, we assign gradient to the first input (arbitrary choice)
+
+        let zero = <T as Numeric>::zero();
+
+        let grad_a = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(inputs[1].data())
+                .and(grad_output.data())
+                .map_collect(|&a, &b, &grad| if a >= b { grad } else { zero }),
+            inputs[0].device().clone(),
+        );
+
+        let grad_b = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(inputs[1].data())
+                .and(grad_output.data())
+                .map_collect(|&a, &b, &grad| if a < b { grad } else { zero }),
+            inputs[1].device().clone(),
+        );
+
+        Ok(vec![grad_a, grad_b])
+    }
+
+    fn num_inputs(&self) -> usize {
+        2
+    }
+}
+
+/// Clamp operation that constrains values to a specified range.
+///
+/// Clamps all elements in the input tensor to the range [min_val, max_val].
+/// This is crucial for numerical stability in loss functions, especially
+/// when computing logarithms to avoid log(0) or log(negative).
+///
+/// # Mathematical Definition
+///
+/// ```text
+/// clamp(x, min_val, max_val) = min(max(x, min_val), max_val)
+/// ```
+#[derive(Debug, Clone)]
+pub struct ClampOp<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    min_val: T,
+    max_val: T,
+}
+
+impl<T> ClampOp<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    pub fn new(min_val: T, max_val: T) -> Self {
+        if min_val > max_val {
+            panic!("ClampOp: min_val ({:?}) cannot be greater than max_val ({:?})", min_val, max_val);
+        }
+        Self { min_val, max_val }
+    }
+}
+
+impl<T> Operator<T> for ClampOp<T>
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("ClampOp requires exactly 1 input".to_string());
+        }
+
+        let result_data = inputs[0].data().mapv(|x| {
+            if x < self.min_val {
+                self.min_val
+            } else if x > self.max_val {
+                self.max_val
+            } else {
+                x
+            }
+        });
+
+        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // Gradient of clamp(x, min_val, max_val):
+        // ∂clamp(x)/∂x = 1 if min_val <= x <= max_val else 0
+        
+        let zero = <T as Numeric>::zero();
+
+        let grad = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(grad_output.data())
+                .map_collect(|&x, &grad| {
+                    if x >= self.min_val && x <= self.max_val {
+                        grad
+                    } else {
+                        zero
+                    }
+                }),
+            inputs[0].device().clone(),
+        );
+
+        Ok(vec![grad])
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
+
+/// Square root operation.
+///
+/// Computes the element-wise square root of the input tensor.
+/// This is essential for many mathematical operations including
+/// computing norms, standard deviations, and certain activation functions.
+///
+/// # Mathematical Definition
+///
+/// ```text
+/// sqrt(x) = √x
+/// ```
+///
+/// # Important Notes
+///
+/// - Input values must be non-negative for real square roots
+/// - The gradient is undefined at x = 0 (returns 0 by convention)
+/// - For numerical stability, very small positive values near 0 should be handled carefully
+#[derive(Debug, Clone)]
+pub struct SqrtOp;
+
+impl<T> Operator<T> for SqrtOp
+where
+    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("SqrtOp requires exactly 1 input".to_string());
+        }
+
+        // Check for negative values which would result in NaN
+        let has_negative = inputs[0].data().iter().any(|&x| x < <T as Numeric>::zero());
+        if has_negative {
+            return Err("SqrtOp: Cannot compute square root of negative values".to_string());
+        }
+
+        let result_data = inputs[0].data().mapv(|x| x.sqrt());
+
+        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
+        // Special case: at x = 0, we return 0 instead of infinity
+        
+        let zero = <T as Numeric>::zero();
+        let two = <T as Numeric>::from_f64(2.0).unwrap();
+
+        let grad = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(grad_output.data())
+                .map_collect(|&x, &grad_out| {
+                    if x == zero {
+                        zero // Avoid division by zero
+                    } else {
+                        let sqrt_x = x.sqrt();
+                        grad_out / (two * sqrt_x)
+                    }
+                }),
+            inputs[0].device().clone(),
+        );
+
+        Ok(vec![grad])
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
+
+/// Absolute value operation.
+///
+/// Computes the element-wise absolute value of the input tensor.
+/// This is useful for implementing various loss functions and
+/// mathematical operations that require non-negative values.
+///
+/// # Mathematical Definition
+///
+/// ```text
+/// abs(x) = |x| = x if x >= 0 else -x
+/// ```
+///
+/// # Gradient Notes
+///
+/// The gradient is undefined at x = 0. By convention, we return 0 at this point.
+#[derive(Debug, Clone)]
+pub struct AbsOp;
+
+impl<T> Operator<T> for AbsOp
+where
+    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("AbsOp requires exactly 1 input".to_string());
+        }
+
+        let result_data = inputs[0].data().mapv(|x| x.abs());
+
+        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // Gradient of abs(x):
+        // ∂abs(x)/∂x = 1 if x > 0, -1 if x < 0, 0 if x = 0 (by convention)
+        
+        let zero = <T as Numeric>::zero();
+        let one = <T as Numeric>::one();
+        let neg_one = -one;
+
+        let grad = Tensor::new_with_device(
+            ndarray::Zip::from(inputs[0].data())
+                .and(grad_output.data())
+                .map_collect(|&x, &grad_out| {
+                    if x > zero {
+                        grad_out
+                    } else if x < zero {
+                        grad_out * neg_one
+                    } else {
+                        zero // x == 0, gradient undefined, use 0 by convention
+                    }
+                }),
+            inputs[0].device().clone(),
+        );
+
+        Ok(vec![grad])
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
