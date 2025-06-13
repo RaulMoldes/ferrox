@@ -413,4 +413,185 @@ where
 }
 
 
-// TODO: Add Softmax activation function.
+
+/// Softmax activation function.
+///
+/// Applies the softmax function along a specified dimension. Softmax is commonly used
+/// as the final activation function in multi-class classification problems as it
+/// converts logits to a probability distribution where all values sum to 1.
+///
+/// # Mathematical Definition
+///
+/// For a vector x and dimension d:
+/// ```text
+/// softmax(x_i) = exp(x_i - max(x)) / Σⱼ exp(x_j - max(x))
+/// ```
+///
+/// The subtraction of max(x) is for numerical stability to prevent overflow.
+/// This is known as the "stable softmax" implementation.
+///
+/// # Properties
+///
+/// - All outputs are in the range (0, 1)
+/// - The sum of all outputs along the specified dimension equals 1
+/// - The function is differentiable everywhere
+/// - Preserves the relative ordering of inputs (monotonic)
+///
+/// # Usage
+///
+/// Typically used as the final layer in classification networks:
+/// ```text
+/// logits -> Softmax -> probabilities
+/// ```
+///
+/// # Numerical Stability
+///
+/// This implementation uses the numerically stable version that subtracts
+/// the maximum value before exponentiation to prevent overflow with large inputs.
+#[derive(Debug, Clone)]
+// Add this to src/nn/activations.rs
+
+/// Softmax activation function.
+///
+/// Applies the softmax function along a specified dimension. Softmax is commonly used
+/// as the final activation function in multi-class classification problems as it
+/// converts logits to a probability distribution where all values sum to 1.
+///
+/// # Mathematical Definition
+///
+/// For a vector x and dimension d:
+/// ```text
+/// softmax(x_i) = exp(x_i - max(x)) / Σⱼ exp(x_j - max(x))
+/// ```
+///
+/// The subtraction of max(x) is for numerical stability to prevent overflow.
+/// This is known as the "stable softmax" implementation.
+///
+/// # Properties
+///
+/// - All outputs are in the range (0, 1)
+/// - The sum of all outputs along the specified dimension equals 1
+/// - The function is differentiable everywhere
+/// - Preserves the relative ordering of inputs (monotonic)
+///
+/// # Usage
+///
+/// Typically used as the final layer in classification networks:
+/// ```text
+/// logits -> Softmax -> probabilities
+/// ```
+///
+/// # Numerical Stability
+///
+/// This implementation uses the numerically stable version that subtracts
+/// the maximum value before exponentiation to prevent overflow with large inputs.
+pub struct Softmax {
+    /// Dimension along which to apply softmax
+    /// For typical use cases:
+    /// - 1 for shape [batch_size, num_classes] (most common)
+    /// - -1 for last dimension (equivalent to 1 in the above case)
+    dim: i32,
+    training: bool,
+}
+
+impl Softmax {
+    /// Creates a new Softmax activation layer.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `dim` - Dimension along which to apply softmax (default: 1 for [batch, classes])
+    pub fn new(dim: i32) -> Self {
+        Self { 
+            dim,
+            training: true 
+        }
+    }
+    
+    /// Creates a new Softmax with default dimension 1.
+    /// This is the most common case for classification where input is [batch_size, num_classes].
+    pub fn default_dim() -> Self {
+        Self::new(1)
+    }
+    
+    /// Returns the dimension along which softmax is applied.
+    pub fn dim(&self) -> i32 {
+        self.dim
+    }
+    
+    /// Sets the dimension along which softmax is applied.
+    pub fn set_dim(&mut self, dim: i32) {
+        self.dim = dim;
+    }
+}
+
+impl Default for Softmax {
+    fn default() -> Self {
+        Self::default_dim()
+    }
+}
+
+impl<T> Module<T> for Softmax
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive,
+{
+    fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
+        // Get input shape to validate dimension
+        let input_shape = graph.get_shape(input);
+        let ndim = input_shape.len() as i32;
+        
+        // Convert negative dimension to positive
+        let dim = if self.dim < 0 {
+            (ndim + self.dim) as usize
+        } else {
+            self.dim as usize
+        };
+        
+        // Validate dimension is within bounds
+        if dim >= input_shape.len() {
+            return Err(format!(
+                "Softmax dimension {} is out of bounds for tensor with {} dimensions",
+                self.dim, input_shape.len()
+            ));
+        }
+        
+        // Step 1: Subtract max for numerical stability
+        // Find maximum along the specified dimension
+        let max_vals = graph.max_along_dim(input, dim)?;
+        
+        // Expand max_vals to match input shape for broadcasting
+        let expanded_max = graph.expand_dims_at(max_vals, dim)?;
+        let broadcasted_max = graph.broadcast_to(expanded_max, input_shape.clone())?;
+        
+        // Subtract max from input: x - max(x)
+        let neg_max = graph.negate(broadcasted_max)?;
+        let shifted_input = graph.add(input, neg_max)?;
+        
+        // Step 2: Compute exponentials
+        let exp_vals = graph.exp(shifted_input)?;
+        
+        // Step 3: Sum exponentials along the specified dimension
+        let sum_exp = graph.sum_along_dim(exp_vals, dim)?;
+        
+        // Step 4: Expand sum to match input shape for broadcasting
+        let expanded_sum = graph.expand_dims_at(sum_exp, dim)?;
+        let broadcasted_sum = graph.broadcast_to(expanded_sum, input_shape)?;
+        
+        // Step 5: Divide exponentials by their sum
+        let softmax_output = graph.div(exp_vals, broadcasted_sum)?;
+        
+        Ok(softmax_output)
+    }
+
+    fn training(&self) -> bool {
+        self.training
+    }
+
+    fn set_training(&mut self, training: bool) {
+        self.training = training;
+    }
+}

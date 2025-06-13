@@ -173,6 +173,296 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // SOFTMAX LAYER TESTS
+    // ============================================================================
+
+
+
+#[test]
+fn test_softmax_basic_functionality() {
+    let mut graph = Engine::new();
+    let softmax = Softmax::new(1);
+
+    // Test with simple 2D input [batch_size=2, num_classes=3]
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], true)
+        .unwrap();
+
+    let output = softmax.forward(&mut graph, input).unwrap();
+    let result_data = graph.get_data(output);
+
+    // Check output shape
+    assert_eq!(graph.get_shape(output), vec![2, 3]);
+
+    // Check that each row sums to approximately 1
+    let row1_sum = result_data[0] + result_data[1] + result_data[2];
+    let row2_sum = result_data[3] + result_data[4] + result_data[5];
+
+    assert!(approx_equal(row1_sum, 1.0, 1e-6));
+    assert!(approx_equal(row2_sum, 1.0, 1e-6));
+
+    // Check that all values are positive
+    for &val in result_data.iter() {
+        assert!(val > 0.0, "Softmax output should be positive, got {}", val);
+        assert!(val < 1.0, "Softmax output should be less than 1, got {}", val);
+    }
+}
+
+#[test]
+fn test_softmax_numerical_stability() {
+    let mut graph = Engine::new();
+    let softmax = Softmax::new(1);
+
+    // Test with very large values that could cause overflow without stability measures
+    let input = graph
+        .tensor_from_vec(vec![1000.0, 1001.0, 1002.0], &[1, 3], true)
+        .unwrap();
+
+    let output = softmax.forward(&mut graph, input).unwrap();
+    let result_data = graph.get_data(output);
+
+    // Should not produce NaN or infinity
+    for &val in result_data.iter() {
+        assert!((val as f64).is_finite(), "Softmax with large inputs produced non-finite value: {}", val);
+        assert!(val > 0.0, "Softmax output should be positive");
+    }
+
+    // Should still sum to 1
+    let sum: f64 = result_data.iter().sum();
+    assert!(approx_equal(sum, 1.0, 1e-6));
+}
+
+#[test]
+fn test_softmax_gradient_computation() {
+    let mut graph = Engine::new();
+    let softmax = Softmax::new(1);
+
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0], &[1, 3], true)
+        .unwrap();
+
+    let output = softmax.forward(&mut graph, input).unwrap();
+    let loss = graph.sum(output, None).unwrap();
+
+    // Backward pass should work without errors
+    let backward_result = graph.backward(loss);
+    assert!(backward_result.is_ok());
+
+    // Input should have gradients
+    let input_grad = graph.get_gradient(input);
+    assert!(input_grad.is_some());
+
+    let grad = input_grad.unwrap();
+    assert_eq!(grad.shape(), &[1, 3]);
+
+    // Gradients should be finite
+    for &val in grad.iter() {
+        assert!((val as f64).is_finite(), "Gradient should be finite, got {}", val);
+    }
+}
+
+#[test]
+fn test_softmax_different_dimensions() {
+    let mut graph = Engine::new();
+
+    // Test softmax along different dimensions
+    let input = graph
+        .tensor_from_vec((1..25).map(|x| x as f64).collect(), &[2, 3, 4], true)
+        .unwrap();
+
+    // Test dim=0 (along batch dimension)
+    let softmax_dim0 = Softmax::new(0);
+    let output_dim0 = softmax_dim0.forward(&mut graph, input).unwrap();
+    assert_eq!(graph.get_shape(output_dim0), vec![2, 3, 4]);
+
+    // Test dim=1 (along middle dimension)
+    let softmax_dim1 = Softmax::new(1);
+    let output_dim1 = softmax_dim1.forward(&mut graph, input).unwrap();
+    assert_eq!(graph.get_shape(output_dim1), vec![2, 3, 4]);
+
+    // Test dim=2 (along last dimension)
+    let softmax_dim2 = Softmax::new(2);
+    let output_dim2 = softmax_dim2.forward(&mut graph, input).unwrap();
+    assert_eq!(graph.get_shape(output_dim2), vec![2, 3, 4]);
+
+    // Test negative dimension indexing
+    let softmax_neg1 = Softmax::new(-1);
+    let output_neg1 = softmax_neg1.forward(&mut graph, input).unwrap();
+    assert_eq!(graph.get_shape(output_neg1), vec![2, 3, 4]);
+}
+
+#[test]
+fn test_softmax_classification_scenario() {
+    let mut graph = Engine::new();
+
+    // Typical classification scenario: [batch_size, num_classes]
+    let batch_size = 4;
+    let num_classes = 10;
+    
+    let softmax = Softmax::new(1); // Apply along class dimension
+    
+    // Simulate logits from a classifier
+    let logits = graph
+        .tensor_from_vec((0..batch_size * num_classes).map(|x| x as f64 * 0.1).collect(), 
+                        &[batch_size, num_classes], true)
+        .unwrap();
+
+    let probabilities = softmax.forward(&mut graph, logits).unwrap();
+    let prob_data = graph.get_data(probabilities);
+
+    // Check shape
+    assert_eq!(graph.get_shape(probabilities), vec![batch_size, num_classes]);
+
+    // Check that each sample's probabilities sum to 1
+    for batch_idx in 0..batch_size {
+        let start_idx = batch_idx * num_classes;
+        let sample_sum: f64 = (0..num_classes)
+            .map(|class_idx| prob_data[start_idx + class_idx])
+            .sum();
+        
+        assert!(
+            approx_equal(sample_sum, 1.0, 1e-6),
+            "Sample {} probabilities sum to {}, expected 1.0",
+            batch_idx, sample_sum
+        );
+    }
+
+    // All probabilities should be in valid range
+    for &prob in prob_data.iter() {
+        assert!(prob > 0.0 && prob < 1.0, "Invalid probability: {}", prob);
+    }
+}
+
+#[test]
+fn test_softmax_with_cross_entropy_loss() {
+    let mut graph = Engine::new();
+
+    // Simulate a typical classification pipeline
+    let batch_size = 2;
+    let num_classes = 3;
+    
+    // Create logits
+    let logits = graph
+        .tensor_from_vec(vec![2.0, 1.0, 0.1, 0.5, 3.0, 1.5], &[batch_size, num_classes], true)
+        .unwrap();
+
+    // Apply softmax
+    let softmax = Softmax::new(1);
+    let probabilities = softmax.forward(&mut graph, logits).unwrap();
+
+    // Create one-hot targets
+    let targets = graph
+        .tensor_from_vec(vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0], &[batch_size, num_classes], false)
+        .unwrap();
+
+    // Compute cross-entropy loss manually (since we have log in graph operations)
+    let log_probs = graph.log(probabilities).unwrap();
+    let loss_per_sample = graph.mul(targets, log_probs).unwrap();
+    let neg_loss_per_sample = graph.negate(loss_per_sample).unwrap();
+    let loss = graph.sum(neg_loss_per_sample, None).unwrap();
+
+    // Backward pass
+    let backward_result = graph.backward(loss);
+    assert!(backward_result.is_ok());
+
+    // Check that logits have gradients
+    let logits_grad = graph.get_gradient(logits);
+    assert!(logits_grad.is_some());
+}
+
+#[test]
+fn test_softmax_error_cases() {
+    let mut graph = Engine::new();
+
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true)
+        .unwrap();
+
+    // Test invalid dimension
+    let softmax_invalid = Softmax::new(5); // Dimension out of bounds
+    let result = softmax_invalid.forward(&mut graph, input);
+    assert!(result.is_err());
+
+    // Test negative dimension that's still out of bounds
+    let softmax_invalid_neg = Softmax::new(-5);
+    let result_neg = softmax_invalid_neg.forward(&mut graph, input);
+    assert!(result_neg.is_err());
+}
+
+#[test]
+fn test_softmax_invariance_property() {
+    let mut graph = Engine::new();
+    let softmax = Softmax::new(1);
+
+    // Test that softmax(x + c) = softmax(x) for any constant c
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0], &[1, 3], true)
+        .unwrap();
+
+    let shifted_input = graph.add_scalar(input, 100.0).unwrap();
+
+    let output1 = softmax.forward(&mut graph, input).unwrap();
+    let output2 = softmax.forward(&mut graph, shifted_input).unwrap();
+
+    let data1 = graph.get_data(output1);
+    let data2 = graph.get_data(output2);
+
+    // Results should be approximately equal
+    for (i, (&val1, &val2)) in data1.iter().zip(data2.iter()).enumerate() {
+        assert!(
+            approx_equal(val1, val2, 1e-10),
+            "Softmax invariance failed at index {}: {} != {}",
+            i, val1, val2
+        );
+    }
+}
+
+#[test]
+fn test_max_along_dim_operation() {
+    let mut graph = Engine::new();
+
+    // Test the underlying max_along_dim operation
+    let input = graph
+        .tensor_from_vec(vec![3.0, 1.0, 4.0, 1.0, 5.0, 9.0], &[2, 3], true)
+        .unwrap();
+
+    // Find max along dimension 1 (columns)
+    let max_result = graph.max_along_dim(input, 1).unwrap();
+    let max_data = graph.get_data(max_result);
+
+    // Expected: [4.0, 9.0] (max of each row)
+    assert_eq!(graph.get_shape(max_result), vec![2]);
+    assert!(approx_equal(max_data[0], 4.0, 1e-6));
+    assert!(approx_equal(max_data[1], 9.0, 1e-6));
+
+    // Test gradient computation
+    let loss = graph.sum(max_result, None).unwrap();
+    let backward_result = graph.backward(loss);
+    assert!(backward_result.is_ok());
+
+    let input_grad = graph.get_gradient(input);
+    assert!(input_grad.is_some());
+}
+
+#[test]
+fn test_expand_dims_operation() {
+    let mut graph = Engine::new();
+
+    // Test expand_dims_at operation
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true)
+        .unwrap();
+
+    // Expand at dimension 1: [3] -> [3, 1]
+    let expanded = graph.expand_dims_at(input, 1).unwrap();
+    assert_eq!(graph.get_shape(expanded), vec![3, 1]);
+
+    // Expand at dimension 0: [3] -> [1, 3]
+    let expanded_front = graph.expand_dims_at(input, 0).unwrap();
+    assert_eq!(graph.get_shape(expanded_front), vec![1, 3]);
+}
+
 
     // ============================================================================
     // PARAMETER TESTS
@@ -615,10 +905,403 @@ mod tests {
     }
 
     // ============================================================================
-    // LOSS FUNCTION TESTS
-    // ============================================================================
-    // PENDING
+// LOSS FUNCTION TESTS
+// ============================================================================
 
+#[test]
+fn test_mse_loss_basic_functionality() {
+    let mut graph = Engine::new();
+    
+    // Test case 1: Perfect predictions (loss should be 0)
+    let perfect_predictions = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], true)
+        .unwrap();
+    let perfect_targets = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], false)
+        .unwrap();
+    
+    let mse_loss = MSELoss::new();
+    let perfect_loss = mse_loss
+        .compute_loss(&mut graph, perfect_predictions, perfect_targets)
+        .unwrap();
+    
+    let perfect_loss_data = graph.get_data(perfect_loss);
+    assert!(
+        approx_equal(perfect_loss_data[0], 0.0, 1e-6),
+        "Perfect predictions should have zero MSE loss, got {}",
+        perfect_loss_data[0]
+    );
+    
+    // Test case 2: Known loss calculation
+    // predictions = [1.0, 2.0], targets = [3.0, 4.0]
+    // differences = [-2.0, -2.0], squared = [4.0, 4.0]
+    // MSE = mean([4.0, 4.0]) = 4.0
+    let predictions = graph
+        .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
+        .unwrap();
+    let targets = graph
+        .tensor_from_vec(vec![3.0, 4.0], &[1, 2], false)
+        .unwrap();
+    
+    let loss = mse_loss.compute_loss(&mut graph, predictions, targets).unwrap();
+    let loss_data = graph.get_data(loss);
+    
+    assert!(
+        approx_equal(loss_data[0], 4.0, 1e-6),
+        "Expected MSE loss of 4.0, got {}",
+        loss_data[0]
+    );
+    
+    // Test case 3: Different reduction strategies
+    let mse_sum = MSELoss::new_with_reduction(Reduction::Sum);
+    let sum_loss = mse_sum.compute_loss(&mut graph, predictions, targets).unwrap();
+    let sum_loss_data = graph.get_data(sum_loss);
+    
+    // Sum reduction: sum([4.0, 4.0]) = 8.0
+    assert!(
+        approx_equal(sum_loss_data[0], 8.0, 1e-6),
+        "Expected sum MSE loss of 8.0, got {}",
+        sum_loss_data[0]
+    );
+    
+    // Test case 4: Backward pass (gradient computation)
+    let pred_with_grad = graph
+        .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
+        .unwrap();
+    let target_without_grad = graph
+        .tensor_from_vec(vec![3.0, 4.0], &[1, 2], false)
+        .unwrap();
+    
+    let loss_for_grad = mse_loss
+        .compute_loss(&mut graph, pred_with_grad, target_without_grad)
+        .unwrap();
+    
+    graph.backward(loss_for_grad).unwrap();
+    
+    let pred_grad = graph.get_gradient(pred_with_grad).unwrap();
+    // Gradient of MSE: d/dx[(x-y)²] = 2(x-y) / n
+    // For (1-3)² = 4 and (2-4)² = 4: gradients = 2*(-2)/2 = -2.0 each
+    assert!(
+        approx_equal(pred_grad[0], -2.0, 1e-6),
+        "Expected gradient -2.0, got {}",
+        pred_grad[0]
+    );
+    assert!(
+        approx_equal(pred_grad[1], -2.0, 1e-6),
+        "Expected gradient -2.0, got {}",
+        pred_grad[1]
+    );
+}
+
+#[test]
+fn test_bce_loss_functionality() {
+    let mut graph = Engine::new();
+    
+    // Test case 1: Perfect binary predictions
+    // BCE(0.9999, 1) should be very close to 0
+    // BCE(0.0001, 0) should be very close to 0
+    let perfect_probs = graph
+        .tensor_from_vec(vec![0.9999, 0.0001], &[2], true)
+        .unwrap();
+    let binary_targets = graph
+        .tensor_from_vec(vec![1.0, 0.0], &[2], false)
+        .unwrap();
+    
+    let bce_loss = BCELoss::new();
+    let perfect_loss = bce_loss
+        .compute_loss(&mut graph, perfect_probs, binary_targets)
+        .unwrap();
+    
+    let perfect_loss_data = graph.get_data(perfect_loss);
+    assert!(
+        perfect_loss_data[0] < 0.01, // Should be very small
+        "Perfect binary predictions should have very low BCE loss, got {}",
+        perfect_loss_data[0]
+    );
+    
+    // Test case 2: Known calculation with p=0.5, target=1
+    // BCE = -(1 * log(0.5) + 0 * log(0.5)) = -log(0.5) ≈ 0.693
+    let half_prob = graph
+        .tensor_from_vec(vec![0.5], &[1], true)
+        .unwrap();
+    let one_target = graph
+        .tensor_from_vec(vec![1.0], &[1], false)
+        .unwrap();
+    
+    let half_loss = bce_loss.compute_loss(&mut graph, half_prob, one_target).unwrap();
+    let half_loss_data = graph.get_data(half_loss);
+    
+    let expected_loss = -(1.0f64.ln() - 2.0f64.ln()); // -log(0.5) = log(2)
+    assert!(
+        approx_equal(half_loss_data[0], expected_loss, 1e-3),
+        "Expected BCE loss of ~0.693, got {}",
+        half_loss_data[0]
+    );
+    
+    // Test case 3: Batch processing
+    let batch_probs = graph
+        .tensor_from_vec(vec![0.8, 0.6, 0.3, 0.1], &[2, 2], true)
+        .unwrap();
+    let batch_targets = graph
+        .tensor_from_vec(vec![1.0, 1.0, 0.0, 0.0], &[2, 2], false)
+        .unwrap();
+    
+    let batch_loss = bce_loss.compute_loss(&mut graph, batch_probs, batch_targets).unwrap();
+    let batch_loss_data = graph.get_data(batch_loss);
+    
+    // Should compute mean across all elements
+    assert!(
+        batch_loss_data[0] > 0.0,
+        "BCE loss should be positive for imperfect predictions"
+    );
+    
+    // Test case 4: Numerical stability (values close to 0 and 1)
+    let extreme_probs = graph
+        .tensor_from_vec(vec![0.0001, 0.9999], &[2], true)
+        .unwrap();
+    let extreme_targets = graph
+        .tensor_from_vec(vec![0.0, 1.0], &[2], false)
+        .unwrap();
+    
+    let stable_loss = bce_loss.compute_loss(&mut graph, extreme_probs, extreme_targets).unwrap();
+    let stable_loss_data = graph.get_data(stable_loss);
+    
+    // Should not be NaN or infinite
+    assert!(
+        stable_loss_data[0].is_finite(),
+        "BCE loss should be finite even with extreme probabilities"
+    );
+}
+
+#[test]
+fn test_cce_loss_functionality() {
+    let mut graph = Engine::new();
+    
+    // Test case 1: Perfect predictions (one-hot targets)
+    // Probabilities: [1.0, 0.0, 0.0] (after softmax, for class 0)
+    // Targets: [1.0, 0.0, 0.0] (one-hot for class 0)
+    // CCE = -(1*log(1) + 0*log(0) + 0*log(0)) = -0 = 0
+    let perfect_probs = graph
+        .tensor_from_vec(vec![0.9999, 0.00005, 0.00005], &[1, 3], true)
+        .unwrap();
+    let one_hot_targets = graph
+        .tensor_from_vec(vec![1.0, 0.0, 0.0], &[1, 3], false)
+        .unwrap();
+    
+    let cce_loss = CCELoss::new();
+    let perfect_loss = cce_loss
+        .compute_loss(&mut graph, perfect_probs, one_hot_targets)
+        .unwrap();
+    
+    let perfect_loss_data = graph.get_data(perfect_loss);
+    assert!(
+        perfect_loss_data[0] < 0.01, // Should be very small
+        "Perfect categorical predictions should have very low CCE loss, got {}",
+        perfect_loss_data[0]
+    );
+    
+    // Test case 2: Uniform predictions (maximum uncertainty)
+    // For 3 classes: p = [1/3, 1/3, 1/3], target = [1, 0, 0]
+    // CCE = -(1*log(1/3)) = log(3) ≈ 1.099
+    let uniform_probs = graph
+        .tensor_from_vec(vec![1.0/3.0, 1.0/3.0, 1.0/3.0], &[1, 3], true)
+        .unwrap();
+    let class_0_target = graph
+        .tensor_from_vec(vec![1.0, 0.0, 0.0], &[1, 3], false)
+        .unwrap();
+    
+    let uniform_loss = cce_loss.compute_loss(&mut graph, uniform_probs, class_0_target).unwrap();
+    let uniform_loss_data = graph.get_data(uniform_loss);
+    
+    let expected_uniform_loss = 3.0f64.ln(); // log(3)
+    assert!(
+        approx_equal(uniform_loss_data[0], expected_uniform_loss, 1e-3),
+        "Expected CCE loss of ~1.099 for uniform predictions, got {}",
+        uniform_loss_data[0]
+    );
+    
+    // Test case 3: Multi-class batch processing
+    // Batch size = 2, 4 classes
+    let batch_probs = graph
+        .tensor_from_vec(vec![
+            0.7, 0.2, 0.05, 0.05,  // Sample 1: confident about class 0
+            0.1, 0.1, 0.1, 0.7,    // Sample 2: confident about class 3
+        ], &[2, 4], true)
+        .unwrap();
+    let batch_targets = graph
+        .tensor_from_vec(vec![
+            1.0, 0.0, 0.0, 0.0,    // Sample 1: true class 0
+            0.0, 0.0, 0.0, 1.0,    // Sample 2: true class 3
+        ], &[2, 4], false)
+        .unwrap();
+    
+    let batch_loss = cce_loss.compute_loss(&mut graph, batch_probs, batch_targets).unwrap();
+    let batch_loss_data = graph.get_data(batch_loss);
+    
+    // Should be relatively low since predictions match targets
+    assert!(
+        batch_loss_data[0] > 0.0 && batch_loss_data[0] < 1.0,
+        "CCE loss for good predictions should be moderate, got {}",
+        batch_loss_data[0]
+    );
+    
+    // Test case 4: Sum reduction
+    let cce_sum = CCELoss::new_with_reduction(Reduction::Sum);
+    let sum_loss = cce_sum.compute_loss(&mut graph, batch_probs, batch_targets).unwrap();
+    let sum_loss_data = graph.get_data(sum_loss);
+    
+    // Sum should be approximately mean * batch_size
+    assert!(
+        sum_loss_data[0] > batch_loss_data[0],
+        "Sum reduction should give larger loss than mean reduction"
+    );
+}
+
+#[test]
+fn test_bce_with_logits_loss_functionality() {
+    let mut graph = Engine::new();
+    
+    // Test case 1: Zero logits (should give probability ≈ 0.5)
+    // BCE_with_logits(0, 1) should be similar to BCE(0.5, 1) ≈ 0.693
+    let zero_logits = graph
+        .tensor_from_vec(vec![0.0], &[1], true)
+        .unwrap();
+    let one_target = graph
+        .tensor_from_vec(vec![1.0], &[1], false)
+        .unwrap();
+    
+    let bce_logits_loss = BCEWithLogitsLoss::new();
+    let zero_loss = bce_logits_loss
+        .compute_loss(&mut graph, zero_logits, one_target)
+        .unwrap();
+    
+    let zero_loss_data = graph.get_data(zero_loss);
+    let expected_loss = 2.0f64.ln(); // log(2) ≈ 0.693
+    assert!(
+        approx_equal(zero_loss_data[0], expected_loss, 1e-3),
+        "Expected BCE with logits loss ~0.693 for zero logits, got {}",
+        zero_loss_data[0]
+    );
+    
+    // Test case 2: Large positive logits (should be close to 0 for target=1)
+    let large_positive_logits = graph
+        .tensor_from_vec(vec![10.0], &[1], true)
+        .unwrap();
+    let one_target_2 = graph
+        .tensor_from_vec(vec![1.0], &[1], false)
+        .unwrap();
+    
+    let large_pos_loss = bce_logits_loss
+        .compute_loss(&mut graph, large_positive_logits, one_target_2)
+        .unwrap();
+    
+    let large_pos_loss_data = graph.get_data(large_pos_loss);
+    assert!(
+        large_pos_loss_data[0] < 0.1,
+        "Large positive logits with target=1 should have very low loss, got {}",
+        large_pos_loss_data[0]
+    );
+    
+    // Test case 3: Large negative logits (should be close to 0 for target=0)
+    let large_negative_logits = graph
+        .tensor_from_vec(vec![-10.0], &[1], true)
+        .unwrap();
+    let zero_target = graph
+        .tensor_from_vec(vec![0.0], &[1], false)
+        .unwrap();
+    
+    let large_neg_loss = bce_logits_loss
+        .compute_loss(&mut graph, large_negative_logits, zero_target)
+        .unwrap();
+    
+    let large_neg_loss_data = graph.get_data(large_neg_loss);
+    assert!(
+        large_neg_loss_data[0] < 0.1,
+        "Large negative logits with target=0 should have very low loss, got {}",
+        large_neg_loss_data[0]
+    );
+    
+    // Test case 4: Numerical stability comparison
+    // Compare BCE with logits vs manual sigmoid + BCE for extreme values
+    let extreme_logits = graph
+        .tensor_from_vec(vec![100.0, -100.0], &[2], true)
+        .unwrap();
+    let mixed_targets = graph
+        .tensor_from_vec(vec![1.0, 0.0], &[2], false)
+        .unwrap();
+    
+    let stable_loss = bce_logits_loss
+        .compute_loss(&mut graph, extreme_logits, mixed_targets)
+        .unwrap();
+    
+    let stable_loss_data = graph.get_data(stable_loss);
+    
+    // Should be finite and reasonable (close to 0 for correct predictions)
+    assert!(
+        stable_loss_data[0].is_finite(),
+        "BCE with logits should be numerically stable for extreme values"
+    );
+    assert!(
+        stable_loss_data[0] < 1.0,
+        "Loss should be low for correct extreme predictions, got {}",
+        stable_loss_data[0]
+    );
+    
+    // Test case 5: Batch processing with different reduction strategies
+    let batch_logits = graph
+        .tensor_from_vec(vec![2.0, -1.5, 0.5, -3.0], &[2, 2], true)
+        .unwrap();
+    let batch_targets = graph
+        .tensor_from_vec(vec![1.0, 0.0, 1.0, 0.0], &[2, 2], false)
+        .unwrap();
+    
+    // Mean reduction
+    let mean_loss = bce_logits_loss.compute_loss(&mut graph, batch_logits, batch_targets).unwrap();
+    let mean_loss_data = graph.get_data(mean_loss);
+    
+    // Sum reduction
+    let bce_logits_sum = BCEWithLogitsLoss::new_with_reduction(Reduction::Sum);
+    let sum_loss = bce_logits_sum.compute_loss(&mut graph, batch_logits, batch_targets).unwrap();
+    let sum_loss_data = graph.get_data(sum_loss);
+    
+    // Sum should be approximately mean * total_elements
+    assert!(
+        approx_equal(sum_loss_data[0], mean_loss_data[0] * 4.0, 1e-3),
+        "Sum should equal mean * num_elements: sum={}, mean*4={}",
+        sum_loss_data[0], mean_loss_data[0] * 4.0
+    );
+    
+    // Test case 6: Gradient computation (numerical stability check)
+    let logits_for_grad = graph
+        .tensor_from_vec(vec![1.0, -1.0], &[2], true)
+        .unwrap();
+    let targets_for_grad = graph
+        .tensor_from_vec(vec![1.0, 0.0], &[2], false)
+        .unwrap();
+    
+    let loss_for_grad = bce_logits_loss
+        .compute_loss(&mut graph, logits_for_grad, targets_for_grad)
+        .unwrap();
+    
+    graph.backward(loss_for_grad).unwrap();
+    
+    let logits_grad = graph.get_gradient(logits_for_grad).unwrap();
+    
+    // Gradients should be finite and reasonable
+    assert!(
+        logits_grad[0].is_finite() && logits_grad[1].is_finite(),
+        "Gradients should be finite"
+    );
+    
+    // For BCE with logits: gradient = (sigmoid(logit) - target) / batch_size
+    // logit=1.0, target=1.0: grad ≈ (sigmoid(1) - 1) / 2 ≈ (0.731 - 1) / 2 ≈ -0.135
+    // logit=-1.0, target=0.0: grad ≈ (sigmoid(-1) - 0) / 2 ≈ 0.269 / 2 ≈ 0.135
+    assert!(
+        logits_grad[0] < 0.0 && logits_grad[1] > 0.0,
+        "Gradient signs should match expected directions: grad[0]={}, grad[1]={}",
+        logits_grad[0], logits_grad[1]
+    );
+}
     // ============================================================================
     // INTEGRATION TESTS
     // ============================================================================

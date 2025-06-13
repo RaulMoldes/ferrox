@@ -15,7 +15,7 @@ mod tests;
 pub use layers::{Flatten, Identity, Linear, Sequential};
 pub use module::{Module, ModuleList};
 pub use parameter::{Parameter, ToParameter};
-pub use activations::{ReLU, Sigmoid, Tanh, LeakyReLU, ELU};
+pub use activations::{ReLU, Sigmoid, Tanh, LeakyReLU, ELU, Softmax};
 pub use loss::{MSELoss, Loss, Reduction};
 pub use optim::{Optimizer, SGD, Adam};
 pub use initializers::{init_tensor_kaiming_uniform, init_tensor_xavier_uniform, kaiming_uniform, xavier_uniform};

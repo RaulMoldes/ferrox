@@ -1148,3 +1148,278 @@ where
         1
     }
 }
+
+// Maximum reduction operation along a specified dimension.
+///
+/// Computes the maximum values along a specified dimension, reducing that dimension.
+/// This is essential for numerically stable softmax computation.
+///
+/// # Mathematical Definition
+///
+/// For a tensor x and dimension d:
+/// ```text
+/// max_along_dim(x, d) = max(x along dimension d)
+/// ```
+///
+/// # Gradient Computation
+///
+/// The gradient flows only to the elements that achieved the maximum value.
+/// For elements that were not the maximum, the gradient is zero.
+/// When there are ties (multiple elements have the same maximum value),
+/// the gradient is distributed equally among them.
+#[derive(Debug, Clone)]
+pub struct MaxAlongDimOp {
+    /// Dimension along which to compute the maximum
+    dim: usize,
+}
+
+impl MaxAlongDimOp {
+    pub fn new(dim: usize) -> Self {
+        Self { dim }
+    }
+    
+    pub fn dim(&self) -> usize {
+        self.dim
+    }
+}
+
+impl<T> Operator<T> for MaxAlongDimOp
+where
+    T: Numeric
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("MaxAlongDimOp requires exactly 1 input".to_string());
+        }
+        
+        let input = &inputs[0];
+        let input_shape = input.shape();
+        
+        // Validate dimension
+        if self.dim >= input_shape.len() {
+            return Err(format!(
+                "Dimension {} out of bounds for tensor with {} dimensions",
+                self.dim, input_shape.len()
+            ));
+        }
+        
+        // Use ndarray's fold_axis to find maximum along specified axis
+        let result_data = input.data().fold_axis(
+            ndarray::Axis(self.dim),
+            <T as Numeric>::min_value(), // Start with minimum value
+            |&acc, &x| if acc > x { acc } else { x }
+        );
+        
+        Ok(Tensor::new_with_device(result_data, input.device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        if inputs.len() != 1 {
+            return Err("MaxAlongDimOp requires exactly 1 input".to_string());
+        }
+        
+        let input = &inputs[0];
+        let input_shape = input.shape();
+        
+        // First, compute the maximum values again to determine which elements were maximal
+        let max_values = input.data().fold_axis(
+            ndarray::Axis(self.dim),
+            <T as Numeric>::min_value(),
+            |&acc, &x| if acc > x { acc } else { x }
+        );
+        
+        // Expand max_values to match input shape for comparison
+        let expanded_max = max_values.insert_axis(ndarray::Axis(self.dim));
+        let expanded_max_broadcasted = expanded_max.broadcast(input_shape)
+            .ok_or("Failed to broadcast max values")?;
+        
+        // Create mask where input equals max (these get gradients)
+        let zero = <T as Numeric>::zero();
+        let one = <T as Numeric>::one();
+        
+        let mask = ndarray::Zip::from(input.data())
+            .and(&expanded_max_broadcasted)
+            .map_collect(|&inp, &max_val| {
+                if inp == max_val { one } else { zero }
+            });
+        
+        // Count how many elements achieved the maximum along each slice
+        let count_maxima = mask.sum_axis(ndarray::Axis(self.dim));
+        
+        // Expand count to match input shape
+        let expanded_count = count_maxima.insert_axis(ndarray::Axis(self.dim));
+        let expanded_count_broadcasted = expanded_count.broadcast(input_shape)
+            .ok_or("Failed to broadcast count")?;
+        
+        // Expand grad_output to match input shape
+        let expanded_grad = grad_output.data().clone().insert_axis(ndarray::Axis(self.dim));
+        let expanded_grad_broadcasted = expanded_grad.broadcast(input_shape)
+            .ok_or("Failed to broadcast gradient")?;
+        
+        // Gradient is (mask / count) * grad_output
+        // This ensures gradient is distributed equally among tied maxima
+        let input_grad = ndarray::Zip::from(&mask)
+            .and(&expanded_count_broadcasted)
+            .and(&expanded_grad_broadcasted)
+            .map_collect(|&mask_val, &count, &grad| {
+                if count > zero {
+                    mask_val * grad / count
+                } else {
+                    zero
+                }
+            });
+        
+        Ok(vec![Tensor::new_with_device(input_grad, input.device().clone())])
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
+/// Softmax operation along a specified dimension.
+///
+/// Computes the softmax function along the specified dimension with numerical stability.
+/// This operation combines finding the maximum, subtracting it, exponentiating, 
+/// summing, and dividing in a single operation for efficiency and numerical stability.
+///
+/// # Mathematical Definition
+///
+/// ```text
+/// softmax(x_i) = exp(x_i - max(x)) / Σⱼ exp(x_j - max(x))
+/// ```
+///
+/// # Gradient Computation
+///
+/// For softmax, the gradient computation is:
+/// ```text
+/// ∂softmax_i/∂x_j = softmax_i * (δ_ij - softmax_j)
+/// ```
+/// Where δ_ij is the Kronecker delta (1 if i==j, 0 otherwise).
+#[derive(Debug, Clone)]
+pub struct SoftmaxOp {
+    /// Dimension along which to apply softmax
+    dim: usize,
+}
+
+impl SoftmaxOp {
+    pub fn new(dim: usize) -> Self {
+        Self { dim }
+    }
+    
+    pub fn dim(&self) -> usize {
+        self.dim
+    }
+}
+
+impl<T> Operator<T> for SoftmaxOp
+where
+    T: Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + rand_distr::num_traits::FromPrimitive,
+{
+    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("SoftmaxOp requires exactly 1 input".to_string());
+        }
+        
+        let input = &inputs[0];
+        let input_shape = input.shape();
+        
+        // Validate dimension
+        if self.dim >= input_shape.len() {
+            return Err(format!(
+                "Dimension {} out of bounds for tensor with {} dimensions",
+                self.dim, input_shape.len()
+            ));
+        }
+        
+        let axis = ndarray::Axis(self.dim);
+        
+        // Step 1: Find maximum along the specified dimension for numerical stability
+        let max_vals = input.data().fold_axis(
+            axis,
+            <T as Numeric>::min_value(),
+            |&acc, &x| if acc > x { acc } else { x }
+        );
+        
+        // Step 2: Expand max_vals back to original shape for broadcasting
+        let expanded_max = max_vals.insert_axis(axis);
+        let broadcasted_max = expanded_max.broadcast(input_shape)
+            .ok_or("Failed to broadcast max values")?;
+        
+        // Step 3: Subtract max and compute exponentials: exp(x - max)
+        let shifted_and_exp = ndarray::Zip::from(input.data())
+            .and(&broadcasted_max)
+            .map_collect(|&x, &max_val| (x - max_val).exp());
+        
+        // Step 4: Sum exponentials along the dimension
+        let sum_exp = shifted_and_exp.sum_axis(axis);
+        
+        // Step 5: Expand sum back to original shape for broadcasting
+        let expanded_sum = sum_exp.insert_axis(axis);
+        let broadcasted_sum = expanded_sum.broadcast(input_shape)
+            .ok_or("Failed to broadcast sum values")?;
+        
+        // Step 6: Divide by sum to get probabilities
+        let result = ndarray::Zip::from(&shifted_and_exp)
+            .and(&broadcasted_sum)
+            .map_collect(|&exp_val, &sum_val| exp_val / sum_val);
+        
+        Ok(Tensor::new_with_device(result, input.device().clone()))
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        if inputs.len() != 1 {
+            return Err("SoftmaxOp requires exactly 1 input".to_string());
+        }
+        
+        let input = &inputs[0];
+        
+        // Recompute softmax output (we need it for gradient computation)
+        let softmax_output = self.compute(&[input.clone()])?;
+        
+        // For softmax gradient: grad_input = softmax * (grad_output - sum(softmax * grad_output, dim))
+        let axis = ndarray::Axis(self.dim);
+        
+        // Compute element-wise product: softmax * grad_output
+        let elementwise_product = ndarray::Zip::from(softmax_output.data())
+            .and(grad_output.data())
+            .map_collect(|&s, &g| s * g);
+        
+        // Sum along the softmax dimension: sum(softmax * grad_output, dim)
+        let sum_product = elementwise_product.sum_axis(axis);
+        
+        // Expand sum back to original shape for broadcasting
+        let expanded_sum = sum_product.insert_axis(axis);
+        let broadcasted_sum = expanded_sum.broadcast(input.shape())
+            .ok_or("Failed to broadcast sum in gradient computation")?;
+        
+        // Compute final gradient: softmax * (grad_output - broadcasted_sum)
+        let grad_input = ndarray::Zip::from(softmax_output.data())
+            .and(grad_output.data())
+            .and(&broadcasted_sum)
+            .map_collect(|&s, &g, &sum_val| s * (g - sum_val));
+        
+        Ok(vec![Tensor::new_with_device(grad_input, input.device().clone())])
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
