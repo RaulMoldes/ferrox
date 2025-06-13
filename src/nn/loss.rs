@@ -159,13 +159,18 @@ where
         predictions: NodeId,
         targets: NodeId,
     ) -> Result<NodeId, String> {
-        // Compute difference: (predictions - targets)
-        let negated = graph.negate(predictions)?;
-        let diff = graph.add(predictions, negated)?;
 
+        // Shpw inputs 
+        
+        // Compute difference: (predictions - targets)
+        let negated = graph.negate(targets)?;
+        
+        let diff = graph.add(predictions, negated)?;
+       
+        
         // Square the difference: (predictions - targets)²
         let squared_diff = graph.mul(diff, diff)?;
-
+  
         // Apply reduction strategy
         match self.reduction {
             Reduction::None => {
@@ -179,11 +184,11 @@ where
             Reduction::Mean => {
                 // Compute mean of all elements
                 let sum_loss = graph.sum(squared_diff, None)?;
-
+               
                 // Get total number of elements for mean calculation
                 let target_shape = graph.get_shape(targets);
                 let total_elements: usize = target_shape.iter().product();
-
+                
                 // Divide by number of elements to get mean
                 graph.mul_scalar(
                     sum_loss,

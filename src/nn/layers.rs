@@ -62,6 +62,8 @@ where
     pub in_features: usize,
     pub out_features: usize,
     training: bool,
+    weight_node_cache: std::cell::RefCell<Option<NodeId>>,
+    bias_node_cache: std::cell::RefCell<Option<NodeId>>,
 }
 
 impl<T> Linear<T>
@@ -105,6 +107,8 @@ where
             in_features,
             out_features,
             training: true,
+            weight_node_cache: std::cell::RefCell::new(None),
+            bias_node_cache: std::cell::RefCell::new(None),
         }
     }
 
@@ -137,6 +141,8 @@ where
             in_features,
             out_features,
             training: true,
+            weight_node_cache: std::cell::RefCell::new(None),
+            bias_node_cache: std::cell::RefCell::new(None),
         }
     }
 
@@ -166,20 +172,38 @@ where
         + rand_distr::num_traits::FromPrimitive,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
-        // Create weight and bias nodes in the graph
-        let weight_node = Parameter::create_in_graph(graph, self.weight.data.clone());
+         // Get or create weight node (create once, reuse forever)
+         let weight_node = {
+            let mut cache = self.weight_node_cache.borrow_mut();
+            if let Some(node_id) = *cache {
+                node_id
+            } else {
+                let new_node = Parameter::create_in_graph(graph, self.weight.data.clone());
+                *cache = Some(new_node);
+                new_node
+            }
+        };
 
+      
         // Compute: output = input @ weight^T
-        // Transpose the weight node before matmul: (out_features, in_features) -> (in_features, out_features)
         let weight_t = graph.transpose(weight_node, None)?;
         let output = graph.matmul(input, weight_t)?;
 
         // Add bias if present
         if let Some(ref bias_param) = self.bias {
-            let output_shape = graph.get_shape(output);
+            // Get or create bias node (create once, reuse forever)
+            let bias_node = {
+                let mut cache = self.bias_node_cache.borrow_mut();
+                if let Some(node_id) = *cache {
+                    node_id
+                } else {
+                    let new_node = Parameter::create_in_graph(graph, bias_param.data.clone());
+                    *cache = Some(new_node);
+                    new_node
+                }
+            };
 
-            let bias_node = Parameter::create_in_graph(graph, bias_param.data.clone());
-            // In order to add bias, we need to broadcast it to the output shape
+            let output_shape = graph.get_shape(output);
             let broadcasted_bias_node = graph.broadcast_to(bias_node, output_shape)?;
             graph.add(output, broadcasted_bias_node)
         } else {
