@@ -146,6 +146,30 @@ where
         }
     }
 
+    // Get the cached parameter NodeIds (if they exist)
+    /// Critical for this layer to learn and update weights/biases.
+    /// Returns a vector of NodeIds for the weight and bias parameters.
+    pub fn get_cached_parameter_nodes(&self) -> Vec<Option<NodeId>> {
+        let mut nodes = Vec::new();
+        
+        // Get weight node
+        nodes.push(*self.weight_node_cache.borrow());
+        
+        // Get bias node if it exists
+        if self.bias.is_some() {
+            nodes.push(*self.bias_node_cache.borrow());
+        }
+        
+        nodes
+    }
+
+    /// Check if parameters have been initialized (cached)
+    pub fn parameters_initialized(&self) -> bool {
+        let weight_initialized = self.weight_node_cache.borrow().is_some();
+        let bias_initialized = self.bias.is_none() || self.bias_node_cache.borrow().is_some();
+        weight_initialized && bias_initialized
+    }
+
     /// Returns whether this layer has bias.
     pub fn has_bias(&self) -> bool {
         self.bias.is_some()
