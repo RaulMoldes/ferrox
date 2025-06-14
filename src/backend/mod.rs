@@ -1,6 +1,12 @@
 pub mod device;
 pub mod numeric;
 
+
+#[cfg(feature = "cuda")]
+pub use device::cuda;
+#[cfg(feature = "cuda")]
+pub use cuda::CudaBackend;
+
 mod tests;
 
 pub use device::Device;

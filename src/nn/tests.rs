@@ -8,7 +8,7 @@ mod tests {
     use crate::nn::module::*;
     use crate::nn::parameter::Parameter;
     use crate::tensor::Tensor;
-    use crate::nn::normalization::BatchNorm1d;
+    use crate::nn::normalization::{BatchNorm1d, LayerNorm};
 
     /// Helper function to check if two floating point values are approximately equal
     fn approx_equal(a: f64, b: f64, tolerance: f64) -> bool {
@@ -1437,7 +1437,8 @@ fn test_bce_with_logits_loss_functionality() {
         assert_eq!(graph.get_shape(output), vec![1, 2]);
     }
 
-    // ============================================================================
+
+// ============================================================================
 // BATCH NORMALIZATION TESTS
 // ============================================================================
 
@@ -1491,6 +1492,450 @@ fn test_batch_norm_1d_forward_training() {
     // The mean of each feature across the batch should be approximately 0
     // and the std should be approximately 1 (before scaling/shifting)
     println!("BatchNorm output: {:?}", output_data.to_vec());
+}
+
+#[test]
+fn test_batch_norm_1d_training_vs_eval() {
+    let mut graph = Engine::new();
+    let mut bn = BatchNorm1d::<f64>::default_config(2);
+    
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], true)
+        .unwrap();
+    
+    // Forward pass in training mode
+    assert!(bn.training());
+    let _training_output = bn.forward(&mut graph, input).unwrap();
+  
+    
+    // Switch to evaluation mode
+    bn.eval();
+    assert!(!bn.training());
+    
+    // Create new input for eval mode
+    let eval_input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], true)
+        .unwrap();
+    
+    // Forward pass in eval mode should use running statistics
+    // Note: In our current implementation, running stats aren't updated automatically
+    // So this test mainly checks that the code path works
+    let eval_result = bn.forward(&mut graph, eval_input);
+    
+    // Should succeed (even though running stats might not be meaningful)
+    assert!(eval_result.is_ok());
+}
+
+#[test]
+fn test_batch_norm_1d_gradient_flow() {
+    let mut graph = Engine::new();
+    let bn = BatchNorm1d::<f64>::default_config(2);
+    
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], true)
+        .unwrap();
+    
+    let output = bn.forward(&mut graph, input).unwrap();
+    let loss = graph.sum(output, None).unwrap();
+    
+    // Backward pass should work
+    let backward_result = graph.backward(loss);
+    assert!(backward_result.is_ok());
+    
+    // Input should have gradients
+    let input_grad = graph.get_gradient(input);
+    assert!(input_grad.is_some());
+    
+    let grad = input_grad.unwrap();
+    assert_eq!(grad.shape(), &[2, 2]);
+    
+    // Gradients should be finite
+    for &val in grad.iter() {
+        assert!((val as f64).is_finite(), "Gradient should be finite, got {}", val);
+    }
+}
+
+#[test]
+fn test_batch_norm_1d_numerical_stability() {
+    let mut graph = Engine::new();
+    let bn = BatchNorm1d::<f64>::default_config(2);
+    
+    // Test with very large values
+    let large_input = graph
+        .tensor_from_vec(vec![1e6, 2e6, 3e6, 4e6], &[2, 2], true)
+        .unwrap();
+    
+    let output = bn.forward(&mut graph, large_input).unwrap();
+    let output_data = graph.get_data(output);
+    
+    // Output should be finite despite large inputs
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "BatchNorm should handle large inputs, got {}", val);
+        assert!(!val.is_nan(), "Output should not be NaN");
+    }
+}
+
+#[test]
+fn test_batch_norm_1d_error_cases() {
+    let mut graph = Engine::new();
+    let bn = BatchNorm1d::<f64>::default_config(3);
+    
+    // Test with wrong feature size
+    let wrong_features = graph
+        .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
+        .unwrap();
+    
+    let result = bn.forward(&mut graph, wrong_features);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("doesn't match BatchNorm1d feature size"));
+    
+    // Test with 1D input (should fail)
+    let one_d_input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true)
+        .unwrap();
+    
+    let result = bn.forward(&mut graph, one_d_input);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("at least 2 dimensions"));
+}
+
+#[test]
+fn test_batch_norm_1d_parameter_count() {
+    let bn = BatchNorm1d::<f64>::default_config(64);
+    
+    assert_eq!(bn.num_parameters(), 128); // 64 weights + 64 biases
+    
+    let params = bn.parameters();
+    assert_eq!(params.len(), 2);
+    assert_eq!(params[0].size(), 64); // weight
+    assert_eq!(params[1].size(), 64); // bias
+}
+
+#[test]
+fn test_batch_norm_1d_3d_input() {
+    let mut graph = Engine::new();
+    let bn = BatchNorm1d::<f64>::default_config(3);
+    
+    // Test with 3D input: [batch_size, channels, length]
+    // This simulates 1D convolution output
+    let input_3d = graph
+        .tensor_from_vec((0..24).map(|x| x as f64).collect(), &[2, 3, 4], true)
+        .unwrap();
+    
+    let output = bn.forward(&mut graph, input_3d).unwrap();
+    let output_shape = graph.get_shape(output);
+    
+    // Should preserve input shape
+    assert_eq!(output_shape, vec![2, 3, 4]);
+    
+    // Output should be finite
+    let output_data = graph.get_data(output);
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "3D BatchNorm output should be finite");
+    }
+}
+
+// ============================================================================
+// LAYER NORMALIZATION TESTS
+// ============================================================================
+
+#[test]
+fn test_layer_norm_creation() {
+    let ln = LayerNorm::<f64>::default_config(vec![128]);
+    
+    assert_eq!(ln.normalized_shape(), &[128]);
+    assert!(ln.training());
+    assert!(ln.elementwise_affine);
+    
+    // Check parameter shapes
+    let params = ln.parameters();
+    assert_eq!(params.len(), 2); // weight and bias
+    assert_eq!(params[0].shape(), &[128]); // weight
+    assert_eq!(params[1].shape(), &[128]); // bias
+}
+
+#[test]
+fn test_layer_norm_1d_creation() {
+    let ln = LayerNorm::<f64>::new_1d(256, 1e-5);
+    
+    assert_eq!(ln.normalized_shape(), &[256]);
+    assert!(ln.elementwise_affine);
+    
+    let params = ln.parameters();
+    assert_eq!(params.len(), 2);
+}
+
+#[test]
+fn test_layer_norm_forward_2d() {
+    let mut graph = Engine::new();
+    let ln = LayerNorm::<f64>::default_config(vec![4]); // Normalize last dimension
+    
+    // Input: [batch_size=3, features=4]
+    let input = graph
+        .tensor_from_vec(vec![
+            1.0, 2.0, 3.0, 4.0,    // sample 1
+            5.0, 6.0, 7.0, 8.0,    // sample 2
+            9.0, 10.0, 11.0, 12.0, // sample 3
+        ], &[3, 4], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, input).unwrap();
+    let output_shape = graph.get_shape(output);
+    let output_data = graph.get_data(output);
+    
+    // Shape should be preserved
+    assert_eq!(output_shape, vec![3, 4]);
+    
+    // All outputs should be finite
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "LayerNorm output should be finite, got {}", val);
+    }
+    
+    // For each sample, the mean across the last dimension should be close to 0
+    // and the std should be close to 1 (before affine transform)
+    println!("LayerNorm output: {:?}", output_data.to_vec());
+}
+
+#[test]
+fn test_layer_norm_forward_3d() {
+    let mut graph = Engine::new();
+    // Normalize over last 2 dimensions [height, width]
+    let ln = LayerNorm::<f64>::default_config(vec![2, 3]);
+    
+    // Input: [batch_size=2, height=2, width=3]
+    let input = graph
+        .tensor_from_vec((0..12).map(|x| x as f64 + 1.0).collect(), &[2, 2, 3], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, input).unwrap();
+    let output_shape = graph.get_shape(output);
+    
+    // Shape should be preserved
+    assert_eq!(output_shape, vec![2, 2, 3]);
+    
+    // Output should be finite
+    let output_data = graph.get_data(output);
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "3D LayerNorm output should be finite");
+    }
+}
+
+#[test]
+fn test_layer_norm_without_affine() {
+    let mut graph = Engine::new();
+    let ln = LayerNorm::<f64>::new(vec![3], 1e-5, false); // No affine parameters
+    
+    // Should have no parameters
+    let params = ln.parameters();
+    assert_eq!(params.len(), 0);
+    
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, input).unwrap();
+    let output_data = graph.get_data(output);
+    
+    // Should still normalize but without affine transformation
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "LayerNorm without affine should be finite");
+    }
+}
+
+#[test]
+fn test_layer_norm_gradient_flow() {
+    let mut graph = Engine::new();
+    let ln = LayerNorm::<f64>::default_config(vec![3]);
+    
+    let input = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, input).unwrap();
+    let loss = graph.sum(output, None).unwrap();
+    
+    // Backward pass
+    let backward_result = graph.backward(loss);
+    assert!(backward_result.is_ok());
+    
+    // Check gradients exist
+    let input_grad = graph.get_gradient(input);
+    assert!(input_grad.is_some());
+    
+    let grad = input_grad.unwrap();
+    assert_eq!(grad.shape(), &[2, 3]);
+    
+    // Gradients should be finite
+    for &val in grad.iter() {
+        assert!((val as f64).is_finite(), "LayerNorm gradient should be finite");
+    }
+}
+
+#[test]
+fn test_layer_norm_error_cases() {
+    let mut graph = Engine::new();
+    let ln = LayerNorm::<f64>::default_config(vec![3, 4]);
+    
+    // Test with input that doesn't end with normalized_shape
+    let wrong_shape = graph
+        .tensor_from_vec(vec![1.0, 2.0], &[1, 2], true)
+        .unwrap();
+    
+    let result = ln.forward(&mut graph, wrong_shape);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("doesn't end with normalized_shape"));
+    
+    // Test with input that has fewer dimensions than normalized_shape
+    let too_few_dims = graph
+        .tensor_from_vec(vec![1.0, 2.0, 3.0], &[3], true)
+        .unwrap();
+    
+    let result = ln.forward(&mut graph, too_few_dims);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("requires at least"));
+}
+
+#[test]
+fn test_layer_norm_numerical_stability() {
+    let mut graph = Engine::new();
+    let ln = LayerNorm::<f64>::default_config(vec![3]);
+    
+    // Test with very large values
+    let large_input = graph
+        .tensor_from_vec(vec![1e8, 2e8, 3e8], &[1, 3], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, large_input).unwrap();
+    let output_data = graph.get_data(output);
+    
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "LayerNorm should handle large values");
+        assert!(!val.is_nan(), "Output should not be NaN");
+    }
+    
+    // Test with very small values
+    let small_input = graph
+        .tensor_from_vec(vec![1e-8, 2e-8, 3e-8], &[1, 3], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, small_input).unwrap();
+    let output_data = graph.get_data(output);
+    
+    for &val in output_data.iter() {
+        assert!((val as f64).is_finite(), "LayerNorm should handle small values");
+    }
+}
+
+#[test]
+fn test_layer_norm_sequence_modeling() {
+    let mut graph = Engine::new();
+    // Typical sequence modeling scenario: [batch, seq_len, hidden_dim]
+    let ln = LayerNorm::<f64>::default_config(vec![128]); // Normalize over hidden dimension
+    
+    let batch_size = 4;
+    let seq_len = 10;
+    let hidden_dim = 128;
+    
+    // Create random-like input
+    let input_data: Vec<f64> = (0..batch_size * seq_len * hidden_dim)
+        .map(|i| (i as f64) * 0.01)
+        .collect();
+    
+    let input = graph
+        .tensor_from_vec(input_data, &[batch_size, seq_len, hidden_dim], true)
+        .unwrap();
+    
+    let output = ln.forward(&mut graph, input).unwrap();
+    let output_shape = graph.get_shape(output);
+    
+    // Shape should be preserved
+    assert_eq!(output_shape, vec![batch_size, seq_len, hidden_dim]);
+    
+    // Output should be finite
+    let output_data = graph.get_data(output);
+    assert!(output_data.iter().all(|&x| x.is_finite()));
+}
+
+// ============================================================================
+// COMPARISON TESTS (BatchNorm vs LayerNorm)
+// ============================================================================
+
+#[test]
+fn test_batch_norm_vs_layer_norm_behavior() {
+    let mut graph = Engine::new();
+    
+    // Same feature size for both
+    let feature_size = 4;
+    let bn = BatchNorm1d::<f64>::default_config(feature_size);
+    let ln = LayerNorm::<f64>::default_config(vec![feature_size]);
+    
+    // Create identical input
+    let input = graph
+        .tensor_from_vec(vec![
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+        ], &[2, 4], true)
+        .unwrap();
+    
+    // Forward through both
+    let bn_output = bn.forward(&mut graph, input).unwrap();
+    let ln_output = ln.forward(&mut graph, input).unwrap();
+    
+    let bn_data = graph.get_data(bn_output);
+    let ln_data = graph.get_data(ln_output);
+    
+    // Both should produce finite outputs but different values
+    assert!(bn_data.iter().all(|&x| x.is_finite()));
+    assert!(ln_data.iter().all(|&x| x.is_finite()));
+    
+    // BatchNorm and LayerNorm should produce different results
+    // (they normalize differently)
+    let are_different = bn_data.iter()
+        .zip(ln_data.iter())
+        .any(|(&bn_val, &ln_val)| !approx_equal(bn_val, ln_val, 1e-6));
+    
+    assert!(are_different, "BatchNorm and LayerNorm should produce different outputs");
+}
+
+#[test]
+fn test_normalization_training_mode_switching() {
+    let mut bn = BatchNorm1d::<f64>::default_config(3);
+    let mut ln = LayerNorm::<f64>::default_config(vec![3]);
+    
+    // Both should start in training mode
+    assert!(bn.training());
+    assert!(ln.training());
+    
+    // Switch to eval mode
+    bn.eval();
+    ln.eval();
+    
+    assert!(!bn.training());
+    assert!(!ln.training());
+    
+    // Switch back to training
+    bn.train();
+    ln.train();
+    
+    assert!(bn.training());
+    assert!(ln.training());
+}
+
+#[test]
+fn test_normalization_parameter_management() {
+    let bn = BatchNorm1d::<f64>::default_config(10);
+    let ln = LayerNorm::<f64>::default_config(vec![10]);
+    
+    // Both should have same number of parameters for same feature size
+    assert_eq!(bn.num_parameters(), ln.num_parameters());
+    assert_eq!(bn.parameters().len(), ln.parameters().len());
+    
+    // Parameter shapes should match
+    let bn_params = bn.parameters();
+    let ln_params = ln.parameters();
+    
+    assert_eq!(bn_params[0].shape(), ln_params[0].shape()); // weight
+    assert_eq!(bn_params[1].shape(), ln_params[1].shape()); // bias
 }
 
 }

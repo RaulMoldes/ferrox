@@ -11,10 +11,19 @@ use rand::Rng;
 
 use super::numeric::Numeric;
 
+/// Device abstraction for tensor operations.
+/// 
+/// Represents different computation devices (CPU, GPU) for tensor operations.
+/// This enum allows seamless switching between backends while maintaining
+/// the same interface for tensor operations
 #[derive(Debug, Clone, PartialEq)]
 pub enum Device {
     /// Represents the CPU device.
     CPU,
+
+    /// CUDA GPU device
+    #[cfg(feature = "cuda")]
+    CUDA(usize), // GPU device ID
 }
 
 impl Device {
@@ -22,6 +31,12 @@ impl Device {
     pub fn zeros<T: Numeric + rand_distr::num_traits::Zero>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::zeros(IxDyn(shape)),
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // For CUDA, we still return CPU arrays here for simplicity
+                // The actual GPU operations happen in specialized tensor types
+                ArrayD::zeros(IxDyn(shape))
+            }
         }
     }
 
@@ -29,6 +44,8 @@ impl Device {
     pub fn ones<T: Numeric + rand_distr::num_traits::One>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::ones(IxDyn(shape)),
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => ArrayD::ones(IxDyn(shape)),
         }
     }
 
@@ -40,6 +57,16 @@ impl Device {
                 let total_elements: usize = shape.iter().product();
                 let data: Vec<f64> = (0..total_elements)
                     .map(|_| rng.random::<f64>() * 2.0 - 1.0) // Simple random between -1 and 1
+                    .collect();
+                Array::from_shape_vec(IxDyn(shape), data).unwrap()
+            },
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // Generate on CPU then transfer to GPU when needed
+                let mut rng = rand::rng();
+                let total_elements: usize = shape.iter().product();
+                let data: Vec<f64> = (0..total_elements)
+                    .map(|_| rng.random::<f64>() * 2.0 - 1.0)
                     .collect();
                 Array::from_shape_vec(IxDyn(shape), data).unwrap()
             }
@@ -57,6 +84,16 @@ impl Device {
                     .collect();
                 Array::from_shape_vec(IxDyn(shape), data).unwrap()
             }
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // Generate on CPU then transfer to GPU when needed
+                let mut rng = rand::rng();
+                let total_elements: usize = shape.iter().product();
+                let data: Vec<i64> = (0..total_elements)
+                    .map(|_| rng.random::<i64>() * 2 - 1)
+                    .collect();
+                Array::from_shape_vec(IxDyn(shape), data).unwrap()
+            }
         }
     }
 
@@ -69,6 +106,12 @@ impl Device {
     pub fn empty<T: Numeric + rand_distr::num_traits::Zero>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::zeros(IxDyn(shape)), // ndarray doesn't have uninitialized arrays
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // For CUDA, we still return CPU arrays here for simplicity
+                // The actual GPU operations happen in specialized tensor types
+                ArrayD::zeros(IxDyn(shape)) // Same as zeros for now
+            }
         }
     }
 
@@ -77,6 +120,29 @@ impl Device {
     pub fn full<T: Numeric>(&self, shape: &[usize], fill_value: T) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::from_elem(IxDyn(shape), fill_value),
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // For CUDA, we still return CPU arrays here for simplicity
+                // The actual GPU operations happen in specialized tensor types
+                ArrayD::from_elem(IxDyn(shape), fill_value)
+            }
+        }
+    }
+
+    pub fn is_cuda(&self) -> bool {
+        match self {
+            Device::CPU => false,
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => true,
+        }
+    }
+    
+    /// Returns the device ID for CUDA devices.
+    #[cfg(feature = "cuda")]
+    pub fn cuda_device_id(&self) -> Option<usize> {
+        match self {
+            Device::CPU => None,
+            Device::CUDA(id) => Some(*id),
         }
     }
 }
@@ -85,10 +151,31 @@ pub fn cpu() -> Device {
     Device::CPU
 }
 
+/// Creates a CUDA device with the specified GPU ID.
+#[cfg(feature = "cuda")]
+pub fn cuda(device_id: usize) -> Device {
+    Device::CUDA(device_id)
+}
+
 pub fn default_device() -> Device {
     cpu()
 }
+/// Returns all available devices.
 
 pub fn all_devices() -> Vec<Device> {
-    vec![cpu()]
+    let mut devices = vec![cpu()];
+    
+    #[cfg(feature = "cuda")]
+    {
+        // Try to detect available CUDA devices
+        // In a real implementation, you'd query the number of available GPUs
+        if let Ok(_) = cudarc::driver::CudaDevice::new(0) {
+            devices.push(cuda(0));
+        }
+    }
+    
+    devices
 }
+
+
+
