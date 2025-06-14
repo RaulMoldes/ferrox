@@ -3,8 +3,7 @@
 pub mod kernels;
 #[cfg(feature = "cuda")]
 pub mod device;
-#[cfg(feature = "cuda")]
-pub mod memory;
+
 
 #[cfg(feature = "cuda")]
 pub use device::CudaBackend;
