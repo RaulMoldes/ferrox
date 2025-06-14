@@ -1,5 +1,3 @@
-// Add this to src/nn/normalization.rs
-
 use crate::backend::numeric::{Float, Numeric};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;

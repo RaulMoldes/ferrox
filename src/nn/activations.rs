@@ -449,42 +449,6 @@ where
 /// This implementation uses the numerically stable version that subtracts
 /// the maximum value before exponentiation to prevent overflow with large inputs.
 #[derive(Debug, Clone)]
-// Add this to src/nn/activations.rs
-
-/// Softmax activation function.
-///
-/// Applies the softmax function along a specified dimension. Softmax is commonly used
-/// as the final activation function in multi-class classification problems as it
-/// converts logits to a probability distribution where all values sum to 1.
-///
-/// # Mathematical Definition
-///
-/// For a vector x and dimension d:
-/// ```text
-/// softmax(x_i) = exp(x_i - max(x)) / Σⱼ exp(x_j - max(x))
-/// ```
-///
-/// The subtraction of max(x) is for numerical stability to prevent overflow.
-/// This is known as the "stable softmax" implementation.
-///
-/// # Properties
-///
-/// - All outputs are in the range (0, 1)
-/// - The sum of all outputs along the specified dimension equals 1
-/// - The function is differentiable everywhere
-/// - Preserves the relative ordering of inputs (monotonic)
-///
-/// # Usage
-///
-/// Typically used as the final layer in classification networks:
-/// ```text
-/// logits -> Softmax -> probabilities
-/// ```
-///
-/// # Numerical Stability
-///
-/// This implementation uses the numerically stable version that subtracts
-/// the maximum value before exponentiation to prevent overflow with large inputs.
 pub struct Softmax {
     /// Dimension along which to apply softmax
     /// For typical use cases:
