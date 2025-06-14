@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 /// Main CUDA backend that manages device and kernels
 pub struct CudaBackend {
-    device: Arc<CudaDevice>,
+    device: Arc<CudaDevice>, // CudaDevice::new() returns this type directly
     kernels: CudaKernels,
     device_id: usize,
 }
@@ -13,16 +13,12 @@ pub struct CudaBackend {
 impl CudaBackend {
     /// Creates a new CUDA backend for the specified device
     pub fn new(device_id: usize) -> Result<Self, String> {
-        // Create CUDA device first
-        let cuda_device = CudaDevice::new(device_id)
+        // CudaDevice::new() returns Arc<CudaDevice> already, not CudaDevice
+        let device = CudaDevice::new(device_id)
             .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?;
         
-        // Wrap in Arc - this is the only place we create Arc
-        let device = Arc::new(cuda_device);
-        
-        // Clone the Arc to pass to kernels
-        let device_for_kernels = Arc::clone(&device);
-        let mut kernels = CudaKernels::new(device_for_kernels);
+        // device is already Arc<CudaDevice>, so we can clone it directly
+        let mut kernels = CudaKernels::new(device.clone());
         
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
