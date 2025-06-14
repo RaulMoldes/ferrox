@@ -4,6 +4,23 @@ use crate::graph::node::NodeId;
 use crate::nn::{Module, Parameter};
 use crate::tensor::Tensor;
 
+/// NOTE FROM THE AUTHOR: When in this module I refer to an "affine transformation", I mean the geometric definition of affine transformation,
+/// applied to a vector space. These affine transformations or affine applications can be defined as a linear transformation followed by a translation. 
+///
+/// ```text 
+/// y = Ax + b   
+/// ```
+/// where `A` is a matrix, `x` is the input vector, `b` is a bias vector, and `y` is the output vector.
+/// These can be understood also as a rotation, scaling, shearing, or translation of the input vector.
+/// 
+/// In the case of batch normalization, the affine transformation is applied to the normalized input.
+/// As described in the paper "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
+/// The affine parameters gamma (γ) and beta (β) are learnable parameters that scale and shift the normalized input.
+/// 
+/// The objective of these parameters is to
+/// allow the model to learn the optimal scale and shift for each feature,
+/// which can help the model to adapt better to the data distribution.
+///  
 /// Batch Normalization layer.
 ///
 /// Applies batch normalization over a batch of inputs as described in the paper
@@ -16,7 +33,7 @@ use crate::tensor::Tensor;
 /// μ = (1/N) * Σᵢ xᵢ                    // batch mean
 /// σ² = (1/N) * Σᵢ (xᵢ - μ)²           // batch variance
 /// x̂ᵢ = (xᵢ - μ) / √(σ² + ε)           // normalized input
-/// yᵢ = γ * x̂ᵢ + β                     // scaled and shifted output
+/// yᵢ = γ * x̂ᵢ + β                     // scaled and shifted output --> Affine transformation
 /// ```
 ///
 /// During inference:
@@ -177,9 +194,10 @@ where
     ///
     /// This should be called after computing batch statistics during training.
     /// Updates: running_mean = (1 - momentum) * running_mean + momentum * batch_mean
-    /// We are not able to track running statistics currently due to the actual architecture.
+    /// We are not able to track running statistics inside the forward pass currently due to the actual architecture.
     /// Rust prohibits mutable access to self during forward pass, as we already have a mutable borrow of self in the forward method.
-    fn _update_running_stats(&mut self, batch_mean: &Tensor<T>, batch_var: &Tensor<T>) {
+    // As a workaroud, we can use a separate method to update running statistics after the forward pass.´
+    fn update_running_stats(&mut self, batch_mean: &Tensor<T>, batch_var: &Tensor<T>) {
         if !self.track_running_stats || !self.training {
             return;
         }
@@ -307,12 +325,14 @@ where
             // Reshape back to original shape
             let final_output = graph.reshape(output, input_shape)?;
             
-            // TODO: Update running statistics (this would require mutable access to self during forward)
-            // In a more complete implementation, we'd need a different pattern for this
+            // Here we should update running statistics (this would require mutable access to self during forward)
+            // A workararound would be to add a separate method to update running statistics after the forward pass.
+            // Look at the [`update_running_stats`] method.
 
             // let variance_data = graph.get_data(variance);
             // let mean_data = graph.get_data(mean);
-            // self._update_running_stats(&mean_data, &variance_data);
+            // self.update_running_stats(&mean_data, &variance_data);  --> This requires mutable access to self,
+            // so we cannot do it here directly.
             
             Ok(final_output)
             
@@ -320,12 +340,12 @@ where
             // Inference mode: use running statistics.
             // Basically in inference mode we don't compute batch statistics,
             // INSTEAD we should use the running statistics that were computed during training.
+            // This is why it is very important to ensure that running statistics are updated during training. after the forward pass.
 
             if !self.track_running_stats {
                 return Err("Running statistics are not tracked in inference mode".to_string());
             }
-            // In my implementation statistics are not tracked by default, so it is a job of the caller to ensure
-            // that running statistics are updated after the forward pass.
+    
             
             // Create tensors for running statistics
             let running_mean_node = graph.tensor_from_vec(
@@ -393,6 +413,15 @@ where
 /// Applies layer normalization over the last dimension(s) of the input as described in
 /// "Layer Normalization" by Ba et al.
 ///
+/// The key difference from Batch Normalization is that LayerNorm normalizes across features for each sample independently,
+/// making it suitable for variable-length sequences and recurrent architectures (RNNs, Transformers, LSTMs).
+/// 
+/// On the other hand, Batch Normalization normalizes across the batch dimension, which can be problematic for small batch sizes or variable-length inputs.
+/// Batch norm is typically used in convolutional networks, while layer norm is preferred for sequential models.
+/// 
+/// Additionally, layer normalization does not require running statistics, as it computes the mean and variance for each sample independently.
+/// This makes it also more stable for small batch sizes. I think it can be considered as a generalization of Batch Normalization, as it has a similar purpose but operates differently.
+/// 
 /// # Mathematical Definition
 ///
 /// ```text
@@ -401,15 +430,6 @@ where
 /// x̂ᵢ = (xᵢ - μ) / √(σ² + ε)           // normalized input
 /// yᵢ = γ * x̂ᵢ + β                     // scaled and shifted output
 /// ```
-///
-/// # Key Differences from Batch Normalization
-///
-/// - Normalizes across features for each sample independently
-/// - No running statistics needed (same computation in training and inference)
-/// - Works well with variable-length sequences
-/// - More stable for small batch sizes
-/// - Commonly used in transformers and RNNs
-///
 /// # Parameters
 ///
 /// * `weight` (γ): Learnable scale parameter
