@@ -13,20 +13,22 @@ pub struct CudaBackend {
 impl CudaBackend {
     /// Creates a new CUDA backend for the specified device
     pub fn new(device_id: usize) -> Result<Self, String> {
-        // Create the device and wrap it in Arc in one step
-        let device = Arc::new(
-            CudaDevice::new(device_id)
-                .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?
-        );
+        // Create CUDA device first
+        let cuda_device = CudaDevice::new(device_id)
+            .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?;
         
-        // Now device is Arc<CudaDevice>, so we can clone it
-        let mut kernels = CudaKernels::new(device.clone());
+        // Wrap in Arc - this is the only place we create Arc
+        let device = Arc::new(cuda_device);
+        
+        // Clone the Arc to pass to kernels
+        let device_for_kernels = Arc::clone(&device);
+        let mut kernels = CudaKernels::new(device_for_kernels);
         
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
 
         Ok(Self {
-            device, // Move the Arc<CudaDevice> here
+            device,
             kernels,
             device_id,
         })
