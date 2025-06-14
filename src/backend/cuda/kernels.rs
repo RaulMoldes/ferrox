@@ -23,39 +23,37 @@ impl CudaKernels {
         }
     }
 
-    /// Loads a single kernel from PTX bytes
     pub fn load_kernel(&mut self, name: &str, ptx_bytes: &[u8]) -> Result<(), String> {
-        let ptx_str = std::str::from_utf8(ptx_bytes)
-            .map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
+      let ptx_str = std::str::from_utf8(ptx_bytes)
+          .map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
 
-        match name {
-            "add" => {
-                self.device.load_ptx(ptx_str.into(), "add_module", &["add"])
-                    .map_err(|e| format!("Failed to load add kernel: {}", e))?;
-                let func = self.device.get_func("add_module", "add")
-                    .ok_or_else(|| "Failed to get add function".to_string())?;
-                self.functions.insert("add".to_string(), func);
-            },
-            "matmul" => {
-                self.device.load_ptx(ptx_str.into(), "matmul_module", &["matmul"])
-                    .map_err(|e| format!("Failed to load matmul kernel: {}", e))?;
-                let func = self.device.get_func("matmul_module", "matmul")
-                    .ok_or_else(|| "Failed to get matmul function".to_string())?;
-                self.functions.insert("matmul".to_string(), func);
-            },
-            "relu" => {
-                self.device.load_ptx(ptx_str.into(), "relu_module", &["relu"])
-                    .map_err(|e| format!("Failed to load relu kernel: {}", e))?;
-                let func = self.device.get_func("relu_module", "relu")
-                    .ok_or_else(|| "Failed to get relu function".to_string())?;
-                self.functions.insert("relu".to_string(), func);
-            },
-            _ => return Err(format!("Unknown kernel name: {}", name)),
-        }
-
-        Ok(())
-    }
-
+      match name {
+          "add" => {
+              self.device.load_ptx(ptx_str.into(), "add_module", &["add"])
+                  .map_err(|e| format!("Failed to load add kernel: {}", e))?;
+              let func = self.device.get_func("add_module", "add")
+                  .ok_or_else(|| "Failed to get add function".to_string())?;
+              self.functions.insert("add".to_string(), func);
+          },
+          "matmul" => {
+              self.device.load_ptx(ptx_str.into(), "matmul_module", &["matmul"])
+                  .map_err(|e| format!("Failed to load matmul kernel: {}", e))?;
+              let func = self.device.get_func("matmul_module", "matmul")
+                  .ok_or_else(|| "Failed to get matmul function".to_string())?;
+              self.functions.insert("matmul".to_string(), func);
+          },
+          "relu" => {
+              self.device.load_ptx(ptx_str.into(), "relu_module", &["relu"])
+                  .map_err(|e| format!("Failed to load relu kernel: {}", e))?;
+              let func = self.device.get_func("relu_module", "relu")
+                  .ok_or_else(|| "Failed to get relu function".to_string())?;
+              self.functions.insert("relu".to_string(), func);
+          },
+          _ => return Err(format!("Unknown kernel: {}", name)),
+      }
+      
+      Ok(())
+  }
     /// Gets a loaded kernel function by name
     pub fn get_function(&self, name: &str) -> Option<&CudaFunction> {
         self.functions.get(name)

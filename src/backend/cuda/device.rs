@@ -13,47 +13,52 @@ pub struct CudaBackend {
 impl CudaBackend {
     /// Creates a new CUDA backend for the specified device
     pub fn new(device_id: usize) -> Result<Self, String> {
-        // Create the device directly as Arc - don't double wrap
+        // Create the device and wrap it in Arc in one step
         let device = Arc::new(
             CudaDevice::new(device_id)
                 .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?
         );
         
-        // Pass the Arc directly - no need to clone here since we're moving it
+        // Now device is Arc<CudaDevice>, so we can clone it
         let mut kernels = CudaKernels::new(device.clone());
         
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
 
         Ok(Self {
-            device, // This is already Arc<CudaDevice>
+            device, // Move the Arc<CudaDevice> here
             kernels,
             device_id,
         })
     }
 
-    // Rest of your methods remain the same...
+    /// Returns the device ID
     pub fn device_id(&self) -> usize {
         self.device_id
     }
 
+    /// Returns reference to the CUDA device
     pub fn device(&self) -> &Arc<CudaDevice> {
         &self.device
     }
 
+    /// Returns reference to the kernel manager
     pub fn kernels(&self) -> &CudaKernels {
         &self.kernels
     }
 
+    /// Returns mutable reference to the kernel manager
     pub fn kernels_mut(&mut self) -> &mut CudaKernels {
         &mut self.kernels
     }
 
+    /// Synchronizes the device (waits for all operations to complete)
     pub fn synchronize(&self) -> Result<(), String> {
         self.device.synchronize()
             .map_err(|e| format!("CUDA synchronization failed: {}", e))
     }
 
+    /// Returns device name for debugging
     pub fn name(&self) -> String {
         format!("CUDA Device {}", self.device_id)
     }
