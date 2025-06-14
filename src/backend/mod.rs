@@ -1,6 +1,9 @@
 pub mod device;
 pub mod numeric;
 
+#[cfg(feature = "cuda")]
+pub mod cuda;
+// CUDA backend module
 
 #[cfg(feature = "cuda")]
 pub use device::cuda;

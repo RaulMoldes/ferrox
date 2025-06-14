@@ -9,7 +9,7 @@ rand = "0.9.1"
 rand_distr = "0.5.1"
 
 # CUDA dependencies (optional)
-cudarc = { version = "0.12.1", features = ["std", "driver", "nvrtc", "cublas"], optional = true }
+cudarc = { version = "0.12.1", features = ["cuda-version-from-build-system"], optional = true }
 half = { version = "2.3", optional = true }  # For f16 support on GPU
 
 [features]
