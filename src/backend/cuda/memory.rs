@@ -1,5 +1,6 @@
 // src/backend/cuda/memory.rs
 use cudarc::driver::{CudaDevice, CudaSlice};
+use cudarc::driver::DeviceSlice;
 use std::sync::Arc;
 use std::fmt::Debug;
 ///

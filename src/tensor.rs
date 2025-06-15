@@ -21,7 +21,9 @@ where
 
     // Optional CUDA storage for GPU tensors
     #[cfg(feature = "cuda")]
-    cuda_storage: Option<crate::backend::cuda::CudaTensor<T>>,
+    cuda_storage: Option<crate::backend::cuda::CudaTensor<f64>>, // For now we only support f64 on CUDA
+    // It will require additional redefinition of the tensor storage to support other types. We are lazy and 
+    // will not do it for now.
 }
 
 // Main implementation block with basic operations
@@ -86,7 +88,7 @@ where
 
     /// Get the underlying CUDA tensor if available
     #[cfg(feature = "cuda")]
-    pub fn cuda_tensor(&self) -> Option<&crate::backend::cuda::CudaTensor<T>> {
+    pub fn cuda_tensor(&self) -> Option<&crate::backend::cuda::CudaTensor<f64>> {
         self.cuda_storage.as_ref()
     }
 
@@ -410,7 +412,7 @@ where
     fn get_or_create_cuda_tensor(
         &self,
         cuda_backend: &crate::backend::cuda::CudaBackend,
-    ) -> Result<crate::backend::cuda::CudaTensor<T>, String> {
+    ) -> Result<crate::backend::cuda::CudaTensor<f64>, String> {
         match &self.cuda_storage {
             Some(cuda_tensor) => Ok(cuda_tensor.clone()),
             None => {
@@ -423,7 +425,7 @@ where
     #[cfg(feature = "cuda")]
     fn create_tensor_from_cuda_result(
         &self,
-        cuda_result: crate::backend::cuda::CudaTensor<T>,
+        cuda_result: crate::backend::cuda::CudaTensor<f64>,
     ) -> Result<Tensor<T>, String> {
         let result_cpu = cuda_result.to_cpu()?;
         let mut result_tensor = Tensor::new_with_device(result_cpu, Device::CUDA(0));

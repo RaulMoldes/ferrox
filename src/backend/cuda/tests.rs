@@ -2,6 +2,7 @@
 #[cfg(all(test, feature = "cuda"))]
 mod tests {
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
+    use crate::backend::cuda::ops::CudaOps;
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
