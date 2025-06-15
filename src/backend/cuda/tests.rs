@@ -7,7 +7,7 @@ mod tests {
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
     use cudarc::driver::{CudaDevice, LaunchConfig};
-    use std::sync::Arc;
+    //use std::sync::Arc;
 
     /// Helper function to create a test CUDA backend
     /// Skips test if CUDA is not available on the system
@@ -163,15 +163,15 @@ mod tests {
     fn test_element_wise_operations() {
         if let Some(backend) = setup_cuda_backend() {
             let memory = backend.memory_manager();
-            let ops = CudaOps::new(backend.kernels(), memory);
+            let ops = CudaOps::new(backend.kernels(), &memory);
 
             // Test data
             let a_data = vec![1.0, 2.0, 3.0, 4.0];
             let b_data = vec![2.0, 3.0, 4.0, 5.0];
 
             // Create CUDA tensors
-            let a = CudaTensor::from_vec(memory, a_data, vec![2, 2]).unwrap();
-            let b = CudaTensor::from_vec(memory, b_data, vec![2, 2]).unwrap();
+            let a = CudaTensor::from_vec(&memory, a_data, vec![2, 2]).unwrap();
+            let b = CudaTensor::from_vec(&memory, b_data, vec![2, 2]).unwrap();
 
             // Test addition
             let result = ops.add(&a, &b).unwrap();
@@ -563,7 +563,7 @@ mod tests {
                 assert_eq!(tensor.ndim(), 2);
 
                 // Verify data by transferring back to CPU
-                let cpu_data = tensor.to_cpu().unwrap();
+                let cpu_data = tensor.to_cpu(&memory).unwrap();
                 assert_eq!(
                     cpu_data, data,
                     "Data doesn't match after round-trip transfer"

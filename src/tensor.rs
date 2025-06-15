@@ -346,7 +346,11 @@ where
         #[cfg(feature = "cuda")]
         {
             if let Some(cuda_tensor) = &self.cuda_storage {
-                return cuda_tensor.to_cpu().to_vec();
+                use crate::backend::manager::get_backend;
+                let backend = get_backend();
+                let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+                let memory_manager = cuda_backend.memory_manager();
+                return cuda_tensor.to_cpu(&memory_manager)?.to_vec();
             }
         }
         self.data.iter().copied().collect()
@@ -431,6 +435,46 @@ where
         let mut result_tensor = Tensor::new_with_device(result_cpu, Device::CUDA(0));
         result_tensor.cuda_storage = Some(cuda_result);
         Ok(result_tensor)
+    }
+}
+
+
+/// CUDA SPECIFIC IMPLEMENTATIONS
+#[cfg(feature = "cuda")]
+impl<T> Tensor<T>
+where
+    T: Numeric + Clone + cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Unpin,
+{
+    
+    pub fn to_cuda(&self) -> Result<Self, String> {
+        if self.is_cuda() {
+            return Ok(self.clone());
+        }
+
+        use crate::backend::manager::get_backend;
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let shape: Vec<usize> = self.shape().to_vec();
+        let host_data: Vec<T> = self.data.iter().cloned().collect();
+        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.memory_manager(), host_data, shape)?;
+
+        Ok(Self {
+            data: self.data.clone(),
+            device: Device::CUDA(0),
+            cuda_storage: Some(cuda_tensor),
+        })
+    }
+
+
+
+    /// Transfer tensor to specified device
+    pub fn to_device(&self, device: Device) -> Result<Self, String> {
+        match device {
+            Device::CPU => self.to_cpu(),
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => self.to_cuda(),
+        }
     }
 }
 
@@ -1039,35 +1083,7 @@ where
         }
     }
 
-    /// Move tensor to CUDA
-    #[cfg(feature = "cuda")]
-    pub fn to_cuda(&self) -> Result<Self, String> {
-        if self.is_cuda() {
-            return Ok(self.clone());
-        }
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        let shape = self.shape();
-        let host_data: Vec<T> = self.data.iter().cloned().collect();
-        let cuda_tensor = CudaTensor::from_vec(cuda_backend.memory_manager(), host_data, shape)?;
-
-        Ok(Self {
-            data: self.data.clone(), // Keep CPU copy for compatibility
-            device: Device::CUDA(0),
-            cuda_storage: Some(cuda_tensor),
-        })
-    }
-
-    /// Transfer tensor to specified device
-    pub fn to_device(&self, device: Device) -> Result<Self, String> {
-        match device {
-            Device::CPU => self.to_cpu(),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.to_cuda(),
-        }
-    }
+   
 }
 
 // Implementation for tensor creation with One trait
