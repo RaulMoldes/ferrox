@@ -89,15 +89,10 @@ impl CudaMemoryManager {
             .map_err(|e| format!("Failed to copy device to device: {}", e))
     }
 
-    /// Returns the total memory available on the device
-    pub fn total_memory(&self) -> Result<usize, String> {
-        self.device.as_ref()
-            .total_memory()
-            .map_err(|e| format!("Failed to get total memory: {}", e))
-    }
 
 
-    // Currently cudarc does not allow to access the device free memory directly.
+
+    // Currently cudarc does not allow to access the device free memory or total memory data directly.
     // There is a crate called ´cust´ that provides this functionality via FFI.
     // If needed, I can implement this later.
     
