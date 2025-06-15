@@ -66,13 +66,42 @@ impl<'a> CudaOps<'a> {
       self.add(a, &scalar_tensor)
   }
 
-  /// Create tensor filled with given value
+  /// Create tensor filled with given value. This is quite handly becauase very easily we can create
+  /// tensors filled with a constant value and use it in operations like addition or multiplication 
+  /// without creating a separate kernel for each operation. Might not be the most efficient way, but it is simple and works.
   pub fn full(&self, shape: &[usize], value: f32) -> Result<CudaTensor<f32>, String> {
       let size = shape.iter().product();
       let host_data = vec![value; size];
       let gpu_data = self.memory.host_to_device(host_data)?;
       Ok(CudaTensor::new(gpu_data, shape.to_vec()))
   }
+
+    /// Element-wise division: a / b
+    pub fn div(&self, a: &CudaTensor<f32>, b: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for division".to_string());
+        }
+
+        let size = a.size();
+        let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_div(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+        Ok(result)
+    }
+
+    /// Scalar multiplication: a * scalar
+    pub fn mul_scalar(&self, a: &CudaTensor<f32>, scalar: f32) -> Result<CudaTensor<f32>, String> {
+        let scalar_tensor = self.full(&a.shape, scalar)?;
+        self.mul(a, &scalar_tensor)
+    }
+
+    /// Scalar division: a / scalar
+    pub fn div_scalar(&self, a: &CudaTensor<f32>, scalar: f32) -> Result<CudaTensor<f32>, String> {
+        let scalar_tensor = self.full(&a.shape, scalar)?;
+        self.div(a, &scalar_tensor)
+    }
+
 
   /// ReLU activation function
   pub fn relu(&self, input: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {

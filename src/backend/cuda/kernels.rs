@@ -8,7 +8,7 @@ pub const ADD_PTX: &[u8] = include_bytes!("../../../kernels/add.ptx");
 pub const MATMUL_PTX: &[u8] = include_bytes!("../../../kernels/matmul.ptx");
 pub const RELU_PTX: &[u8] = include_bytes!("../../../kernels/relu.ptx");
 pub const MUL_PTX: &[u8] = include_bytes!("../../../kernels/mul.ptx");
-// pub const DIV_PTX: &[u8] = include_bytes!("../../../kernels/div.ptx"); Not implemented yet
+pub const DIV_PTX: &[u8] = include_bytes!("../../../kernels/div.ptx"); 
 pub const EXP_PTX: &[u8] = include_bytes!("../../../kernels/exp.ptx");
 //pub const LOG_PTX: &[u8] = include_bytes!("../../../kernels/log.ptx");
 pub const SIGMOID_PTX: &[u8] = include_bytes!("../../../kernels/sigmoid.ptx");
@@ -98,6 +98,16 @@ impl CudaKernels {
                     .ok_or_else(|| "Failed to get sigmoid function".to_string())?;
                 self.functions.insert("sigmoid".to_string(), func);
             }
+            "div" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "div_module", &["elementwise_div"])
+                    .map_err(|e| format!("Failed to load div kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("div_module", "elementwise_div")
+                    .ok_or_else(|| "Failed to get div function".to_string())?;
+                self.functions.insert("div".to_string(), func);
+            }
             _ => return Err(format!("Unknown kernel name: {}", name)),
         }
 
@@ -135,6 +145,27 @@ impl CudaKernels {
                 .map_err(|e| format!("Failed to launch add kernel: {}", e))
         }
     }
+
+    /// Convenience method to launch element-wise division kernel
+    pub fn launch_div(
+        &self,
+        cfg: LaunchConfig,
+        a: &cudarc::driver::CudaSlice<f32>,
+        b: &cudarc::driver::CudaSlice<f32>,
+        c: &mut cudarc::driver::CudaSlice<f32>,
+        size: i32,
+    ) -> Result<(), String> {
+        let kernel = self
+            .get_function_cloned("div")
+            .ok_or_else(|| "Division kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch div kernel: {}", e))
+        }
+    }
+
 
     /// Launch element-wise multiplication kernel
     pub fn launch_mul(
@@ -227,7 +258,7 @@ pub fn load_all_kernels(kernels: &mut CudaKernels) -> Result<(), String> {
     let kernel_list = [
         ("add", ADD_PTX),
         ("mul", MUL_PTX),
-        // ("div", DIV_PTX),
+         ("div", DIV_PTX),
         ("matmul", MATMUL_PTX),
         ("relu", RELU_PTX),
         ("exp", EXP_PTX),
