@@ -77,7 +77,7 @@ impl<'a> CudaOps<'a> {
   /// Create tensor filled with given value. This is quite handly becauase very easily we can create
   /// tensors filled with a constant value and use it in operations like addition or multiplication 
   /// without creating a separate kernel for each operation. Might not be the most efficient way, but it is simple and works.
-  pub fn full(&self, shape: &[usize], value: T) -> Result<CudaTensor<f32>, String> 
+  pub fn full<T>(&self, shape: &[usize], value: T) -> Result<CudaTensor<T>, String> 
   where
   T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
   {
