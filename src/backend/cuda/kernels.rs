@@ -150,7 +150,7 @@ impl CudaKernels {
     }
 
     /// Convenience method to launch element-wise division kernel
-    pub fn launch_div(
+    pub fn launch_div<T>(
         &self,
         cfg: LaunchConfig,
         a: &cudarc::driver::CudaSlice<T>,
@@ -173,7 +173,7 @@ impl CudaKernels {
     }
 
     /// Launch element-wise multiplication kernel
-    pub fn launch_mul(
+    pub fn launch_mul<T>(
         &self,
         cfg: LaunchConfig,
         a: &CudaSlice<f32>,
@@ -196,7 +196,7 @@ impl CudaKernels {
     }
 
     /// Convenience method to launch relu kernel
-    pub fn launch_relu(
+    pub fn launch_relu<T>(
         &self,
         cfg: LaunchConfig,
         input: &cudarc::driver::CudaSlice<T>,
@@ -218,7 +218,7 @@ impl CudaKernels {
     }
 
     /// Launch activation function kernels (exp, log, sigmoid, tanh)
-    pub fn launch_activation(
+    pub fn launch_activation<T>(
         &self,
         kernel_name: &str,
         cfg: LaunchConfig,
@@ -241,7 +241,7 @@ impl CudaKernels {
     }
 
     /// Convenience method to launch matmul kernel
-    pub fn launch_matmul(
+    pub fn launch_matmul<T>(
         &self,
         cfg: LaunchConfig,
         a: &cudarc::driver::CudaSlice<T>,
