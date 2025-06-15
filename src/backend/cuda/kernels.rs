@@ -30,9 +30,9 @@ impl CudaKernels {
 
         match name {
             "add" => {
-                self.device.load_ptx(ptx_str.into(), "add_module", &["add"])
+                self.device.load_ptx(ptx_str.into(), "add_module", &["elementwise_add"])
                     .map_err(|e| format!("Failed to load add kernel: {}", e))?;
-                let func = self.device.get_func("add_module", "add")
+                let func = self.device.get_func("add_module", "elementwise_add")
                     .ok_or_else(|| "Failed to get add function".to_string())?;
                 self.functions.insert("add".to_string(), func);
             },
@@ -44,9 +44,9 @@ impl CudaKernels {
                 self.functions.insert("matmul".to_string(), func);
             },
             "relu" => {
-                self.device.load_ptx(ptx_str.into(), "relu_module", &["relu"])
+                self.device.load_ptx(ptx_str.into(), "relu_module", &["relu_forward"])
                     .map_err(|e| format!("Failed to load relu kernel: {}", e))?;
-                let func = self.device.get_func("relu_module", "relu")
+                let func = self.device.get_func("relu_module", "relu_forward")
                     .ok_or_else(|| "Failed to get relu function".to_string())?;
                 self.functions.insert("relu".to_string(), func);
             },
@@ -62,24 +62,42 @@ impl CudaKernels {
         self.functions.get(name).cloned()
     }
 
-    /// Gets a reference to a loaded kernel function by name
-    /// Use this only for inspection, not for launching
+    /// Gets a reference to a loaded kernel function by name (Not cloned)
+    /// Should only be used if you don't need to launch immediately
     pub fn get_function(&self, name: &str) -> Option<&CudaFunction> {
         self.functions.get(name)
     }
 
-    /// Convenience method to launch a kernel by name handling the cloning internally
-    /// More effient than calling `launch_kernel` with a cloned function
-    pub fn launch_kernel<Params>(&self, name: &str, cfg: LaunchConfig, params: Params) -> Result<(), String> 
-    where
-        Params: cudarc::driver::LaunchParam,
-    {
-        let kernel = self.get_function_cloned(name)
-            .ok_or_else(|| format!("Kernel '{}' not found", name))?;
+    /// Convenience method to launch add kernel
+    pub fn launch_add(&self, cfg: LaunchConfig, a: &cudarc::driver::CudaSlice<f32>, b: &cudarc::driver::CudaSlice<f32>, c: &mut cudarc::driver::CudaSlice<f32>, size: i32) -> Result<(), String> {
+        let kernel = self.get_function_cloned("add")
+            .ok_or_else(|| "Add kernel not found".to_string())?;
         
         unsafe {
-            kernel.launch(cfg, params)
-                .map_err(|e| format!("Failed to launch kernel '{}': {}", name, e))
+            kernel.launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch add kernel: {}", e))
+        }
+    }
+
+    /// Convenience method to launch relu kernel
+    pub fn launch_relu(&self, cfg: LaunchConfig, input: &cudarc::driver::CudaSlice<f32>, output: &mut cudarc::driver::CudaSlice<f32>, size: i32) -> Result<(), String> {
+        let kernel = self.get_function_cloned("relu")
+            .ok_or_else(|| "ReLU kernel not found".to_string())?;
+        
+        unsafe {
+            kernel.launch(cfg, (input, output, size))
+                .map_err(|e| format!("Failed to launch relu kernel: {}", e))
+        }
+    }
+
+    /// Convenience method to launch matmul kernel
+    pub fn launch_matmul(&self, cfg: LaunchConfig, a: &cudarc::driver::CudaSlice<f32>, b: &cudarc::driver::CudaSlice<f32>, c: &mut cudarc::driver::CudaSlice<f32>, m: i32, n: i32, k: i32) -> Result<(), String> {
+        let kernel = self.get_function_cloned("matmul")
+            .ok_or_else(|| "MatMul kernel not found".to_string())?;
+        
+        unsafe {
+            kernel.launch(cfg, (a, b, c, m, n, k))
+                .map_err(|e| format!("Failed to launch matmul kernel: {}", e))
         }
     }
 

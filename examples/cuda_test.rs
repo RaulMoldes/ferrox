@@ -24,7 +24,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 #[cfg(feature = "cuda")]
 fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing vector addition...");
@@ -45,11 +44,13 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
         shared_mem_bytes: 0,
     };
     
-    // Method 1: Using convenience method (recommended)
-    backend.kernels().launch_kernel(
-        "add",
+    // Method 1: Using specific kernel method (recommended)
+    backend.kernels().launch_add(
         cfg,
-        (&a_gpu, &b_gpu, &mut c_gpu, size as i32)
+        &a_gpu,
+        &b_gpu, 
+        &mut c_gpu,
+        size as i32
     )?;
     
     // Synchronize and get results
@@ -67,7 +68,9 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     println!("✓ Vector addition test passed");
     Ok(())
 }
+
 #[cfg(feature = "cuda")]
+/// Tests the ReLU activation function on the GPU
 fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing ReLU activation...");
     
@@ -85,16 +88,13 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
         shared_mem_bytes: 0,
     };
     
-    // Method 2: Using get_function_cloned (alternative approach)
-    let relu_kernel = backend.kernels().get_function_cloned("relu")
-        .ok_or("ReLU kernel not found")?;
-    
-    unsafe {
-        relu_kernel.launch(
-            cfg,
-            (&input_gpu, &mut output_gpu, size as i32)
-        )?;
-    }
+    // Method 2: Using specific kernel method (alternative approach)
+    backend.kernels().launch_relu(
+        cfg,
+        &input_gpu,
+        &mut output_gpu,
+        size as i32
+    )?;
     
     // Synchronize and get results
     backend.synchronize()?;
@@ -111,7 +111,9 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     println!("✓ ReLU activation test passed");
     Ok(())
 }
+
 #[cfg(feature = "cuda")]
+/// Benchmarks the CUDA kernels by running a simple vector addition multiple times
 fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Error>> {
     println!("Benchmarking kernels...");
     
@@ -133,7 +135,7 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
     };
     
     // Warm up
-    backend.kernels().launch_kernel("add", cfg, (&a_gpu, &b_gpu, &mut c_gpu, size as i32))?;
+    backend.kernels().launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)?;
     backend.synchronize()?;
     
     // Benchmark
@@ -153,13 +155,12 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
     let avg_time = elapsed.as_secs_f64() / iterations as f64;
     let throughput = (size as f64 * 3.0 * 4.0) / (avg_time * 1e9); // 3 arrays * 4 bytes/float / time in GB/s
     
-    println!("Benchmark results:");
-    println!("verage kernel time: {:.3} ms", avg_time * 1000.0);
-    println!("Memory throughput: {:.2} GB/s", throughput);
+    println!("✓ Benchmark results:");
+    println!("  Average kernel time: {:.3} ms", avg_time * 1000.0);
+    println!("  Memory throughput: {:.2} GB/s", throughput);
     
     Ok(())
 }
-
 
 #[cfg(not(feature = "cuda"))]
 fn main() {
