@@ -40,7 +40,7 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     // Launch configuration
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
-        grid_dim: ((size + 255) / 256, 1, 1),
+        grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
         shared_mem_bytes: 0,
     };
     
@@ -84,7 +84,7 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     // Launch configuration
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
-        grid_dim: ((size + 255) / 256, 1, 1),
+        grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
         shared_mem_bytes: 0,
     };
     
@@ -130,7 +130,7 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
     
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
-        grid_dim: ((size + 255) / 256, 1, 1),
+        grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
         shared_mem_bytes: 0,
     };
     
