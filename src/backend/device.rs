@@ -12,7 +12,7 @@ use rand::Rng;
 use super::numeric::Numeric;
 
 /// Device abstraction for tensor operations.
-/// 
+///
 /// Represents different computation devices (CPU, GPU) for tensor operations.
 /// This enum allows seamless switching between backends while maintaining
 /// the same interface for tensor operations
@@ -59,7 +59,7 @@ impl Device {
                     .map(|_| rng.random::<f64>() * 2.0 - 1.0) // Simple random between -1 and 1
                     .collect();
                 Array::from_shape_vec(IxDyn(shape), data).unwrap()
-            },
+            }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 // Generate on CPU then transfer to GPU when needed
@@ -136,7 +136,7 @@ impl Device {
             Device::CUDA(_) => true,
         }
     }
-    
+
     /// Returns the device ID for CUDA devices.
     #[cfg(feature = "cuda")]
     pub fn cuda_device_id(&self) -> Option<usize> {
@@ -164,7 +164,7 @@ pub fn default_device() -> Device {
 
 pub fn all_devices() -> Vec<Device> {
     let mut devices = vec![cpu()];
-    
+
     #[cfg(feature = "cuda")]
     {
         // Try to detect available CUDA devices
@@ -173,9 +173,6 @@ pub fn all_devices() -> Vec<Device> {
             devices.push(cuda(0));
         }
     }
-    
+
     devices
 }
-
-
-

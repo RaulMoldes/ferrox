@@ -16,10 +16,10 @@ impl CudaBackend {
         // CudaDevice::new() returns Arc<CudaDevice> already, not CudaDevice
         let device = CudaDevice::new(device_id)
             .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?;
-        
+
         // device is already Arc<CudaDevice>, so we can clone it directly
         let mut kernels = CudaKernels::new(device.clone());
-        
+
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
 
@@ -52,7 +52,8 @@ impl CudaBackend {
 
     /// Synchronizes the device (waits for all operations to complete)
     pub fn synchronize(&self) -> Result<(), String> {
-        self.device.synchronize()
+        self.device
+            .synchronize()
             .map_err(|e| format!("CUDA synchronization failed: {}", e))
     }
 

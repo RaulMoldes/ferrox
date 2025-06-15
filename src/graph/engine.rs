@@ -1,7 +1,7 @@
 use super::op::{
-    AddOp, AddScalarOp, BroadcastToOp, DivOp, ExpOp, LogOp, MatMulOp, MulOp, MulScalarOp, NegateOp,
-    Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, TransposeOp,DivScalarOp,
-    MinOp, MaxOp, ClampOp, AbsOp, SqrtOp, MaxAlongDimOp
+    AbsOp, AddOp, AddScalarOp, BroadcastToOp, ClampOp, DivOp, DivScalarOp, ExpOp, LogOp, MatMulOp,
+    MaxAlongDimOp, MaxOp, MinOp, MulOp, MulScalarOp, NegateOp, Operator, PowOp, ReLUOp, ReshapeOp,
+    SqrtOp, SumOp, SummationOp, TransposeOp,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -344,107 +344,108 @@ where
         + ndarray::LinalgScalar
         + ndarray::ScalarOperand
         + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
-{   
-
+{
     /// Find maximum values along a specified dimension.
-    /// 
+    ///
     /// This is essential for numerically stable softmax computation.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `input` - Input tensor node
     /// * `dim` - Dimension along which to find maximum
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Tensor with maximum values, with the specified dimension reduced
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// For input shape [2, 3] and dim=1:
     /// - Input: [[1, 5, 3], [2, 1, 4]]
     /// - Output: [5, 4] (shape [2])
     pub fn max_along_dim(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
         let input_data = self.nodes[&input].borrow().cached_data.clone();
         let input_shape = input_data.shape();
-        
+
         // Validate dimension
         if dim >= input_shape.len() {
             return Err(format!(
                 "Dimension {} out of bounds for tensor with {} dimensions",
-                dim, input_shape.len()
+                dim,
+                input_shape.len()
             ));
         }
-        
+
         // Use ndarray's fold_axis to find maximum along specified axis
         let result_data = input_data.data().fold_axis(
             ndarray::Axis(dim),
             <T as Numeric>::min_value(), // Start with minimum value
-            |&acc, &x| if acc > x { acc } else { x }
+            |&acc, &x| if acc > x { acc } else { x },
         );
-        
+
         let result_tensor = Tensor::new_with_device(result_data, input_data.device().clone());
-        
+
         // Create operation for gradient computation
         let op = Box::new(MaxAlongDimOp::new(dim));
         let node = Node::from_op(op, vec![input], result_tensor);
         Ok(self.add_node(node))
     }
-    
+
     /// Sum values along a specified dimension.
-    /// 
+    ///
     /// Similar to the existing sum operation but specifically for one dimension.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `input` - Input tensor node
     /// * `dim` - Dimension along which to sum
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Tensor with summed values, with the specified dimension reduced
     pub fn sum_along_dim(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
         // This can reuse the existing summation operation
         self.summation(input, Some(vec![dim]))
     }
-    
+
     /// Expand dimensions by inserting a size-1 dimension at the specified position.
     /// This is used to restore dimensions after reduction operations for broadcasting.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `input` - Input tensor node
     /// * `dim` - Position where to insert the new dimension
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Tensor with an additional dimension of size 1 at the specified position
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// For input shape [2] and dim=1:
     /// - Input shape: [2]
     /// - Output shape: [2, 1]
-    /// 
+    ///
     /// For input shape [2, 3] and dim=1:
     /// - Input shape: [2, 3]  
     /// - Output shape: [2, 1, 3]
     pub fn expand_dims_at(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
         let input_data = self.nodes[&input].borrow().cached_data.clone();
         let input_shape = input_data.shape();
-        
+
         // Validate dimension
         if dim > input_shape.len() {
             return Err(format!(
                 "Cannot expand at dimension {} for tensor with {} dimensions",
-                dim, input_shape.len()
+                dim,
+                input_shape.len()
             ));
         }
-        
+
         // Create new shape with size-1 dimension inserted
         let mut new_shape = input_shape.to_vec();
         new_shape.insert(dim, 1);
-        
+
         // Use existing reshape operation
         self.reshape(input, new_shape)
     }
@@ -622,7 +623,6 @@ where
         self.gradients.insert(node_id, gradient);
     }
 
-
     // Get gradient for a node
     pub fn get_gradient(&self, node_id: NodeId) -> Option<Tensor<T>> {
         self.gradients.get(&node_id).cloned()
@@ -634,7 +634,7 @@ where
             node_ref.borrow_mut().cached_data = new_data;
         }
     }
-    
+
     /// Clear gradient for a node
     pub fn clear_gradient(&mut self, node_id: NodeId) {
         self.gradients.remove(&node_id);
@@ -706,8 +706,7 @@ where
         Ok(self.add_node(node))
     }
 
-
-     /// Element-wise square root operation.
+    /// Element-wise square root operation.
     ///
     /// Computes the square root of each element in the input tensor.
     /// Input values must be non-negative.
@@ -741,12 +740,16 @@ where
     ///
     /// * `probabilities` - Input probability tensor
     /// * `eps` - Small epsilon value (default: 1e-8)
-    pub fn clamp_probabilities(&mut self, probabilities: NodeId, eps: f64) -> Result<NodeId, String> {
-        let eps_val = <T as Numeric>::from_f64(eps)
-            .ok_or("Failed to convert epsilon to tensor type")?;
+    pub fn clamp_probabilities(
+        &mut self,
+        probabilities: NodeId,
+        eps: f64,
+    ) -> Result<NodeId, String> {
+        let eps_val =
+            <T as Numeric>::from_f64(eps).ok_or("Failed to convert epsilon to tensor type")?;
         let one_minus_eps = <T as Numeric>::from_f64(1.0 - eps)
             .ok_or("Failed to convert 1-epsilon to tensor type")?;
-        
+
         self.clamp(probabilities, eps_val, one_minus_eps)
     }
 

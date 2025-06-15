@@ -6,9 +6,9 @@ pub mod cuda;
 // CUDA backend module
 
 #[cfg(feature = "cuda")]
-pub use device::cuda;
-#[cfg(feature = "cuda")]
 pub use cuda::CudaBackend;
+#[cfg(feature = "cuda")]
+pub use device::cuda;
 
 mod tests;
 

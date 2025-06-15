@@ -173,11 +173,10 @@ where
     }
 }
 
-
 /// I decided to implement LeakyReLU and ELU activation functions as well.
-/// Their standard implementation requires the conditional operation, 
+/// Their standard implementation requires the conditional operation,
 /// As my `Engine` does not support this, I will implement them on top the ReLU function.
-/// 
+///
 /// LeakyReLU activation function.
 ///
 /// Applies the Leaky ReLU function element-wise. Unlike ReLU, LeakyReLU allows
@@ -303,15 +302,15 @@ where
 /// The idea is to allow the function to have a non-zero output for negative inputs,
 /// which helps to reduce the bias shift effect during training.
 /// Check this conversation on why this happens: https://www.quora.com/Why-do-non-zero-mean-activations-induce-a-bias-shift-for-units-in-the-next-layer-and-why-is-that-bad
-/// Also take a look at my `initialiers.rs` module. 
+/// Also take a look at my `initialiers.rs` module.
 ///
-/// Another advantage of ELU is that it is differentiable everywhere, including at zero, 
+/// Another advantage of ELU is that it is differentiable everywhere, including at zero,
 /// which does not occur with standard ReLU.
-/// 
+///
 /// Negative values of the ELU function push mean activation closer to zero
 /// ELU saturates to -α for large negative inputs a.k.a. lim[f(x)] where x -> -∞ is -α
-/// 
-/// 
+///
+///
 #[derive(Debug, Clone)]
 pub struct ELU<T>
 where
@@ -412,8 +411,6 @@ where
     }
 }
 
-
-
 /// Softmax activation function.
 ///
 /// Applies the softmax function along a specified dimension. Softmax is commonly used
@@ -460,28 +457,28 @@ pub struct Softmax {
 
 impl Softmax {
     /// Creates a new Softmax activation layer.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `dim` - Dimension along which to apply softmax (default: 1 for [batch, classes])
     pub fn new(dim: i32) -> Self {
-        Self { 
+        Self {
             dim,
-            training: true 
+            training: true,
         }
     }
-    
+
     /// Creates a new Softmax with default dimension 1.
     /// This is the most common case for classification where input is [batch_size, num_classes].
     pub fn default_dim() -> Self {
         Self::new(1)
     }
-    
+
     /// Returns the dimension along which softmax is applied.
     pub fn dim(&self) -> i32 {
         self.dim
     }
-    
+
     /// Sets the dimension along which softmax is applied.
     pub fn set_dim(&mut self, dim: i32) {
         self.dim = dim;
@@ -507,47 +504,48 @@ where
         // Get input shape to validate dimension
         let input_shape = graph.get_shape(input);
         let ndim = input_shape.len() as i32;
-        
+
         // Convert negative dimension to positive
         let dim = if self.dim < 0 {
             (ndim + self.dim) as usize
         } else {
             self.dim as usize
         };
-        
+
         // Validate dimension is within bounds
         if dim >= input_shape.len() {
             return Err(format!(
                 "Softmax dimension {} is out of bounds for tensor with {} dimensions",
-                self.dim, input_shape.len()
+                self.dim,
+                input_shape.len()
             ));
         }
-        
+
         // Step 1: Subtract max for numerical stability
         // Find maximum along the specified dimension
         let max_vals = graph.max_along_dim(input, dim)?;
-        
+
         // Expand max_vals to match input shape for broadcasting
         let expanded_max = graph.expand_dims_at(max_vals, dim)?;
         let broadcasted_max = graph.broadcast_to(expanded_max, input_shape.clone())?;
-        
+
         // Subtract max from input: x - max(x)
         let neg_max = graph.negate(broadcasted_max)?;
         let shifted_input = graph.add(input, neg_max)?;
-        
+
         // Step 2: Compute exponentials
         let exp_vals = graph.exp(shifted_input)?;
-        
+
         // Step 3: Sum exponentials along the specified dimension
         let sum_exp = graph.sum_along_dim(exp_vals, dim)?;
-        
+
         // Step 4: Expand sum to match input shape for broadcasting
         let expanded_sum = graph.expand_dims_at(sum_exp, dim)?;
         let broadcasted_sum = graph.broadcast_to(expanded_sum, input_shape)?;
-        
+
         // Step 5: Divide exponentials by their sum
         let softmax_output = graph.div(exp_vals, broadcasted_sum)?;
-        
+
         Ok(softmax_output)
     }
 

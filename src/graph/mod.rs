@@ -5,9 +5,9 @@ pub mod plot;
 mod tests;
 
 pub use op::{
-    AddOp, AddScalarOp, BroadcastToOp, DivOp, DivScalarOp, ExpOp, LogOp, MatMulOp, MulOp, 
-    MulScalarOp, NegateOp, Operator, PowOp, ReLUOp, ReshapeOp, SumOp, SummationOp, 
-    TransposeOp, MinOp, MaxOp, ClampOp, SqrtOp, AbsOp
+    AbsOp, AddOp, AddScalarOp, BroadcastToOp, ClampOp, DivOp, DivScalarOp, ExpOp, LogOp, MatMulOp,
+    MaxOp, MinOp, MulOp, MulScalarOp, NegateOp, Operator, PowOp, ReLUOp, ReshapeOp, SqrtOp, SumOp,
+    SummationOp, TransposeOp,
 };
 
 pub use engine::Engine;

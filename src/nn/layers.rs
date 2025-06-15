@@ -1,7 +1,7 @@
+use super::initializers::xavier_uniform;
 use crate::backend::numeric::Numeric;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
-use super::initializers::xavier_uniform;
 use crate::nn::{Module, Parameter};
 use crate::tensor::Tensor;
 
@@ -88,7 +88,7 @@ where
     /// Weights are initialized using Xavier/Glorot uniform initialization.
     /// Bias is initialized to zeros if present.
     pub fn new(in_features: usize, out_features: usize, bias: bool) -> Self {
-        // Initialize weights using Xavier uniform initialization. 
+        // Initialize weights using Xavier uniform initialization.
         // This should be changed to use a more flexible initializer in the future.
         let weight_init = xavier_uniform(in_features, out_features, 1.0);
         let weight = Parameter::from_init(&[out_features, in_features], weight_init);
@@ -112,8 +112,8 @@ where
         }
     }
 
-    /// Creates a new Linear layer with custom weight initialization. 
-    /// Added this for flexibility, whilst keeping backward compatibility. 
+    /// Creates a new Linear layer with custom weight initialization.
+    /// Added this for flexibility, whilst keeping backward compatibility.
     /// The xavier-glorot initialization, will be kept as the default one.
     ///
     /// # Arguments
@@ -151,15 +151,15 @@ where
     /// Returns a vector of NodeIds for the weight and bias parameters.
     pub fn get_cached_parameter_nodes(&self) -> Vec<Option<NodeId>> {
         let mut nodes = Vec::new();
-        
+
         // Get weight node
         nodes.push(*self.weight_node_cache.borrow());
-        
+
         // Get bias node if it exists
         if self.bias.is_some() {
             nodes.push(*self.bias_node_cache.borrow());
         }
-        
+
         nodes
     }
 
@@ -196,110 +196,113 @@ where
         + rand_distr::num_traits::FromPrimitive,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
-     // Validate input shape
-     let input_shape = graph.get_shape(input);
-     if input_shape.len() < 2 {
-         return Err("Linear layer requires input with at least 2 dimensions (batch_size, features)".to_string());
-     }
-     
-     let input_features = input_shape[input_shape.len() - 1];
-     if input_features != self.in_features {
-         return Err(format!(
-             "Input feature size mismatch: expected {}, got {}",
-             self.in_features, input_features
-         ));
-     }
+        // Validate input shape
+        let input_shape = graph.get_shape(input);
+        if input_shape.len() < 2 {
+            return Err(
+                "Linear layer requires input with at least 2 dimensions (batch_size, features)"
+                    .to_string(),
+            );
+        }
 
-     // Get or create weight node (create once, reuse forever)
-     let weight_node = {
-         let mut cache = self.weight_node_cache.borrow_mut();
-         if let Some(node_id) = *cache {
-             node_id
-         } else {
-             let new_node = Parameter::create_in_graph(graph, self.weight.data.clone());
-             *cache = Some(new_node);
-             new_node
-         }
-     };
+        let input_features = input_shape[input_shape.len() - 1];
+        if input_features != self.in_features {
+            return Err(format!(
+                "Input feature size mismatch: expected {}, got {}",
+                self.in_features, input_features
+            ));
+        }
 
-     // Weight matrix has shape [out_features, in_features]
-     // We need to transpose it to [in_features, out_features] for matrix multiplication
-     // So that: input [batch_size, in_features] @ weight.T [in_features, out_features] = output [batch_size, out_features]
-     let weight_t = graph.transpose(weight_node, None)?;
-     
-     // Verify the transposed weight shape is correct
-     let weight_t_shape = graph.get_shape(weight_t);
-     if weight_t_shape != vec![self.in_features, self.out_features] {
-         return Err(format!(
-             "Weight transpose shape mismatch: expected [{}, {}], got {:?}",
-             self.in_features, self.out_features, weight_t_shape
-         ));
-     }
+        // Get or create weight node (create once, reuse forever)
+        let weight_node = {
+            let mut cache = self.weight_node_cache.borrow_mut();
+            if let Some(node_id) = *cache {
+                node_id
+            } else {
+                let new_node = Parameter::create_in_graph(graph, self.weight.data.clone());
+                *cache = Some(new_node);
+                new_node
+            }
+        };
 
-     // Compute: output = input @ weight^T
-     // This gives us: [batch_size, in_features] @ [in_features, out_features] = [batch_size, out_features]
-     let output = graph.matmul(input, weight_t)?;
+        // Weight matrix has shape [out_features, in_features]
+        // We need to transpose it to [in_features, out_features] for matrix multiplication
+        // So that: input [batch_size, in_features] @ weight.T [in_features, out_features] = output [batch_size, out_features]
+        let weight_t = graph.transpose(weight_node, None)?;
 
-     // Verify output shape is correct before adding bias
-     let output_shape = graph.get_shape(output);
-     let expected_output_shape = {
-         let mut expected = input_shape.clone();
-         let last_idx = expected.len() - 1;
-         expected[last_idx] = self.out_features;
-         expected
-     };
-     
-     if output_shape != expected_output_shape {
-         return Err(format!(
-             "Output shape mismatch after matrix multiplication: expected {:?}, got {:?}",
-             expected_output_shape, output_shape
-         ));
-     }
+        // Verify the transposed weight shape is correct
+        let weight_t_shape = graph.get_shape(weight_t);
+        if weight_t_shape != vec![self.in_features, self.out_features] {
+            return Err(format!(
+                "Weight transpose shape mismatch: expected [{}, {}], got {:?}",
+                self.in_features, self.out_features, weight_t_shape
+            ));
+        }
 
-     // Add bias if present
-     if let Some(ref bias_param) = self.bias {
-         // Get or create bias node (create once, reuse forever)
-         let bias_node = {
-             let mut cache = self.bias_node_cache.borrow_mut();
-             if let Some(node_id) = *cache {
-                 node_id
-             } else {
-                 let new_node = Parameter::create_in_graph(graph, bias_param.data.clone());
-                 *cache = Some(new_node);
-                 new_node
-             }
-         };
+        // Compute: output = input @ weight^T
+        // This gives us: [batch_size, in_features] @ [in_features, out_features] = [batch_size, out_features]
+        let output = graph.matmul(input, weight_t)?;
 
-         // Bias has shape [out_features]
-         // We need to broadcast it to match the output shape for addition
-         let bias_shape = graph.get_shape(bias_node);
-         if bias_shape != vec![self.out_features] {
-             return Err(format!(
-                 "Bias shape mismatch: expected [{}], got {:?}",
-                 self.out_features, bias_shape
-             ));
-         }
+        // Verify output shape is correct before adding bias
+        let output_shape = graph.get_shape(output);
+        let expected_output_shape = {
+            let mut expected = input_shape.clone();
+            let last_idx = expected.len() - 1;
+            expected[last_idx] = self.out_features;
+            expected
+        };
 
-         // Broadcast bias to match output shape
-         // From [out_features] to [batch_size, ..., out_features]
-         let broadcasted_bias_node = graph.broadcast_to(bias_node, output_shape)?;
-         
-         // Add bias: output = output + bias
-         let final_output = graph.add(output, broadcasted_bias_node)?;
-         
-         // Verify final output shape
-         let final_output_shape = graph.get_shape(final_output);
-         if final_output_shape != expected_output_shape {
-             return Err(format!(
-                 "Final output shape mismatch: expected {:?}, got {:?}",
-                 expected_output_shape, final_output_shape
-             ));
-         }
-         
-         Ok(final_output)
-     } else {
-         Ok(output)
-     }  
+        if output_shape != expected_output_shape {
+            return Err(format!(
+                "Output shape mismatch after matrix multiplication: expected {:?}, got {:?}",
+                expected_output_shape, output_shape
+            ));
+        }
+
+        // Add bias if present
+        if let Some(ref bias_param) = self.bias {
+            // Get or create bias node (create once, reuse forever)
+            let bias_node = {
+                let mut cache = self.bias_node_cache.borrow_mut();
+                if let Some(node_id) = *cache {
+                    node_id
+                } else {
+                    let new_node = Parameter::create_in_graph(graph, bias_param.data.clone());
+                    *cache = Some(new_node);
+                    new_node
+                }
+            };
+
+            // Bias has shape [out_features]
+            // We need to broadcast it to match the output shape for addition
+            let bias_shape = graph.get_shape(bias_node);
+            if bias_shape != vec![self.out_features] {
+                return Err(format!(
+                    "Bias shape mismatch: expected [{}], got {:?}",
+                    self.out_features, bias_shape
+                ));
+            }
+
+            // Broadcast bias to match output shape
+            // From [out_features] to [batch_size, ..., out_features]
+            let broadcasted_bias_node = graph.broadcast_to(bias_node, output_shape)?;
+
+            // Add bias: output = output + bias
+            let final_output = graph.add(output, broadcasted_bias_node)?;
+
+            // Verify final output shape
+            let final_output_shape = graph.get_shape(final_output);
+            if final_output_shape != expected_output_shape {
+                return Err(format!(
+                    "Final output shape mismatch: expected {:?}, got {:?}",
+                    expected_output_shape, final_output_shape
+                ));
+            }
+
+            Ok(final_output)
+        } else {
+            Ok(output)
+        }
     }
 
     fn parameters(&self) -> Vec<&Parameter<T>> {
@@ -386,7 +389,7 @@ where
 ///
 /// Applies modules in the order they were added. Each module's output
 /// becomes the input to the next module.
-/// 
+///
 /// NOTE THAT this should be a module and NOT A MODULE LIST as the module list is a struct.
 /// Rust does not allow tinheritance of structs.
 pub struct Sequential<T>

@@ -1,5 +1,5 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{CudaDevice, CudaFunction, LaunchConfig, LaunchAsync};
+use cudarc::driver::{CudaDevice, CudaFunction, LaunchAsync, LaunchConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -7,10 +7,19 @@ use std::sync::Arc;
 pub const ADD_PTX: &[u8] = include_bytes!("../../../kernels/add.ptx");
 pub const MATMUL_PTX: &[u8] = include_bytes!("../../../kernels/matmul.ptx");
 pub const RELU_PTX: &[u8] = include_bytes!("../../../kernels/relu.ptx");
+pub const MUL_PTX: &[u8] = include_bytes!("../../../kernels/mul.ptx");
+// pub const DIV_PTX: &[u8] = include_bytes!("../../../kernels/div.ptx"); Not implemented yet
+pub const EXP_PTX: &[u8] = include_bytes!("../../../kernels/exp.ptx");
+//pub const LOG_PTX: &[u8] = include_bytes!("../../../kernels/log.ptx");
+pub const SIGMOID_PTX: &[u8] = include_bytes!("../../../kernels/sigmoid.ptx");
+//pub const TANH_PTX: &[u8] = include_bytes!("../../../kernels/tanh.ptx");
 
 /// CUDA kernel manager that handles loading and executing kernels
 pub struct CudaKernels {
     device: Arc<CudaDevice>,
+    // Maintains a Stack of loaded kernel functions.
+    // This allows us to inmmediately launch kernels without needing to
+    // retrieve them from the device each time.
     functions: HashMap<String, CudaFunction>,
 }
 
@@ -25,31 +34,70 @@ impl CudaKernels {
 
     /// Loads a single kernel from PTX bytes
     pub fn load_kernel(&mut self, name: &str, ptx_bytes: &[u8]) -> Result<(), String> {
-        let ptx_str = std::str::from_utf8(ptx_bytes)
-            .map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
+        let ptx_str =
+            std::str::from_utf8(ptx_bytes).map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
 
         match name {
             "add" => {
-                self.device.load_ptx(ptx_str.into(), "add_module", &["elementwise_add"])
+                self.device
+                    .load_ptx(ptx_str.into(), "add_module", &["elementwise_add"])
                     .map_err(|e| format!("Failed to load add kernel: {}", e))?;
-                let func = self.device.get_func("add_module", "elementwise_add")
+                let func = self
+                    .device
+                    .get_func("add_module", "elementwise_add")
                     .ok_or_else(|| "Failed to get add function".to_string())?;
                 self.functions.insert("add".to_string(), func);
-            },
+            }
             "matmul" => {
-                self.device.load_ptx(ptx_str.into(), "matmul_module", &["matmul"])
+                self.device
+                    .load_ptx(ptx_str.into(), "matmul_module", &["matmul"])
                     .map_err(|e| format!("Failed to load matmul kernel: {}", e))?;
-                let func = self.device.get_func("matmul_module", "matmul")
+                let func = self
+                    .device
+                    .get_func("matmul_module", "matmul")
                     .ok_or_else(|| "Failed to get matmul function".to_string())?;
                 self.functions.insert("matmul".to_string(), func);
-            },
+            }
             "relu" => {
-                self.device.load_ptx(ptx_str.into(), "relu_module", &["relu_forward"])
+                self.device
+                    .load_ptx(ptx_str.into(), "relu_module", &["relu_forward"])
                     .map_err(|e| format!("Failed to load relu kernel: {}", e))?;
-                let func = self.device.get_func("relu_module", "relu_forward")
+                let func = self
+                    .device
+                    .get_func("relu_module", "relu_forward")
                     .ok_or_else(|| "Failed to get relu function".to_string())?;
                 self.functions.insert("relu".to_string(), func);
-            },
+            }
+            "mul" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "mul_module", &["elementwise_mul"])
+                    .map_err(|e| format!("Failed to load mul kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("mul_module", "elementwise_mul")
+                    .ok_or_else(|| "Failed to get mul function".to_string())?;
+                self.functions.insert("mul".to_string(), func);
+            }
+            "exp" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "exp_module", &["exp_forward"])
+                    .map_err(|e| format!("Failed to load exp kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("exp_module", "exp_forward")
+                    .ok_or_else(|| "Failed to get exp function".to_string())?;
+                self.functions.insert("exp".to_string(), func);
+            }
+            "sigmoid" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "sigmoid_module", &["sigmoid_forward"])
+                    .map_err(|e| format!("Failed to load sigmoid kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("sigmoid_module", "sigmoid_forward")
+                    .ok_or_else(|| "Failed to get sigmoid function".to_string())?;
+                self.functions.insert("sigmoid".to_string(), func);
+            }
             _ => return Err(format!("Unknown kernel name: {}", name)),
         }
 
@@ -69,34 +117,96 @@ impl CudaKernels {
     }
 
     /// Convenience method to launch add kernel
-    pub fn launch_add(&self, cfg: LaunchConfig, a: &cudarc::driver::CudaSlice<f32>, b: &cudarc::driver::CudaSlice<f32>, c: &mut cudarc::driver::CudaSlice<f32>, size: i32) -> Result<(), String> {
-        let kernel = self.get_function_cloned("add")
+    pub fn launch_add(
+        &self,
+        cfg: LaunchConfig,
+        a: &cudarc::driver::CudaSlice<f32>,
+        b: &cudarc::driver::CudaSlice<f32>,
+        c: &mut cudarc::driver::CudaSlice<f32>,
+        size: i32,
+    ) -> Result<(), String> {
+        let kernel = self
+            .get_function_cloned("add")
             .ok_or_else(|| "Add kernel not found".to_string())?;
-        
+
         unsafe {
-            kernel.launch(cfg, (a, b, c, size))
+            kernel
+                .launch(cfg, (a, b, c, size))
                 .map_err(|e| format!("Failed to launch add kernel: {}", e))
         }
     }
 
-    /// Convenience method to launch relu kernel
-    pub fn launch_relu(&self, cfg: LaunchConfig, input: &cudarc::driver::CudaSlice<f32>, output: &mut cudarc::driver::CudaSlice<f32>, size: i32) -> Result<(), String> {
-        let kernel = self.get_function_cloned("relu")
-            .ok_or_else(|| "ReLU kernel not found".to_string())?;
-        
+    /// Launch element-wise multiplication kernel
+    pub fn launch_mul(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<f32>,
+        b: &CudaSlice<f32>,
+        c: &mut CudaSlice<f32>,
+        size: i32,
+    ) -> Result<(), String> {
+        let kernel = self
+            .get_function_cloned("mul")
+            .ok_or_else(|| "Mul kernel not found".to_string())?;
+
         unsafe {
-            kernel.launch(cfg, (input, output, size))
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch mul kernel: {}", e))
+        }
+    }
+
+    /// Convenience method to launch relu kernel
+    pub fn launch_relu(
+        &self,
+        cfg: LaunchConfig,
+        input: &cudarc::driver::CudaSlice<f32>,
+        output: &mut cudarc::driver::CudaSlice<f32>,
+        size: i32,
+    ) -> Result<(), String> {
+        let kernel = self
+            .get_function_cloned("relu")
+            .ok_or_else(|| "ReLU kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, size))
                 .map_err(|e| format!("Failed to launch relu kernel: {}", e))
         }
     }
 
+
+    /// Launch activation function kernels (exp, log, sigmoid, tanh)
+    pub fn launch_activation(&self, kernel_name: &str, cfg: LaunchConfig, 
+        input: &CudaSlice<f32>, output: &mut CudaSlice<f32>, 
+        size: i32) -> Result<(), String> {
+let kernel = self.get_function_cloned(kernel_name)
+.ok_or_else(|| format!("{} kernel not found", kernel_name))?;
+
+unsafe {
+kernel.launch(cfg, (input, output, size))
+.map_err(|e| format!("Failed to launch {} kernel: {}", kernel_name, e))
+}
+}
+
     /// Convenience method to launch matmul kernel
-    pub fn launch_matmul(&self, cfg: LaunchConfig, a: &cudarc::driver::CudaSlice<f32>, b: &cudarc::driver::CudaSlice<f32>, c: &mut cudarc::driver::CudaSlice<f32>, m: i32, n: i32, k: i32) -> Result<(), String> {
-        let kernel = self.get_function_cloned("matmul")
+    pub fn launch_matmul(
+        &self,
+        cfg: LaunchConfig,
+        a: &cudarc::driver::CudaSlice<f32>,
+        b: &cudarc::driver::CudaSlice<f32>,
+        c: &mut cudarc::driver::CudaSlice<f32>,
+        m: i32,
+        n: i32,
+        k: i32,
+    ) -> Result<(), String> {
+        let kernel = self
+            .get_function_cloned("matmul")
             .ok_or_else(|| "MatMul kernel not found".to_string())?;
-        
+
         unsafe {
-            kernel.launch(cfg, (a, b, c, m, n, k))
+            kernel
+                .launch(cfg, (a, b, c, m, n, k))
                 .map_err(|e| format!("Failed to launch matmul kernel: {}", e))
         }
     }
@@ -116,8 +226,14 @@ impl CudaKernels {
 pub fn load_all_kernels(kernels: &mut CudaKernels) -> Result<(), String> {
     let kernel_list = [
         ("add", ADD_PTX),
+        ("mul", MUL_PTX),
+        // ("div", DIV_PTX),
         ("matmul", MATMUL_PTX),
         ("relu", RELU_PTX),
+        ("exp", EXP_PTX),
+        // ("log", LOG_PTX),
+        ("sigmoid", SIGMOID_PTX),
+        //  ("tanh", TANH_PTX),
     ];
 
     for (name, ptx_bytes) in kernel_list.iter() {

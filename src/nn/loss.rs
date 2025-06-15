@@ -1,4 +1,4 @@
-use crate::backend::numeric::{Numeric, Float};
+use crate::backend::numeric::{Float, Numeric};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -159,9 +159,8 @@ where
         predictions: NodeId,
         targets: NodeId,
     ) -> Result<NodeId, String> {
+        // Shpw inputs
 
-        // Shpw inputs 
-        
         // Compute difference: (predictions - targets)
         let negated = graph.negate(targets)?;
         if graph.get_shape(predictions) != graph.get_shape(negated) {
@@ -172,11 +171,10 @@ where
             ));
         }
         let diff = graph.add(predictions, negated)?;
-        
-        
+
         // Square the difference: (predictions - targets)²
         let squared_diff = graph.mul(diff, diff)?;
-  
+
         // Apply reduction strategy
         match self.reduction {
             Reduction::None => {
@@ -190,11 +188,11 @@ where
             Reduction::Mean => {
                 // Compute mean of all elements
                 let sum_loss = graph.sum(squared_diff, None)?;
-               
+
                 // Get total number of elements for mean calculation
                 let target_shape = graph.get_shape(targets);
                 let total_elements: usize = target_shape.iter().product();
-                
+
                 // Divide by number of elements to get mean
                 graph.mul_scalar(
                     sum_loss,
@@ -205,7 +203,6 @@ where
         }
     }
 }
-
 
 /// Binary Cross Entropy (BCE) Loss function.
 ///
@@ -346,11 +343,11 @@ where
         }
 
         // Clamp predictions to [eps, 1-eps] for numerical stability using our new clamp operation
-        let eps_val = <T as Numeric>::from_f64(self.eps)
-            .ok_or("Failed to convert epsilon to tensor type")?;
+        let eps_val =
+            <T as Numeric>::from_f64(self.eps).ok_or("Failed to convert epsilon to tensor type")?;
         let one_minus_eps = <T as Numeric>::from_f64(1.0 - self.eps)
             .ok_or("Failed to convert 1-epsilon to tensor type")?;
-        
+
         let clamped_preds = graph.clamp(predictions, eps_val, one_minus_eps)?;
 
         // Compute log(predictions)
@@ -602,11 +599,11 @@ where
         };
 
         // Clamp predictions for numerical stability using our new clamp operation
-        let eps_val = <T as Numeric>::from_f64(self.eps)
-            .ok_or("Failed to convert epsilon to tensor type")?;
+        let eps_val =
+            <T as Numeric>::from_f64(self.eps).ok_or("Failed to convert epsilon to tensor type")?;
         let one_minus_eps = <T as Numeric>::from_f64(1.0 - self.eps)
             .ok_or("Failed to convert 1-epsilon to tensor type")?;
-        
+
         let clamped_preds = graph.clamp(predictions, eps_val, one_minus_eps)?;
 
         // Compute log(predictions)

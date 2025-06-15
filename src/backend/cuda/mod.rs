@@ -1,12 +1,11 @@
 // src/backend/cuda/mod.rs
 #[cfg(feature = "cuda")]
-pub mod kernels;
-#[cfg(feature = "cuda")]
 pub mod device;
+#[cfg(feature = "cuda")]
+pub mod kernels;
 
 #[cfg(feature = "cuda")]
 pub mod memory;
-
 
 #[cfg(all(test, feature = "cuda"))]
 mod tests;

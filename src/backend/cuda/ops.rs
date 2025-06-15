@@ -1,0 +1,96 @@
+// src/backend/cuda/ops.rs
+// This module contains abstarctions for CUDA tensor operations that mirror existent CPU tensor operations
+use super::memory::{CudaMemoryManager, CudaTensor};
+use super::kernels::CudaKernels;
+use cudarc::driver::LaunchConfig;
+
+
+
+// The lifetime parameter `'a` allows CudaOps to borrow CudaKernels and CudaMemoryManager,
+// ensuring that the operations do not outlive the resources they depend on.
+pub struct CudaOps<'a> {
+    kernels: &'a CudaKernels,
+    memory: &'a CudaMemoryManager,
+}
+
+// Element-wise operations on CUDA tensors
+impl<'a> CudaOps<'a> {
+    pub fn new(kernels: &'a CudaKernels, memory: &'a CudaMemoryManager) -> Self {
+        Self { kernels, memory }
+    }
+
+    /// Calculate optimal launch configuration for given size
+    fn get_launch_config(&self, size: usize) -> LaunchConfig {
+        let block_size = 256;
+        let grid_size = (size + block_size - 1) / block_size;
+        LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        }
+    }
+
+    /// Element-wise addition: a + b
+    pub fn add(&self, a: &CudaTensor<f32>, b: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for addition".to_string());
+        }
+
+        let size = a.size();
+        let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_add(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+        Ok(result)
+    }
+
+    /// Element-wise multiplication: a * b
+    pub fn mul(&self, a: &CudaTensor<f32>, b: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for multiplication".to_string());
+        }
+
+        let size = a.size();
+        let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_mul(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+        Ok(result)
+    }
+
+    /// Scalar addition: a + scalar
+    pub fn add_scalar(&self, a: &CudaTensor<f32>, scalar: f32) -> Result<CudaTensor<f32>, String> {
+      // We'll need a separate kernel for scalar operations
+      // For now, create a tensor filled with the scalar value
+      let scalar_tensor = self.full(&a.shape, scalar)?;
+      self.add(a, &scalar_tensor)
+  }
+
+  /// Create tensor filled with given value
+  pub fn full(&self, shape: &[usize], value: f32) -> Result<CudaTensor<f32>, String> {
+      let size = shape.iter().product();
+      let host_data = vec![value; size];
+      let gpu_data = self.memory.host_to_device(host_data)?;
+      Ok(CudaTensor::new(gpu_data, shape.to_vec()))
+  }
+
+  /// ReLU activation function
+  pub fn relu(&self, input: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {
+      let size = input.size();
+      let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
+      let cfg = self.get_launch_config(size);
+
+      self.kernels.launch_relu(cfg, &input.data, &mut result.data, size as i32)?;
+      Ok(result)
+  }
+
+  /// Exponential function
+  pub fn exp(&self, input: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {
+      let size = input.size();
+      let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
+      let cfg = self.get_launch_config(size);
+
+      self.kernels.launch_activation("exp", cfg, &input.data, &mut result.data, size as i32)?;
+      Ok(result)
+  }
+}

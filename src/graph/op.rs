@@ -333,7 +333,9 @@ where
     pub fn new(scalar: T) -> Self {
         let zero = <T as Numeric>::zero();
         if scalar == zero {
-            panic!("Cannot create DivScalarOp with zero scalar - this would cause division by zero");
+            panic!(
+                "Cannot create DivScalarOp with zero scalar - this would cause division by zero"
+            );
         }
         Self { scalar }
     }
@@ -347,12 +349,12 @@ where
         if inputs.len() != 1 {
             return Err("DivScalarOp requires exactly 1 input".to_string());
         }
-        
+
         let zero = <T as Numeric>::zero();
         if self.scalar == zero {
             return Err("Division by zero: scalar divisor is zero".to_string());
         }
-        
+
         Ok(inputs[0].div_scalar(self.scalar))
     }
 
@@ -364,12 +366,12 @@ where
         // For z = a / scalar:
         // dz/da = 1/scalar
         // So grad_a = grad_output * (1/scalar) = grad_output / scalar
-        
+
         let zero = <T as Numeric>::zero();
         if self.scalar == zero {
             return Err("Cannot compute gradient: scalar divisor is zero".to_string());
         }
-        
+
         Ok(vec![grad_output.div_scalar(self.scalar)])
     }
 
@@ -798,7 +800,7 @@ where
         if inputs.len() != 2 {
             return Err("MinOp requires exactly 2 inputs".to_string());
         }
-        
+
         if inputs[0].shape() != inputs[1].shape() {
             return Err(format!(
                 "Shape mismatch in MinOp: {:?} vs {:?}",
@@ -811,7 +813,10 @@ where
             .and(inputs[1].data())
             .map_collect(|&a, &b| if a <= b { a } else { b });
 
-        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+        Ok(Tensor::new_with_device(
+            result_data,
+            inputs[0].device().clone(),
+        ))
     }
 
     fn gradient(
@@ -826,12 +831,11 @@ where
 
         let zero = <T as Numeric>::zero();
 
-
         let grad_a = Tensor::new_with_device(
             ndarray::Zip::from(inputs[0].data())
                 .and(inputs[1].data())
                 .and(grad_output.data())
-                .map_collect(|&a, &b, &grad| if a <= b {grad} else { zero }),
+                .map_collect(|&a, &b, &grad| if a <= b { grad } else { zero }),
             inputs[0].device().clone(),
         );
 
@@ -872,7 +876,7 @@ where
         if inputs.len() != 2 {
             return Err("MaxOp requires exactly 2 inputs".to_string());
         }
-        
+
         if inputs[0].shape() != inputs[1].shape() {
             return Err(format!(
                 "Shape mismatch in MaxOp: {:?} vs {:?}",
@@ -885,7 +889,10 @@ where
             .and(inputs[1].data())
             .map_collect(|&a, &b| if a >= b { a } else { b });
 
-        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+        Ok(Tensor::new_with_device(
+            result_data,
+            inputs[0].device().clone(),
+        ))
     }
 
     fn gradient(
@@ -950,7 +957,10 @@ where
 {
     pub fn new(min_val: T, max_val: T) -> Self {
         if min_val > max_val {
-            panic!("ClampOp: min_val ({:?}) cannot be greater than max_val ({:?})", min_val, max_val);
+            panic!(
+                "ClampOp: min_val ({:?}) cannot be greater than max_val ({:?})",
+                min_val, max_val
+            );
         }
         Self { min_val, max_val }
     }
@@ -975,7 +985,10 @@ where
             }
         });
 
-        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+        Ok(Tensor::new_with_device(
+            result_data,
+            inputs[0].device().clone(),
+        ))
     }
 
     fn gradient(
@@ -985,7 +998,7 @@ where
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of clamp(x, min_val, max_val):
         // ∂clamp(x)/∂x = 1 if min_val <= x <= max_val else 0
-        
+
         let zero = <T as Numeric>::zero();
 
         let grad = Tensor::new_with_device(
@@ -1046,7 +1059,10 @@ where
 
         let result_data = inputs[0].data().mapv(|x| x.sqrt());
 
-        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+        Ok(Tensor::new_with_device(
+            result_data,
+            inputs[0].device().clone(),
+        ))
     }
 
     fn gradient(
@@ -1056,7 +1072,7 @@ where
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
         // Special case: at x = 0, we return 0 instead of infinity
-        
+
         let zero = <T as Numeric>::zero();
         let two = <T as Numeric>::from_f64(2.0).unwrap();
 
@@ -1111,7 +1127,10 @@ where
 
         let result_data = inputs[0].data().mapv(|x| x.abs());
 
-        Ok(Tensor::new_with_device(result_data, inputs[0].device().clone()))
+        Ok(Tensor::new_with_device(
+            result_data,
+            inputs[0].device().clone(),
+        ))
     }
 
     fn gradient(
@@ -1121,7 +1140,7 @@ where
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of abs(x):
         // ∂abs(x)/∂x = 1 if x > 0, -1 if x < 0, 0 if x = 0 (by convention)
-        
+
         let zero = <T as Numeric>::zero();
         let one = <T as Numeric>::one();
         let neg_one = -one;
@@ -1177,7 +1196,7 @@ impl MaxAlongDimOp {
     pub fn new(dim: usize) -> Self {
         Self { dim }
     }
-    
+
     pub fn dim(&self) -> usize {
         self.dim
     }
@@ -1196,25 +1215,26 @@ where
         if inputs.len() != 1 {
             return Err("MaxAlongDimOp requires exactly 1 input".to_string());
         }
-        
+
         let input = &inputs[0];
         let input_shape = input.shape();
-        
+
         // Validate dimension
         if self.dim >= input_shape.len() {
             return Err(format!(
                 "Dimension {} out of bounds for tensor with {} dimensions",
-                self.dim, input_shape.len()
+                self.dim,
+                input_shape.len()
             ));
         }
-        
+
         // Use ndarray's fold_axis to find maximum along specified axis
         let result_data = input.data().fold_axis(
             ndarray::Axis(self.dim),
             <T as Numeric>::min_value(), // Start with minimum value
-            |&acc, &x| if acc > x { acc } else { x }
+            |&acc, &x| if acc > x { acc } else { x },
         );
-        
+
         Ok(Tensor::new_with_device(result_data, input.device().clone()))
     }
 
@@ -1226,45 +1246,49 @@ where
         if inputs.len() != 1 {
             return Err("MaxAlongDimOp requires exactly 1 input".to_string());
         }
-        
+
         let input = &inputs[0];
         let input_shape = input.shape();
-        
+
         // First, compute the maximum values again to determine which elements were maximal
         let max_values = input.data().fold_axis(
             ndarray::Axis(self.dim),
             <T as Numeric>::min_value(),
-            |&acc, &x| if acc > x { acc } else { x }
+            |&acc, &x| if acc > x { acc } else { x },
         );
-        
+
         // Expand max_values to match input shape for comparison
         let expanded_max = max_values.insert_axis(ndarray::Axis(self.dim));
-        let expanded_max_broadcasted = expanded_max.broadcast(input_shape)
+        let expanded_max_broadcasted = expanded_max
+            .broadcast(input_shape)
             .ok_or("Failed to broadcast max values")?;
-        
+
         // Create mask where input equals max (these get gradients)
         let zero = <T as Numeric>::zero();
         let one = <T as Numeric>::one();
-        
+
         let mask = ndarray::Zip::from(input.data())
             .and(&expanded_max_broadcasted)
-            .map_collect(|&inp, &max_val| {
-                if inp == max_val { one } else { zero }
-            });
-        
+            .map_collect(|&inp, &max_val| if inp == max_val { one } else { zero });
+
         // Count how many elements achieved the maximum along each slice
         let count_maxima = mask.sum_axis(ndarray::Axis(self.dim));
-        
+
         // Expand count to match input shape
         let expanded_count = count_maxima.insert_axis(ndarray::Axis(self.dim));
-        let expanded_count_broadcasted = expanded_count.broadcast(input_shape)
+        let expanded_count_broadcasted = expanded_count
+            .broadcast(input_shape)
             .ok_or("Failed to broadcast count")?;
-        
+
         // Expand grad_output to match input shape
-        let expanded_grad = grad_output.data().clone().insert_axis(ndarray::Axis(self.dim));
-        let expanded_grad_broadcasted = expanded_grad.broadcast(input_shape)
+        let expanded_grad = grad_output
+            .data()
+            .clone()
+            .insert_axis(ndarray::Axis(self.dim));
+        let expanded_grad_broadcasted = expanded_grad
+            .broadcast(input_shape)
             .ok_or("Failed to broadcast gradient")?;
-        
+
         // Gradient is (mask / count) * grad_output
         // This ensures gradient is distributed equally among tied maxima
         let input_grad = ndarray::Zip::from(&mask)
@@ -1277,8 +1301,11 @@ where
                     zero
                 }
             });
-        
-        Ok(vec![Tensor::new_with_device(input_grad, input.device().clone())])
+
+        Ok(vec![Tensor::new_with_device(
+            input_grad,
+            input.device().clone(),
+        )])
     }
 
     fn num_inputs(&self) -> usize {
@@ -1288,7 +1315,7 @@ where
 /// Softmax operation along a specified dimension.
 ///
 /// Computes the softmax function along the specified dimension with numerical stability.
-/// This operation combines finding the maximum, subtracting it, exponentiating, 
+/// This operation combines finding the maximum, subtracting it, exponentiating,
 /// summing, and dividing in a single operation for efficiency and numerical stability.
 ///
 /// # Mathematical Definition
@@ -1314,7 +1341,7 @@ impl SoftmaxOp {
     pub fn new(dim: usize) -> Self {
         Self { dim }
     }
-    
+
     pub fn dim(&self) -> usize {
         self.dim
     }
@@ -1333,50 +1360,53 @@ where
         if inputs.len() != 1 {
             return Err("SoftmaxOp requires exactly 1 input".to_string());
         }
-        
+
         let input = &inputs[0];
         let input_shape = input.shape();
-        
+
         // Validate dimension
         if self.dim >= input_shape.len() {
             return Err(format!(
                 "Dimension {} out of bounds for tensor with {} dimensions",
-                self.dim, input_shape.len()
+                self.dim,
+                input_shape.len()
             ));
         }
-        
+
         let axis = ndarray::Axis(self.dim);
-        
+
         // Step 1: Find maximum along the specified dimension for numerical stability
-        let max_vals = input.data().fold_axis(
-            axis,
-            <T as Numeric>::min_value(),
-            |&acc, &x| if acc > x { acc } else { x }
-        );
-        
+        let max_vals = input
+            .data()
+            .fold_axis(axis, <T as Numeric>::min_value(), |&acc, &x| {
+                if acc > x { acc } else { x }
+            });
+
         // Step 2: Expand max_vals back to original shape for broadcasting
         let expanded_max = max_vals.insert_axis(axis);
-        let broadcasted_max = expanded_max.broadcast(input_shape)
+        let broadcasted_max = expanded_max
+            .broadcast(input_shape)
             .ok_or("Failed to broadcast max values")?;
-        
+
         // Step 3: Subtract max and compute exponentials: exp(x - max)
         let shifted_and_exp = ndarray::Zip::from(input.data())
             .and(&broadcasted_max)
             .map_collect(|&x, &max_val| (x - max_val).exp());
-        
+
         // Step 4: Sum exponentials along the dimension
         let sum_exp = shifted_and_exp.sum_axis(axis);
-        
+
         // Step 5: Expand sum back to original shape for broadcasting
         let expanded_sum = sum_exp.insert_axis(axis);
-        let broadcasted_sum = expanded_sum.broadcast(input_shape)
+        let broadcasted_sum = expanded_sum
+            .broadcast(input_shape)
             .ok_or("Failed to broadcast sum values")?;
-        
+
         // Step 6: Divide by sum to get probabilities
         let result = ndarray::Zip::from(&shifted_and_exp)
             .and(&broadcasted_sum)
             .map_collect(|&exp_val, &sum_val| exp_val / sum_val);
-        
+
         Ok(Tensor::new_with_device(result, input.device().clone()))
     }
 
@@ -1388,35 +1418,39 @@ where
         if inputs.len() != 1 {
             return Err("SoftmaxOp requires exactly 1 input".to_string());
         }
-        
+
         let input = &inputs[0];
-        
+
         // Recompute softmax output (we need it for gradient computation)
         let softmax_output = self.compute(&[input.clone()])?;
-        
+
         // For softmax gradient: grad_input = softmax * (grad_output - sum(softmax * grad_output, dim))
         let axis = ndarray::Axis(self.dim);
-        
+
         // Compute element-wise product: softmax * grad_output
         let elementwise_product = ndarray::Zip::from(softmax_output.data())
             .and(grad_output.data())
             .map_collect(|&s, &g| s * g);
-        
+
         // Sum along the softmax dimension: sum(softmax * grad_output, dim)
         let sum_product = elementwise_product.sum_axis(axis);
-        
+
         // Expand sum back to original shape for broadcasting
         let expanded_sum = sum_product.insert_axis(axis);
-        let broadcasted_sum = expanded_sum.broadcast(input.shape())
+        let broadcasted_sum = expanded_sum
+            .broadcast(input.shape())
             .ok_or("Failed to broadcast sum in gradient computation")?;
-        
+
         // Compute final gradient: softmax * (grad_output - broadcasted_sum)
         let grad_input = ndarray::Zip::from(softmax_output.data())
             .and(grad_output.data())
             .and(&broadcasted_sum)
             .map_collect(|&s, &g, &sum_val| s * (g - sum_val));
-        
-        Ok(vec![Tensor::new_with_device(grad_input, input.device().clone())])
+
+        Ok(vec![Tensor::new_with_device(
+            grad_input,
+            input.device().clone(),
+        )])
     }
 
     fn num_inputs(&self) -> usize {

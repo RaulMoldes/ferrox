@@ -14,14 +14,14 @@ use std::collections::HashMap;
 /// It provides methods for parameter management, training/evaluation mode switching,
 /// and the forward pass computation.
 ///
-/// I have followed a similar approach to PyTorch's Module class, 
+/// I have followed a similar approach to PyTorch's Module class,
 /// this trait allows for:
-/// 
+///
 /// - Hierarchical composition of neural network layers
 /// - Automatic parameter collection and management
 /// - Training/evaluation mode switching
 /// - Clean forward pass interface
-/// 
+///
 /// Other modules can implement this trait to define their own behavior,
 /// while still being compatible with the overall framework.
 pub trait Module<T>
@@ -120,7 +120,7 @@ where
 /// The main difference is that `ModuleList` does not enforce a sequential
 /// forward pass, allowing for more flexible architectures.
 /// In Pytorch the module list is just a generalization of a sequential module,
-/// allowing for any type of module to be stored in the list. 
+/// allowing for any type of module to be stored in the list.
 /// In Rust we do not have inheritance so I decided to keep both.
 pub struct ModuleList<T>
 where
@@ -204,7 +204,6 @@ where
         Self::new()
     }
 }
-
 
 // This is quite tricky, because a module list is itself a module that contains other modules.
 // Therefore, it implements the Module trait, but also contains other modules that implement Module.
@@ -290,5 +289,3 @@ where
         }
     }
 }
-
-
