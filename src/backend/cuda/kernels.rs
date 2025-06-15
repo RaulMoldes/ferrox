@@ -127,14 +127,17 @@ impl CudaKernels {
     }
 
     /// Convenience method to launch add kernel
-    pub fn launch_add(
+    pub fn launch_add<T>(
         &self,
         cfg: LaunchConfig,
-        a: &cudarc::driver::CudaSlice<f32>,
-        b: &cudarc::driver::CudaSlice<f32>,
-        c: &mut cudarc::driver::CudaSlice<f32>,
+        a: &cudarc::driver::CudaSlice<T>,
+        b: &cudarc::driver::CudaSlice<T>,
+        c: &mut cudarc::driver::CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> 
+    where 
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    {
         let kernel = self
             .get_function_cloned("add")
             .ok_or_else(|| "Add kernel not found".to_string())?;
@@ -150,11 +153,14 @@ impl CudaKernels {
     pub fn launch_div(
         &self,
         cfg: LaunchConfig,
-        a: &cudarc::driver::CudaSlice<f32>,
-        b: &cudarc::driver::CudaSlice<f32>,
-        c: &mut cudarc::driver::CudaSlice<f32>,
+        a: &cudarc::driver::CudaSlice<T>,
+        b: &cudarc::driver::CudaSlice<T>,
+        c: &mut cudarc::driver::CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> 
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    {
         let kernel = self
             .get_function_cloned("div")
             .ok_or_else(|| "Division kernel not found".to_string())?;
@@ -174,7 +180,10 @@ impl CudaKernels {
         b: &CudaSlice<f32>,
         c: &mut CudaSlice<f32>,
         size: i32,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> 
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    {
         let kernel = self
             .get_function_cloned("mul")
             .ok_or_else(|| "Mul kernel not found".to_string())?;
@@ -190,10 +199,13 @@ impl CudaKernels {
     pub fn launch_relu(
         &self,
         cfg: LaunchConfig,
-        input: &cudarc::driver::CudaSlice<f32>,
-        output: &mut cudarc::driver::CudaSlice<f32>,
+        input: &cudarc::driver::CudaSlice<T>,
+        output: &mut cudarc::driver::CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> 
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    {
         let kernel = self
             .get_function_cloned("relu")
             .ok_or_else(|| "ReLU kernel not found".to_string())?;
@@ -210,10 +222,13 @@ impl CudaKernels {
         &self,
         kernel_name: &str,
         cfg: LaunchConfig,
-        input: &CudaSlice<f32>,
-        output: &mut CudaSlice<f32>,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> 
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        {
         let kernel = self
             .get_function_cloned(kernel_name)
             .ok_or_else(|| format!("{} kernel not found", kernel_name))?;
@@ -229,13 +244,16 @@ impl CudaKernels {
     pub fn launch_matmul(
         &self,
         cfg: LaunchConfig,
-        a: &cudarc::driver::CudaSlice<f32>,
-        b: &cudarc::driver::CudaSlice<f32>,
-        c: &mut cudarc::driver::CudaSlice<f32>,
+        a: &cudarc::driver::CudaSlice<T>,
+        b: &cudarc::driver::CudaSlice<T>,
+        c: &mut cudarc::driver::CudaSlice<T>,
         m: i32,
         n: i32,
         k: i32,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> 
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    {
         let kernel = self
             .get_function_cloned("matmul")
             .ok_or_else(|| "MatMul kernel not found".to_string())?;
