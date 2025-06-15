@@ -64,7 +64,7 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Scalar addition: a + scalar
-    pub fn add_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<f32>, String> 
+    pub fn add_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> 
     where
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
