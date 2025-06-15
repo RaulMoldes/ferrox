@@ -1,8 +1,7 @@
 // src/backend/cuda/memory.rs
 use cudarc::driver::{CudaDevice, CudaSlice};
 use std::sync::Arc;
-
-/// Basic CUDA memory manager for handling GPU memory allocations and transfers
+use std::fmt::Debug;
 ///
 /// This module provides high-level abstractions for:
 /// - Allocating GPU memory buffers
