@@ -176,9 +176,9 @@ impl CudaKernels {
     pub fn launch_mul<T>(
         &self,
         cfg: LaunchConfig,
-        a: &CudaSlice<f32>,
-        b: &CudaSlice<f32>,
-        c: &mut CudaSlice<f32>,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        c: &mut CudaSlice<T>,
         size: i32,
     ) -> Result<(), String> 
     where
