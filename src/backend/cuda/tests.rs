@@ -127,7 +127,7 @@ mod tests {
             // Multi-block configuration
             let cfg = LaunchConfig {
                 block_dim: (256, 1, 1),
-                grid_dim: ((size + 255) / 256, 1, 1),
+                grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
                 shared_mem_bytes: 0,
             };
             
@@ -331,8 +331,8 @@ mod tests {
     fn test_kernel_manager_creation() {
         if let Some(backend) = setup_cuda_backend() {
             let device = CudaDevice::new(0).unwrap();
-            let device_arc = Arc::new(device);
-            let mut kernels = CudaKernels::new(device_arc.clone());
+            
+            let mut kernels = CudaKernels::new(device.clone());
             
             // Initially no kernels loaded
             assert_eq!(kernels.loaded_kernels().len(), 0);
