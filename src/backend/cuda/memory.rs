@@ -1,8 +1,8 @@
 // src/backend/cuda/memory.rs
-use cudarc::driver::{CudaDevice, CudaSlice};
 use cudarc::driver::DeviceSlice;
-use std::sync::Arc;
+use cudarc::driver::{CudaDevice, CudaSlice};
 use std::fmt::Debug;
+use std::sync::Arc;
 ///
 /// This module provides high-level abstractions for:
 /// - Allocating GPU memory buffers
@@ -131,13 +131,12 @@ where
         }
     }
 
-
-   /// Creates a CUDA tensor from host data vector
+    /// Creates a CUDA tensor from host data vector
     /// This is a convenience method that combines memory allocation and data transfer
     pub fn from_vec(
-        memory_manager: &CudaMemoryManager, 
-        data: Vec<T>, 
-        shape: Vec<usize>
+        memory_manager: &CudaMemoryManager,
+        data: Vec<T>,
+        shape: Vec<usize>,
     ) -> Result<Self, String> {
         // Validate that data size matches shape
         let expected_size = shape.iter().product::<usize>();
@@ -152,7 +151,7 @@ where
 
         // Transfer data from host to device using the memory manager
         let cuda_data = memory_manager.host_to_device(data)?;
-        
+
         // Create and return tensor
         Ok(Self::new(cuda_data, shape))
     }
@@ -211,17 +210,18 @@ where
         Ok(())
     }
 
-
     // Safer clone implementation
     /// Clones the tensor data to a new CudaTensor
     pub fn deep_clone(&self, memory_manager: &CudaMemoryManager) -> Result<Self, String> {
         // 1. Allocate new device memory
         let num_elements = self.data.len();
-        let mut new_data: CudaSlice<T> = memory_manager.alloc_zeros(num_elements) // ENSURE THE MEMORY IS ZEROED
+        let mut new_data: CudaSlice<T> = memory_manager
+            .alloc_zeros(num_elements) // ENSURE THE MEMORY IS ZEROED
             .map_err(|e| format!("Failed to allocate new GPU memory: {}", e))?;
 
         // 2. Copy data from old slice to new slice
-        memory_manager.device_to_device(&self.data, &mut new_data)
+        memory_manager
+            .device_to_device(&self.data, &mut new_data)
             .map_err(|e| format!("Failed to copy data to new GPU memory: {}", e))?;
 
         // 3. Return a new tensor
@@ -242,8 +242,6 @@ pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
     strides
 }
 
-
-
 impl<T> Debug for CudaTensor<T>
 where
     T: cudarc::driver::DeviceRepr + Clone + std::fmt::Debug,
@@ -257,7 +255,6 @@ where
     }
 }
 
-
 // Cloning a CudaTensor requires that the underlying data can be cloned
 // This is necessary for operations that may need to duplicate tensors on the GPU
 // Here we clone the CudaSlice, which is a handle to the GPU memory.
@@ -270,7 +267,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            data: self.data.clone(), 
+            data: self.data.clone(),
             shape: self.shape.clone(),
             strides: self.strides.clone(),
         }

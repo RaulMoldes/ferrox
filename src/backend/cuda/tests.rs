@@ -2,10 +2,10 @@
 #[cfg(all(test, feature = "cuda"))]
 mod tests {
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
-    use crate::backend::cuda::ops::CudaOps;
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
+    use crate::backend::cuda::ops::CudaOps;
     use cudarc::driver::{CudaDevice, LaunchConfig};
     //use std::sync::Arc;
 
@@ -609,7 +609,7 @@ mod tests {
                 assert_eq!(t.size(), 4);
 
                 // Test round-trip
-                let cpu_data = t.to_cpu().unwrap();
+                let cpu_data = t.to_cpu(&manager).unwrap();
                 assert_eq!(cpu_data, data);
             }
         }
@@ -636,7 +636,7 @@ mod tests {
             assert!(result.is_ok(), "Scalar addition should work");
 
             if let Ok(result_tensor) = result {
-                let result_data = result_tensor.to_cpu().unwrap();
+                let result_data = result_tensor.to_cpu(&memory).unwrap();
                 let expected: Vec<f32> = data.iter().map(|x| x + 5.0).collect();
                 assert_eq!(result_data, expected, "Scalar addition result incorrect");
             }

@@ -22,8 +22,8 @@ where
     // Optional CUDA storage for GPU tensors
     #[cfg(feature = "cuda")]
     cuda_storage: Option<crate::backend::cuda::CudaTensor<f64>>, // For now we only support f64 on CUDA
-    // It will require additional redefinition of the tensor storage to support other types. We are lazy and 
-    // will not do it for now.
+                                                                 // It will require additional redefinition of the tensor storage to support other types. We are lazy and
+                                                                 // will not do it for now.
 }
 
 // Main implementation block with basic operations
@@ -278,8 +278,6 @@ where
         }
     }
 
-
-
     pub fn negate(&self) -> Tensor<T> {
         Tensor::new_with_device(self.data.mapv(|x| -x), self.device.clone())
     }
@@ -420,7 +418,9 @@ where
         match &self.cuda_storage {
             Some(cuda_tensor) => Ok(cuda_tensor.clone()),
             None => {
-                let cuda_tensor = cuda_backend.create_tensor_from_cpu(&self.data)?;
+                let host_data: Vec<T> = self.data.iter().cloned().collect();
+                let shape: Vec<usize> = self.shape().to_vec();
+                let cuda_tensor = cuda_backend.create_tensor_from_cpu(host_data, shape)?;
                 self.to_cuda()
             }
         }
@@ -429,15 +429,25 @@ where
     #[cfg(feature = "cuda")]
     fn create_tensor_from_cuda_result(
         &self,
-        cuda_result: crate::backend::cuda::CudaTensor<f64>,
+        cuda_result: crate::backend::cuda::CudaTensor<T>,
     ) -> Result<Tensor<T>, String> {
-        let result_cpu = cuda_result.to_cpu()?;
-        let mut result_tensor = Tensor::new_with_device(result_cpu, Device::CUDA(0));
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        let memory_manager = cuda_backend.memory_manager();
+
+        // Transfer CUDA result back to CPU
+        let result_cpu = cuda_result.to_cpu(&memory_manager)?;
+        let shape = cuda_result.shape();
+
+        // Create a new ArrayD from the CPU result
+        let result_array = ArrayD::from_shape_vec(IxDyn(shape), result_cpu).map_err(|e| format!("Failed to create array from CUDA result: {}", e))?;
+        let mut result_tensor = Tensor::new_with_device(result_array, Device::CUDA(0));
         result_tensor.cuda_storage = Some(cuda_result);
         Ok(result_tensor)
     }
 }
-
 
 /// CUDA SPECIFIC IMPLEMENTATIONS
 #[cfg(feature = "cuda")]
@@ -445,7 +455,6 @@ impl<T> Tensor<T>
 where
     T: Numeric + Clone + cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Unpin,
 {
-    
     pub fn to_cuda(&self) -> Result<Self, String> {
         if self.is_cuda() {
             return Ok(self.clone());
@@ -466,8 +475,6 @@ where
         })
     }
 
-
-
     /// Transfer tensor to specified device
     pub fn to_device(&self, device: Device) -> Result<Self, String> {
         match device {
@@ -480,9 +487,8 @@ where
 
 impl<T> Tensor<T>
 where
-        T: Numeric + Clone + ndarray::LinalgScalar,
+    T: Numeric + Clone + ndarray::LinalgScalar,
 {
-
     pub fn matmul_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String>
     where
         T: Clone + ndarray::LinalgScalar,
@@ -516,8 +522,6 @@ where
         ))
     }
 
-   
-
     /// Smart matrix multiplication with automatic device selection
     pub fn matmul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         // Check device compatibility
@@ -530,40 +534,37 @@ where
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 // Try CUDA first, fallback to CPU if it fails
-                self.matmul_cuda(other).unwrap_or_else(|_| {
-                    // Convert to CPU and perform operation there
-                    let cpu_self = self.to_cpu().unwrap();
-                    let cpu_other = other.to_cpu().unwrap();
-                    cpu_self.matmul_cpu(&cpu_other).unwrap()
-                })
+                match self.matmul_cuda(other) {
+                    Ok(result) => Ok(result),
+                    Err(_) => {
+                        // Fallback to CPU operation
+                        self.matmul_cpu(other)?
+                    }
+                }
             }
         }
     }
 
+    /// CUDA-based matrix multiplication
+    #[cfg(feature = "cuda")]
+    pub fn matmul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+        use crate::backend::manager::get_backend;
 
-     /// CUDA-based matrix multiplication
-     #[cfg(feature = "cuda")]
-     pub fn matmul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
-         use crate::backend::manager::get_backend;
-         
-         let backend = get_backend();
-         let cuda_backend = backend.cuda_backend()
-             .ok_or("CUDA backend not available")?;
- 
-         // Get or create CUDA tensors for both operands
-         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
- 
-         // Perform matrix multiplication using CUDA operations
-         let cuda_ops = cuda_backend.ops();
-         let result_cuda = cuda_ops.matmul(&cuda_a, &cuda_b)?;
- 
-         // Convert result back to Tensor and return
-         self.create_tensor_from_cuda_result(result_cuda)
-     }
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
+        // Get or create CUDA tensors for both operands
+        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+
+        // Perform matrix multiplication using CUDA operations
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.matmul(&cuda_a, &cuda_b)?;
+
+        // Convert result back to Tensor and return
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
 }
-
 
 // Implementation for operations requiring ScalarOperand
 impl<T> Tensor<T>
@@ -1041,8 +1042,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: Numeric + Clone 
-    
+    T: Numeric + Clone,
 {
     /// Check if tensor is on CUDA
     pub fn is_cuda(&self) -> bool {
@@ -1053,8 +1053,8 @@ where
 #[cfg(feature = "cuda")]
 impl<T> Tensor<T>
 where
-    T: Numeric + Clone  + cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Unpin,
-    {
+    T: Numeric + Clone + cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Unpin,
+{
     /// Move tensor to CPU
     pub fn to_cpu(&self) -> Result<Self, String> {
         if !self.is_cuda() {
@@ -1082,8 +1082,6 @@ where
             Ok(self.clone())
         }
     }
-
-   
 }
 
 // Implementation for tensor creation with One trait

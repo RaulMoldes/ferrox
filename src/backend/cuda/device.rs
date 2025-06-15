@@ -1,8 +1,8 @@
 // src/backend/cuda/device.rs
 use super::kernels::{CudaKernels, load_all_kernels};
-use cudarc::driver::CudaDevice;
 use super::memory::{CudaMemoryManager, CudaTensor};
 use super::ops::CudaOps;
+use cudarc::driver::CudaDevice;
 use std::sync::Arc;
 
 /// Main CUDA backend that manages device and kernels
