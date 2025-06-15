@@ -1,5 +1,5 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{CudaDevice, CudaFunction, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ pub const ADD_PTX: &[u8] = include_bytes!("../../../kernels/add.ptx");
 pub const MATMUL_PTX: &[u8] = include_bytes!("../../../kernels/matmul.ptx");
 pub const RELU_PTX: &[u8] = include_bytes!("../../../kernels/relu.ptx");
 pub const MUL_PTX: &[u8] = include_bytes!("../../../kernels/mul.ptx");
-pub const DIV_PTX: &[u8] = include_bytes!("../../../kernels/div.ptx"); 
+pub const DIV_PTX: &[u8] = include_bytes!("../../../kernels/div.ptx");
 pub const EXP_PTX: &[u8] = include_bytes!("../../../kernels/exp.ptx");
 //pub const LOG_PTX: &[u8] = include_bytes!("../../../kernels/log.ptx");
 pub const SIGMOID_PTX: &[u8] = include_bytes!("../../../kernels/sigmoid.ptx");
@@ -166,7 +166,6 @@ impl CudaKernels {
         }
     }
 
-
     /// Launch element-wise multiplication kernel
     pub fn launch_mul(
         &self,
@@ -206,19 +205,25 @@ impl CudaKernels {
         }
     }
 
-
     /// Launch activation function kernels (exp, log, sigmoid, tanh)
-    pub fn launch_activation(&self, kernel_name: &str, cfg: LaunchConfig, 
-        input: &CudaSlice<f32>, output: &mut CudaSlice<f32>, 
-        size: i32) -> Result<(), String> {
-let kernel = self.get_function_cloned(kernel_name)
-.ok_or_else(|| format!("{} kernel not found", kernel_name))?;
+    pub fn launch_activation(
+        &self,
+        kernel_name: &str,
+        cfg: LaunchConfig,
+        input: &CudaSlice<f32>,
+        output: &mut CudaSlice<f32>,
+        size: i32,
+    ) -> Result<(), String> {
+        let kernel = self
+            .get_function_cloned(kernel_name)
+            .ok_or_else(|| format!("{} kernel not found", kernel_name))?;
 
-unsafe {
-kernel.launch(cfg, (input, output, size))
-.map_err(|e| format!("Failed to launch {} kernel: {}", kernel_name, e))
-}
-}
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, size))
+                .map_err(|e| format!("Failed to launch {} kernel: {}", kernel_name, e))
+        }
+    }
 
     /// Convenience method to launch matmul kernel
     pub fn launch_matmul(
@@ -258,7 +263,7 @@ pub fn load_all_kernels(kernels: &mut CudaKernels) -> Result<(), String> {
     let kernel_list = [
         ("add", ADD_PTX),
         ("mul", MUL_PTX),
-         ("div", DIV_PTX),
+        ("div", DIV_PTX),
         ("matmul", MATMUL_PTX),
         ("relu", RELU_PTX),
         ("exp", EXP_PTX),

@@ -61,6 +61,53 @@ impl CudaBackend {
     pub fn name(&self) -> String {
         format!("CUDA Device {}", self.device_id)
     }
+
+    /// Creates a CUDA tensor from CPU data
+    /// This method takes host data and copies it to GPU memory
+    pub fn create_tensor_from_cpu<T>(
+        &self,
+        data: Vec<T>,
+        shape: Vec<usize>,
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
+    {
+        // Validate that data size matches shape
+        let size = shape.iter().product::<usize>();
+        if data.len() != size {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                size
+            ));
+        }
+
+        // Create memory manager for this device
+        let memory_manager = CudaMemoryManager::new(self.device.clone());
+
+        // Transfer data from host to device
+        let cuda_data = memory_manager.host_to_device(data)?;
+
+        // Create and return the CUDA tensor
+        Ok(CudaTensor::new(cuda_data, shape))
+    }
+
+    /// Returns reference to memory manager
+    /// This method provides access to the memory manager for external use
+    pub fn memory_manager(&self) -> CudaMemoryManager {
+        CudaMemoryManager::new(self.device.clone())
+    }
+
+    /// Returns reference to operations interface
+    /// This method provides access to CUDA operations for tensor computations
+    pub fn ops(&self) -> CudaOps {
+        let memory = self.memory_manager();
+        CudaOps::new(&self.kernels, &memory)
+    }
 }
 
 impl std::fmt::Debug for CudaBackend {

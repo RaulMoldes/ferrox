@@ -24,7 +24,7 @@ impl BackendManager {
     /// Initialize with CUDA if available
     pub fn init() -> Self {
         let mut manager = Self::new();
-        
+
         #[cfg(feature = "cuda")]
         {
             // Try to initialize CUDA backend, but don't fail if unavailable
@@ -35,12 +35,12 @@ impl BackendManager {
                 println!("CUDA backend not available, using CPU only");
             }
         }
-        
+
         #[cfg(not(feature = "cuda"))]
         {
             println!("CUDA feature not enabled, using CPU only");
         }
-        
+
         manager
     }
 

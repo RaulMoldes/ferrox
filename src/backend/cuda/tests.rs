@@ -159,30 +159,30 @@ mod tests {
     }
 
     #[test]
-fn test_element_wise_operations() {
-    if let Some(backend) = setup_cuda_backend() {
-        let memory = backend.memory_manager();
-        let ops = CudaOps::new(backend.kernels(), memory);
-        
-        // Test data
-        let a_data = vec![1.0, 2.0, 3.0, 4.0];
-        let b_data = vec![2.0, 3.0, 4.0, 5.0];
-        
-        // Create CUDA tensors
-        let a = CudaTensor::from_vec(memory, a_data, vec![2, 2]).unwrap();
-        let b = CudaTensor::from_vec(memory, b_data, vec![2, 2]).unwrap();
-        
-        // Test addition
-        let result = ops.add(&a, &b).unwrap();
-        let host_result = memory.device_to_host(&result.data).unwrap();
-        assert_eq!(host_result, vec![3.0, 5.0, 7.0, 9.0]);
-        
-        // Test multiplication  
-        let result = ops.mul(&a, &b).unwrap();
-        let host_result = memory.device_to_host(&result.data).unwrap();
-        assert_eq!(host_result, vec![2.0, 6.0, 12.0, 20.0]);
+    fn test_element_wise_operations() {
+        if let Some(backend) = setup_cuda_backend() {
+            let memory = backend.memory_manager();
+            let ops = CudaOps::new(backend.kernels(), memory);
+
+            // Test data
+            let a_data = vec![1.0, 2.0, 3.0, 4.0];
+            let b_data = vec![2.0, 3.0, 4.0, 5.0];
+
+            // Create CUDA tensors
+            let a = CudaTensor::from_vec(memory, a_data, vec![2, 2]).unwrap();
+            let b = CudaTensor::from_vec(memory, b_data, vec![2, 2]).unwrap();
+
+            // Test addition
+            let result = ops.add(&a, &b).unwrap();
+            let host_result = memory.device_to_host(&result.data).unwrap();
+            assert_eq!(host_result, vec![3.0, 5.0, 7.0, 9.0]);
+
+            // Test multiplication
+            let result = ops.mul(&a, &b).unwrap();
+            let host_result = memory.device_to_host(&result.data).unwrap();
+            assert_eq!(host_result, vec![2.0, 6.0, 12.0, 20.0]);
+        }
     }
-}
 
     #[test]
     fn test_kernel_cloning() {
@@ -535,6 +535,109 @@ fn test_element_wise_operations() {
             // Wait for all threads to complete
             for handle in handles {
                 handle.join().unwrap();
+            }
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_create_tensor_from_cpu() {
+        if let Some(backend) = setup_cuda_backend() {
+            // Test data
+            let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+            let shape = vec![2, 3];
+
+            // Create CUDA tensor from CPU data
+            let cuda_tensor = backend.create_tensor_from_cpu(data.clone(), shape.clone());
+
+            assert!(
+                cuda_tensor.is_ok(),
+                "Failed to create CUDA tensor from CPU data"
+            );
+
+            if let Ok(tensor) = cuda_tensor {
+                // Verify shape and size
+                assert_eq!(tensor.shape(), &shape);
+                assert_eq!(tensor.size(), 6);
+                assert_eq!(tensor.ndim(), 2);
+
+                // Verify data by transferring back to CPU
+                let cpu_data = tensor.to_cpu().unwrap();
+                assert_eq!(
+                    cpu_data, data,
+                    "Data doesn't match after round-trip transfer"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_create_tensor_from_cpu_errors() {
+        if let Some(backend) = setup_cuda_backend() {
+            // Test shape mismatch error
+            let data = vec![1.0f32, 2.0, 3.0, 4.0];
+            let wrong_shape = vec![2, 3]; // Should be [4] or [2, 2]
+
+            let result = backend.create_tensor_from_cpu(data, wrong_shape);
+            assert!(result.is_err(), "Should fail with shape mismatch");
+
+            // Verify error message contains useful information
+            let error_msg = result.err().unwrap();
+            assert!(
+                error_msg.contains("doesn't match shape"),
+                "Error message should mention shape mismatch"
+            );
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_cuda_tensor_from_vec() {
+        if let Some(manager) = setup_memory_manager() {
+            let data = vec![1.0f32, 2.0, 3.0, 4.0];
+            let shape = vec![2, 2];
+
+            // Create tensor using from_vec
+            let tensor = CudaTensor::from_vec(&manager, data.clone(), shape.clone());
+
+            assert!(tensor.is_ok(), "Failed to create tensor from vec");
+
+            if let Ok(t) = tensor {
+                assert_eq!(t.shape(), &shape);
+                assert_eq!(t.size(), 4);
+
+                // Test round-trip
+                let cpu_data = t.to_cpu().unwrap();
+                assert_eq!(cpu_data, data);
+            }
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_integration_with_backend_methods() {
+        if let Some(backend) = setup_cuda_backend() {
+            let data = vec![1.0f32, 2.0, 3.0, 4.0];
+            let shape = vec![2, 2];
+
+            // Create tensor using backend method
+            let cuda_tensor = backend
+                .create_tensor_from_cpu(data.clone(), shape.clone())
+                .unwrap();
+
+            // Test that we can use this tensor with operations
+            let memory = backend.memory_manager();
+            let ops = backend.ops();
+
+            // Test scalar addition
+            let result = ops.add_scalar(&cuda_tensor, 5.0);
+            assert!(result.is_ok(), "Scalar addition should work");
+
+            if let Ok(result_tensor) = result {
+                let result_data = result_tensor.to_cpu().unwrap();
+                let expected: Vec<f32> = data.iter().map(|x| x + 5.0).collect();
+                assert_eq!(result_data, expected, "Scalar addition result incorrect");
             }
         }
     }

@@ -131,6 +131,44 @@ where
         }
     }
 
+    /// Creates a CUDA tensor from host data vector
+    /// This is a convenience method that combines memory allocation and data transfer
+    pub fn from_vec(
+        memory_manager: &CudaMemoryManager,
+        data: Vec<T>,
+        shape: Vec<usize>,
+    ) -> Result<Self, String> {
+        // Validate that data size matches shape
+        let expected_size = shape.iter().product::<usize>();
+        if data.len() != expected_size {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                expected_size
+            ));
+        }
+
+        /// Transfers CUDA tensor data back to CPU as a vector
+        /// This method copies data from GPU to host memory
+        pub fn to_cpu(&self) -> Result<Vec<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone,
+        {
+            // Get the device from the CudaSlice to perform the transfer
+            let device = self.data.device();
+            device
+                .dtoh_sync_copy(&self.data)
+                .map_err(|e| format!("Failed to copy CUDA tensor to CPU: {}", e))
+        }
+
+        // Transfer data from host to device
+        let cuda_data = memory_manager.host_to_device(data)?;
+
+        // Create and return tensor
+        Ok(Self::new(cuda_data, shape))
+    }
+
     /// Creates a new zeroed CUDA tensor with the given shape
     pub fn zeros(memory_manager: &CudaMemoryManager, shape: Vec<usize>) -> Result<Self, String> {
         let size = shape.iter().product();
@@ -157,8 +195,6 @@ where
     pub fn strides(&self) -> &[usize] {
         &self.strides
     }
-
-    
 
     /// Reshapes the tensor to new dimensions (without copying data)
     pub fn reshape(&mut self, new_shape: Vec<usize>) -> Result<(), String> {
