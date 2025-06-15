@@ -8,6 +8,9 @@ pub mod kernels;
 pub mod memory;
 
 #[cfg(feature = "cuda")]
+pub mod ops;
+
+#[cfg(feature = "cuda")]
 pub use memory::{CudaMemoryManager, CudaTensor};
 
 #[cfg(all(test, feature = "cuda"))]
