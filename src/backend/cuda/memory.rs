@@ -27,7 +27,7 @@ impl CudaMemoryManager {
     /// avoiding potential issues with uninitialized memory and corrupted data.
     pub fn alloc_zeros<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
     where
-        T: cudarc::driver::DeviceRepr,
+        T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
         self.device
             .alloc_zeros(size)
@@ -36,23 +36,30 @@ impl CudaMemoryManager {
 
     /// Allocates uninitialized memory on the GPU.
     /// Basic cudaMalloc equivalent.
-    pub fn alloc<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
+    pub unsafe fn alloc<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr,
-    {
+    { 
+
+      // SAFETY: This method does not initialize the memory, so it may contain garbage data.
+      // Use with caution, as it may lead to undefined behavior if the data is not initialized.
+      // It is the user's responsibility to ensure the memory is initialized before use.
+      
         self.device
             .alloc(size)
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
+    
     }
 
 
     // -------- `cudaMemcpy` equivalents for host to device transfers  -------- //
+    // ASYNC transfers are not implemented yet, because I don't need them for now.
 
     /// Copies data from host to device
     /// `htod_copy` is a synchronous operation that blocks until the copy is complete.
     pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
     where
-        T: cudarc::driver::DeviceRepr,
+        T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
     {
         self.device
             .htod_copy(data)
@@ -69,15 +76,6 @@ impl CudaMemoryManager {
             .map_err(|e| format!("Failed to copy device to host: {}", e))
     }
 
-    /// Copies data from device to host asynchronously
-    pub fn device_to_host_async<T>(&self, gpu_data: &CudaSlice<T>) -> Result<Vec<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr + Clone,
-    {
-        self.device
-            .dtoh_async_copy(gpu_data)
-            .map_err(|e| format!("Failed to copy device to host async: {}", e))
-    }
 
     /// Copies data between GPU buffers.
     /// Not used for now but if I scale the project to support multiple GPUs, and parallel execution
@@ -93,7 +91,7 @@ impl CudaMemoryManager {
 
     /// Returns the total memory available on the device
     pub fn total_memory(&self) -> Result<usize, String> {
-        self.device
+        self.device.as_ref()
             .total_memory()
             .map_err(|e| format!("Failed to get total memory: {}", e))
     }
