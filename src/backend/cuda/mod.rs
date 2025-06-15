@@ -4,6 +4,8 @@ pub mod kernels;
 #[cfg(feature = "cuda")]
 pub mod device;
 
+#[cfg(all(test, feature = "cuda"))]
+mod tests;
 
 #[cfg(feature = "cuda")]
 pub use device::CudaBackend;
