@@ -131,12 +131,13 @@ where
         }
     }
 
-    /// Creates a CUDA tensor from host data vector
+
+   /// Creates a CUDA tensor from host data vector
     /// This is a convenience method that combines memory allocation and data transfer
     pub fn from_vec(
-        memory_manager: &CudaMemoryManager,
-        data: Vec<T>,
-        shape: Vec<usize>,
+        memory_manager: &CudaMemoryManager, 
+        data: Vec<T>, 
+        shape: Vec<usize>
     ) -> Result<Self, String> {
         // Validate that data size matches shape
         let expected_size = shape.iter().product::<usize>();
@@ -149,24 +150,21 @@ where
             ));
         }
 
-        /// Transfers CUDA tensor data back to CPU as a vector
-        /// This method copies data from GPU to host memory
-        pub fn to_cpu(&self) -> Result<Vec<T>, String>
-        where
-            T: cudarc::driver::DeviceRepr + Clone,
-        {
-            // Get the device from the CudaSlice to perform the transfer
-            let device = self.data.device();
-            device
-                .dtoh_sync_copy(&self.data)
-                .map_err(|e| format!("Failed to copy CUDA tensor to CPU: {}", e))
-        }
-
-        // Transfer data from host to device
+        // Transfer data from host to device using the memory manager
         let cuda_data = memory_manager.host_to_device(data)?;
-
+        
         // Create and return tensor
         Ok(Self::new(cuda_data, shape))
+    }
+
+    /// Transfers CUDA tensor data back to CPU as a vector
+    /// This method copies data from GPU to host memory using the memory manager
+    pub fn to_cpu(&self, memory_manager: &CudaMemoryManager) -> Result<Vec<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone,
+    {
+        // Use the memory manager to perform the device-to-host transfer
+        memory_manager.device_to_host(&self.data)
     }
 
     /// Creates a new zeroed CUDA tensor with the given shape
@@ -212,6 +210,27 @@ where
         self.strides = compute_strides(&self.shape);
         Ok(())
     }
+
+
+    // Safer clone implementation
+    /// Clones the tensor data to a new CudaTensor
+    pub fn deep_clone(&self, memory_manager: &CudaMemoryManager) -> Result<Self, String> {
+        // 1. Allocate new device memory
+        let num_elements = self.data.len();
+        let mut new_data: CudaSlice<T> = memory_manager.alloc_zeros(num_elements) // ENSURE THE MEMORY IS ZEROED
+            .map_err(|e| format!("Failed to allocate new GPU memory: {}", e))?;
+
+        // 2. Copy data from old slice to new slice
+        memory_manager.device_to_device(&self.data, &mut new_data)
+            .map_err(|e| format!("Failed to copy data to new GPU memory: {}", e))?;
+
+        // 3. Return a new tensor
+        Ok(Self {
+            data: new_data,
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+        })
+    }
 }
 
 /// Computes strides for a given shape (row-major order)
@@ -221,4 +240,39 @@ pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
         strides[i] = strides[i + 1] * shape[i + 1];
     }
     strides
+}
+
+
+
+impl<T> Debug for CudaTensor<T>
+where
+    T: cudarc::driver::DeviceRepr + Clone + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "CudaTensor {{ shape: {:?}, strides: {:?}, data: {:?} }}",
+            self.shape, self.strides, self.data
+        )
+    }
+}
+
+
+// Cloning a CudaTensor requires that the underlying data can be cloned
+// This is necessary for operations that may need to duplicate tensors on the GPU
+// Here we clone the CudaSlice, which is a handle to the GPU memory.
+// It can lead to memory races because the underlying data is not copied, just the handle over the cuda slice, then if one handle is modified, the other will see the changes as well.
+// This is a shallow clone, meaning it only copies the handle to the GPU memory.
+// I am not sure if it would require additional memory allocation or not.
+impl<T> Clone for CudaTensor<T>
+where
+    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+{
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(), 
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+        }
+    }
 }

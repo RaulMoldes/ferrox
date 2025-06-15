@@ -122,4 +122,67 @@ impl<'a> CudaOps<'a> {
       self.kernels.launch_activation("exp", cfg, &input.data, &mut result.data, size as i32)?;
       Ok(result)
   }
+
+
+  /// Matrix multiplication: C = A @ B
+    /// A is (m x k), B is (k x n), C is (m x n)
+    pub fn matmul(&self, a: &CudaTensor<f32>, b: &CudaTensor<f32>) -> Result<CudaTensor<f32>, String> {
+        // Validate that both tensors are 2D
+        if a.ndim() != 2 || b.ndim() != 2 {
+            return Err("Matrix multiplication requires 2D tensors".to_string());
+        }
+
+        let a_shape = a.shape();
+        let b_shape = b.shape();
+
+        // Check dimension compatibility: A(m,k) @ B(k,n) = C(m,n)
+        if a_shape[1] != b_shape[0] {
+            return Err(format!(
+                "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
+                a_shape[0], a_shape[1], b_shape[0], b_shape[1]
+            ));
+        }
+
+        let m = a_shape[0] as i32;  // rows of A and C
+        let k = a_shape[1] as i32;  // cols of A, rows of B  
+        let n = b_shape[1] as i32;  // cols of B and C
+
+        // Create result tensor with shape (m, n)
+        let result_shape = vec![m as usize, n as usize];
+        let mut result = CudaTensor::zeros(self.memory, result_shape)?;
+
+        // Calculate optimal launch configuration for matrix multiplication
+        let cfg = self.get_matmul_launch_config(m as usize, n as usize);
+
+        // Launch the matrix multiplication kernel
+        self.kernels.launch_matmul(
+            cfg,
+            &a.data,
+            &b.data, 
+            &mut result.data,
+            m,
+            n,
+            k
+        )?;
+
+        Ok(result)
+    }
+
+    /// Calculate optimal launch configuration for matrix multiplication
+    /// This uses 2D blocks optimized for matrix operations
+    fn get_matmul_launch_config(&self, m: usize, n: usize) -> LaunchConfig {
+        // Use 16x16 thread blocks for better memory coalescing
+        let block_dim_x = 16;
+        let block_dim_y = 16;
+
+        // Calculate grid dimensions to cover the entire result matrix
+        let grid_dim_x = (n + block_dim_x - 1) / block_dim_x;
+        let grid_dim_y = (m + block_dim_y - 1) / block_dim_y;
+
+        LaunchConfig {
+            grid_dim: (grid_dim_x as u32, grid_dim_y as u32, 1),
+            block_dim: (block_dim_x as u32, block_dim_y as u32, 1),
+            shared_mem_bytes: 0, // Could be optimized with shared memory later
+        }
+    }
 }

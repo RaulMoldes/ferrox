@@ -276,54 +276,7 @@ where
         }
     }
 
-    pub fn matmul_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String>
-    where
-        T: Clone + ndarray::LinalgScalar,
-    {
-        if self.ndim() != 2 || other.ndim() != 2 {
-            return Err("Matrix multiplication requires 2D tensors".to_string());
-        }
 
-        let a_shape = self.shape();
-        let b_shape = other.shape();
-
-        if a_shape[1] != b_shape[0] {
-            return Err(format!(
-                "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
-                a_shape[0], a_shape[1], b_shape[0], b_shape[1]
-            ));
-        }
-
-        // Be more explicit about the types
-        let a: ndarray::ArrayView2<T> = self.data.view().into_dimensionality().unwrap();
-        let b: ndarray::ArrayView2<T> = other.data.view().into_dimensionality().unwrap();
-
-        // Dot product of two 2D arrays, gives the matrix multiplication result.
-        // Look at `ndarray` documentation for more details on `dot`.
-        // https://docs.rs/ndarray/latest/ndarray/struct.ArrayBase.html#method.dot
-        let result = a.dot(&b);
-
-        Ok(Tensor::new_with_device(
-            result.into_dyn(),
-            self.device.clone(),
-        ))
-    }
-
-    pub fn matmul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String>
-    where
-        T: Clone + ndarray::LinalgScalar,
-    {
-        #[cfg(feature = "cuda")]
-        {
-            if self.is_cuda() && other.is_cuda() {
-                return self
-                    .cuda_tensor()
-                    .unwrap()
-                    .matmul(other.cuda_tensor().unwrap());
-            }
-        }
-        self.matmul_cpu(other)
-    }
 
     pub fn negate(&self) -> Tensor<T> {
         Tensor::new_with_device(self.data.mapv(|x| -x), self.device.clone())
@@ -391,7 +344,7 @@ where
         #[cfg(feature = "cuda")]
         {
             if let Some(cuda_tensor) = &self.cuda_storage {
-                return cuda_tensor.to_vec();
+                return cuda_tensor.to_cpu().to_vec();
             }
         }
         self.data.iter().copied().collect()
@@ -478,6 +431,93 @@ where
         Ok(result_tensor)
     }
 }
+
+impl<T> Tensor<T>
+where
+        T: Numeric + Clone + ndarray::LinalgScalar,
+{
+
+    pub fn matmul_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String>
+    where
+        T: Clone + ndarray::LinalgScalar,
+    {
+        if self.ndim() != 2 || other.ndim() != 2 {
+            return Err("Matrix multiplication requires 2D tensors".to_string());
+        }
+
+        let a_shape = self.shape();
+        let b_shape = other.shape();
+
+        if a_shape[1] != b_shape[0] {
+            return Err(format!(
+                "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
+                a_shape[0], a_shape[1], b_shape[0], b_shape[1]
+            ));
+        }
+
+        // Be more explicit about the types
+        let a: ndarray::ArrayView2<T> = self.data.view().into_dimensionality().unwrap();
+        let b: ndarray::ArrayView2<T> = other.data.view().into_dimensionality().unwrap();
+
+        // Dot product of two 2D arrays, gives the matrix multiplication result.
+        // Look at `ndarray` documentation for more details on `dot`.
+        // https://docs.rs/ndarray/latest/ndarray/struct.ArrayBase.html#method.dot
+        let result = a.dot(&b);
+
+        Ok(Tensor::new_with_device(
+            result.into_dyn(),
+            self.device.clone(),
+        ))
+    }
+
+   
+
+    /// Smart matrix multiplication with automatic device selection
+    pub fn matmul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+        // Check device compatibility
+        if self.device != other.device {
+            return Err("Tensors must be on the same device for matrix multiplication".to_string());
+        }
+
+        match self.device {
+            Device::CPU => self.matmul_cpu(other),
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // Try CUDA first, fallback to CPU if it fails
+                self.matmul_cuda(other).unwrap_or_else(|_| {
+                    // Convert to CPU and perform operation there
+                    let cpu_self = self.to_cpu().unwrap();
+                    let cpu_other = other.to_cpu().unwrap();
+                    cpu_self.matmul_cpu(&cpu_other).unwrap()
+                })
+            }
+        }
+    }
+
+
+     /// CUDA-based matrix multiplication
+     #[cfg(feature = "cuda")]
+     pub fn matmul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+         use crate::backend::manager::get_backend;
+         
+         let backend = get_backend();
+         let cuda_backend = backend.cuda_backend()
+             .ok_or("CUDA backend not available")?;
+ 
+         // Get or create CUDA tensors for both operands
+         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+ 
+         // Perform matrix multiplication using CUDA operations
+         let cuda_ops = cuda_backend.ops();
+         let result_cuda = cuda_ops.matmul(&cuda_a, &cuda_b)?;
+ 
+         // Convert result back to Tensor and return
+         self.create_tensor_from_cuda_result(result_cuda)
+     }
+
+}
+
 
 // Implementation for operations requiring ScalarOperand
 impl<T> Tensor<T>
@@ -955,13 +995,20 @@ where
 
 impl<T> Tensor<T>
 where
-    T: Numeric + Clone,
+    T: Numeric + Clone 
+    
 {
     /// Check if tensor is on CUDA
     pub fn is_cuda(&self) -> bool {
         self.device.is_cuda()
     }
+}
 
+#[cfg(feature = "cuda")]
+impl<T> Tensor<T>
+where
+    T: Numeric + Clone  + cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
     /// Move tensor to CPU
     pub fn to_cpu(&self) -> Result<Self, String> {
         if !self.is_cuda() {
