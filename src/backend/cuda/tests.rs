@@ -2,6 +2,9 @@
 #[cfg(all(test, feature = "cuda"))]
 mod tests {
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
+    use super::super::CudaMemoryManager;
+    use super::super::CudaTensor;
+    use super::super::compute_strides;
     use cudarc::driver::{CudaDevice, LaunchConfig};
     use std::sync::Arc;
 
@@ -34,6 +37,93 @@ mod tests {
                 i, e, a, (a - e).abs()
             );
         }
+    }
+
+
+    fn setup_memory_manager() -> Option<CudaMemoryManager> {
+        match CudaDevice::new(0) {
+            Ok(device) => Some(CudaMemoryManager::new(Arc::new(device))),
+            Err(_) => None,
+        }
+    }
+
+    #[test]
+    fn test_memory_allocation() {
+        if let Some(manager) = setup_memory_manager() {
+            let size = 1024;
+            
+            // Test zero allocation
+            let zeros = manager.alloc_zeros::<f32>(size);
+            assert!(zeros.is_ok());
+            
+            // Test regular allocation
+            let buffer = manager.alloc::<f32>(size);
+            assert!(buffer.is_ok());
+        }
+    }
+
+    #[test]
+    fn test_host_device_transfers() {
+        if let Some(manager) = setup_memory_manager() {
+            let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+            let original_data = data.clone();
+            
+            // Host to device
+            let gpu_data = manager.host_to_device(data);
+            assert!(gpu_data.is_ok());
+            
+            if let Ok(gpu_buffer) = gpu_data {
+                // Device to host
+                let retrieved_data = manager.device_to_host(&gpu_buffer);
+                assert!(retrieved_data.is_ok());
+                
+                if let Ok(host_data) = retrieved_data {
+                    assert_eq!(host_data, original_data);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cuda_tensor_creation() {
+        if let Some(manager) = setup_memory_manager() {
+            let shape = vec![2, 3, 4];
+            let tensor = CudaTensor::<f32>::zeros(&manager, shape.clone());
+            
+            assert!(tensor.is_ok());
+            
+            if let Ok(t) = tensor {
+                assert_eq!(t.shape(), &shape);
+                assert_eq!(t.size(), 24);
+                assert_eq!(t.ndim(), 3);
+            }
+        }
+    }
+
+    #[test]
+    fn test_tensor_reshape() {
+        if let Some(manager) = setup_memory_manager() {
+            let shape = vec![2, 6];
+            let mut tensor = CudaTensor::<f32>::zeros(&manager, shape).unwrap();
+            
+            // Valid reshape
+            assert!(tensor.reshape(vec![3, 4]).is_ok());
+            assert_eq!(tensor.shape(), &[3, 4]);
+            
+            // Invalid reshape (different size)
+            assert!(tensor.reshape(vec![2, 7]).is_err());
+        }
+    }
+
+    #[test]
+    fn test_stride_computation() {
+        let shape = vec![2, 3, 4];
+        let strides = compute_strides(&shape);
+        assert_eq!(strides, vec![12, 4, 1]);
+        
+        let shape2 = vec![5, 7];
+        let strides2 = compute_strides(&shape2);
+        assert_eq!(strides2, vec![7, 1]);
     }
 
     #[test]
