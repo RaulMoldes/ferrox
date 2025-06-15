@@ -1,5 +1,6 @@
 pub mod device;
 pub mod numeric;
+pub mod manager;
 
 #[cfg(feature = "cuda")]
 pub mod cuda;

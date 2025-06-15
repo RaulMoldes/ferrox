@@ -2,17 +2,106 @@ use crate::backend::numeric::{Float, Numeric};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
+use crate::backend::manager::get_backend;
+
+#[cfg(feature = "cuda")]
+use crate::backend::cuda::CudaTensor;
+
+/// This enum represents the storage of a tensor, which can be either on CPU or CUDA.
+/// If on CPU it uses the ndarray implementation, and if on CUDA it uses a custom CudaTensor type.
+/// The other [`Tensor`] struct found on this module represents a Tensor on CPU.
+#[derive(Debug, Clone)]
+pub enum TensorStorage<T>
+where
+    T: Numeric + Clone,
+{
+    /// CPU storage
+    Cpu(ArrayD<T>),
+    
+    /// CUDA storage using the CUDA tensor implementation
+    #[cfg(feature = "cuda")]
+    Cuda(CudaTensor<T>),
+}
+
+impl<T> TensorStorage<T>
+where
+    T: Numeric + Clone,
+{
+    /// Check if this is CUDA storage
+    pub fn is_cuda(&self) -> bool {
+        match self {
+            TensorStorage::Cpu(_) => false,
+            #[cfg(feature = "cuda")]
+            TensorStorage::Cuda(_) => true,
+        }
+    }
+
+    /// Get shape - works for both CPU and CUDA
+    pub fn shape(&self) -> Vec<usize> {
+        match self {
+            TensorStorage::Cpu(array) => array.shape().to_vec(),
+            #[cfg(feature = "cuda")]
+            TensorStorage::Cuda(cuda_tensor) => cuda_tensor.shape().clone(),
+        }
+    }
+
+    /// Get total elements - works for both CPU and CUDA
+    pub fn size(&self) -> usize {
+        match self {
+            TensorStorage::Cpu(array) => array.len(),
+            #[cfg(feature = "cuda")]
+            TensorStorage::Cuda(cuda_tensor) => cuda_tensor.size(),
+        }
+    }
+
+    /// Convert to CPU (if not already CPU)
+    pub fn to_cpu(&self) -> Result<ArrayD<T>, String> {
+        match self {
+            TensorStorage::Cpu(array) => Ok(array.clone()),
+            #[cfg(feature = "cuda")]
+            TensorStorage::Cuda(cuda_tensor) => {
+                let host_data = cuda_tensor.to_vec()?;
+                let shape = cuda_tensor.shape();
+                let cpu_array = ArrayD::from_shape_vec(
+                    ndarray::IxDyn(shape),
+                    host_data
+                ).map_err(|e| format!("Failed to create CPU array: {}", e))?;
+                Ok(cpu_array)
+            }
+        }
+    }
+
+    /// Convert to CUDA (if not already CUDA and backend available)
+    #[cfg(feature = "cuda")]
+    pub fn to_cuda(&self, backend: &crate::backend::cuda::CudaBackend) -> Result<CudaTensor<T>, String> {
+        match self {
+            TensorStorage::Cpu(array) => {
+                let shape = array.shape().to_vec();
+                let host_data: Vec<T> = array.iter().cloned().collect();
+                CudaTensor::from_vec(backend.memory_manager(), host_data, shape)
+            }
+            TensorStorage::Cuda(cuda_tensor) => Ok(cuda_tensor.clone()),
+        }
+    }
+}
+
 
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug, Clone)]
 pub struct Tensor<T>
 where
     T: Numeric + Clone,
-{
+{   
+
+    // This `data` field is the main data storage of the tensor on CPU.
     pub data: ArrayD<T>, // As I documented in the device module, this will be changed toa generic type <T>
     // This way I will be able to use different data types in the future.
     // For now, we will keep it as f64 for simplicity.
     pub device: Device,
+
+    // Optional CUDA storage for GPU tensors
+    #[cfg(feature = "cuda")]
+    cuda_storage: Option<crate::backend::cuda::CudaTensor<T>>,
 }
 
 // Main implementation block with basic operations
@@ -35,6 +124,8 @@ where
         Self {
             data,
             device: default_device(),
+            #[cfg(feature = "cuda")]
+            cuda_storage: None,
         }
     }
 
@@ -45,8 +136,93 @@ where
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
     // Ideally,we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as i prefer to focus more on the automatic differentiation engine thing.
     pub fn new_with_device(data: ArrayD<T>, device: Device) -> Self {
-        Self { data, device }
+        Self { data, device,
+            #[cfg(feature = "cuda")]
+            cuda_storage: None, }
     }
+
+    // Creates a new tensor with the given data and automatically selects the best device.
+    pub fn new_auto(data: ArrayD<T>) -> Result<Self, String> {
+        let backend = get_backend();
+        let best_device = backend.best_device();
+        
+        let mut tensor = Self::new_with_device(data, best_device.clone());
+        
+        // If CUDA is available and best device is CUDA, move data there
+        #[cfg(feature = "cuda")]
+        {
+            if let Device::CUDA(_) = best_device {
+                if let Some(cuda_backend) = backend.cuda_backend() {
+                    tensor = tensor.to_cuda(cuda_backend)?;
+                }
+            }
+        }
+        
+        Ok(tensor)
+    }
+
+     /// Check if tensor is on CUDA
+     pub fn is_cuda(&self) -> bool {
+        #[cfg(feature = "cuda")]
+        {
+            self.cuda_storage.is_some()
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            false
+        }
+    }
+
+    /// Move tensor to CUDA (if available)
+    #[cfg(feature = "cuda")]
+    pub fn to_cuda(&self, backend: &crate::backend::cuda::CudaBackend) -> Result<Self, String> {
+        if self.is_cuda() {
+            return Ok(self.clone()); // Already on CUDA
+        }
+
+        let cuda_tensor = crate::backend::cuda::CudaTensor::from_vec(
+            backend.memory_manager(),
+            self.data.iter().cloned().collect(),
+            self.data.shape().to_vec()
+        )?;
+
+        Ok(Self {
+            data: self.data.clone(), // Keep CPU copy for compatibility
+            device: Device::CUDA(0),
+            cuda_storage: Some(cuda_tensor),
+        })
+    }
+
+    /// Move tensor to CPU (if on CUDA)
+    #[cfg(feature = "cuda")]
+    pub fn to_cpu(&self) -> Result<Self, String> {
+        if !self.is_cuda() {
+            return Ok(self.clone()); // Already on CPU
+        }
+
+        if let Some(cuda_tensor) = &self.cuda_storage {
+            let host_data = cuda_tensor.to_vec()?;
+            let cpu_array = ArrayD::from_shape_vec(
+                IxDyn(cuda_tensor.shape()),
+                host_data
+            ).map_err(|e| format!("Failed to create CPU array: {}", e))?;
+
+            Ok(Self {
+                data: cpu_array,
+                device: Device::CPU,
+                cuda_storage: None,
+            })
+        } else {
+            Ok(self.clone())
+        }
+    }
+
+    /// Get the underlying CUDA tensor if available
+    #[cfg(feature = "cuda")]
+    pub fn cuda_tensor(&self) -> Option<&crate::backend::cuda::CudaTensor<T>> {
+        self.cuda_storage.as_ref()
+    }
+
 
     // Random numbers
     pub fn randn(shape: &[usize]) -> Self {
@@ -97,6 +273,12 @@ where
         }
     }
 
+    /// Auto from_vec - uses best device
+    pub fn from_vec_auto(data: Vec<T>, shape: &[usize]) -> Result<Self, String> {
+        let cpu_tensor = Self::from_vec(data, shape)?;
+        Self::new_auto(cpu_tensor.data)
+    }
+
     // I decided not to implement the empty() function as it is useless in practice.
     // The empty function in numpy creates an uninitialized array, which is unsafe in Rust.
     // Instead, we will use the zeros() function to create a tensor with zeroes.
@@ -105,14 +287,32 @@ where
     // Some utility functions to get information about the tensor.
     // These functions are similar to the ones in PyTorch and TensorFlow, and they return the shape, number of dimensions, length, data, and device of the tensor.
     pub fn shape(&self) -> &[usize] {
+        #[cfg(feature = "cuda")]
+        {
+            if let Some(cuda_tensor) = &self.cuda_storage {
+                return cuda_tensor.shape();
+            }
+        }
         self.data.shape()
     }
 
     pub fn ndim(&self) -> usize {
+        #[cfg(feature = "cuda")]
+        {
+            if let Some(cuda_tensor) = &self.cuda_storage {
+                return cuda_tensor.ndim();
+            }
+        }
         self.data.ndim()
     }
 
     pub fn size(&self) -> usize {
+        #[cfg(feature = "cuda")]
+        {
+            if let Some(cuda_tensor) = &self.cuda_storage {
+                return cuda_tensor.size();
+            }
+        }
         self.data.len()
     }
 
@@ -131,7 +331,8 @@ where
     pub fn into_data(self) -> ArrayD<T> {
         self.data
     }
-
+    // TODO: Modify this section to have a more generic way to operate between cuda and cpu tensors.
+    
     // Element-wise operations.
     // These are operations that are applied to each element of the tensor.
     // They are easily parallelizable and can be implemented using ndarray's mapv method.
@@ -246,8 +447,15 @@ where
         self.data.indexed_iter_mut()
     }
 
-    /// Collect all elements into a Vec in row-major order
+    /// Collect all elements into a Vec in row-major order.
+    /// Works for both CPU and CUDA tensors.
     pub fn to_vec(&self) -> Vec<T> {
+        #[cfg(feature = "cuda")]
+        {
+            if let Some(cuda_tensor) = &self.cuda_storage {
+                return cuda_tensor.to_vec();
+            }
+        }
         self.data.iter().copied().collect()
     }
 }
@@ -583,6 +791,12 @@ where
         }
     }
 
+    /// Auto zeros - uses best device
+    pub fn zeros_auto(shape: &[usize]) -> Result<Self, String> {
+        let data = default_device().zeros(shape);
+        Self::new_auto(data)
+    }
+
     pub fn zeros_with_device(shape: &[usize], device: Device) -> Self {
         Self {
             data: device.zeros(shape),
@@ -603,6 +817,12 @@ where
             data: device.ones(shape),
             device,
         }
+    }
+
+    /// Auto ones - uses best device
+    pub fn ones_auto(shape: &[usize]) -> Result<Self, String> {
+        let data = default_device().ones(shape);
+        Self::new_auto(data)
     }
 
     pub fn ones_with_device(shape: &[usize], device: Device) -> Self {
