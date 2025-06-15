@@ -121,7 +121,9 @@ pub struct CudaTensor<T> {
 
 impl<T> CudaTensor<T>
 where
-    T: cudarc::driver::DeviceRepr + Clone,
+    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    // `ValidAsZeroBits` ensures that the type can be safely zeroed out
+    // `Unpin` is required for safe memory operations in cudarc
 {
     /// Creates a new CUDA tensor with the given data and shape
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
