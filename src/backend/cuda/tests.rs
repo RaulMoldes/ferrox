@@ -4,7 +4,7 @@ mod tests {
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
-    use super::super::compute_strides;
+    use crate::backend::cuda::memory::compute_strides;
     use cudarc::driver::{CudaDevice, LaunchConfig};
     use std::sync::Arc;
 
@@ -42,7 +42,7 @@ mod tests {
 
     fn setup_memory_manager() -> Option<CudaMemoryManager> {
         match CudaDevice::new(0) {
-            Ok(device) => Some(CudaMemoryManager::new(Arc::new(device))),
+            Ok(device) => Some(CudaMemoryManager::new(device)),
             Err(_) => None,
         }
     }
@@ -56,8 +56,10 @@ mod tests {
             let zeros = manager.alloc_zeros::<f32>(size);
             assert!(zeros.is_ok());
             
+            let buffer = unsafe {
+                manager.alloc::<f32>(size)
+            };
             // Test regular allocation
-            let buffer = manager.alloc::<f32>(size);
             assert!(buffer.is_ok());
         }
     }
