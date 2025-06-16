@@ -151,7 +151,7 @@ impl<'a> CudaOps<'a> {
 
   pub fn matmul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + Copy,
+        T: cudarc::driver::DeviceRepr + Clone + Copy + cudarc::driver::ValidAsZeroBits + Unpin,
     {
         // Check dimensions
         if a.ndim() != 2 || b.ndim() != 2 {
