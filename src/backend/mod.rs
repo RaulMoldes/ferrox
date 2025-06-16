@@ -19,3 +19,4 @@ pub use device::default_device;
 
 pub use numeric::Float;
 pub use numeric::Numeric;
+pub use numeric::NumericCuda;
