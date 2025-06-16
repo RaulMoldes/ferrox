@@ -166,6 +166,13 @@ where
         memory_manager.device_to_host(&self.data)
     }
 
+
+    // Same as `to_cpu`, but returns a vector of the data
+    /// Transfers CUDA tensor data back to CPU as a vector
+    pub fn to_vec(&self, memory: &CudaMemoryManager) -> Result<Vec<T>, String> {
+        memory.device_to_host(&self.data)
+    }
+
     /// Creates a new zeroed CUDA tensor with the given shape
     pub fn zeros(memory_manager: &CudaMemoryManager, shape: Vec<usize>) -> Result<Self, String> {
         let size = shape.iter().product();
