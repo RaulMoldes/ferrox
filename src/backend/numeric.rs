@@ -1,3 +1,5 @@
+// src/backend/numeric.rs - Fixed trait implementations
+
 use std::cmp::{PartialEq, PartialOrd};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
@@ -7,7 +9,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, Su
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
 /// Trait that defines the basic operations and properties for numeric types.
-///This trait is designed to be implemented by both integer and floating-point types,
+/// This trait is designed to be implemented by both integer and floating-point types,
 /// providing a common interface for arithmetic operations, comparisons, and conversions.
 /// I did not implement it for unsigned integers because they do not support negative values,
 /// which is a requirement for some operations like negation and signum.
@@ -435,6 +437,8 @@ impl Numeric for i64 {
 }
 
 // CUDA trait implementations - only compiled when cuda feature is enabled
+// These implementations ensure that f32, f64, i32, and i64 can be used with NumericCuda
+// The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
 #[cfg(feature = "cuda")]
 impl NumericCuda for f32 {}
 
