@@ -227,7 +227,7 @@ where
     // The mapv operation does not actually parallelize by itself, but it is much more efficient th
     // - add
     // - multiply
-    pub fn add_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn add(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         if self.shape() != other.shape() {
             return Err(format!(
                 "Shape mismatch: {:?} vs {:?}",
@@ -241,22 +241,9 @@ where
         ))
     }
 
-    // Smart addition function that checks the device of the tensors and calls the appropriate method.
-    pub fn add(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
-        // Check device compatibility
-        if self.device != other.device {
-            return Err("Tensors must be on the same device for operation".to_string());
-        }
+   
 
-        match self.device {
-            Device::CPU => self.add_cpu(other),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.add_cuda(other),
-            _ => Err("Unsupported device for addition".to_string()),
-        }
-    }
-
-    pub fn mul_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn mul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         if self.shape() != other.shape() {
             return Err(format!(
                 "Shape mismatch: {:?} vs {:?}",
@@ -269,24 +256,12 @@ where
             self.device.clone(),
         ))
     }
-    /// Smart multiplication
-    pub fn mul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
-        if self.device != other.device {
-            return Err("Tensors must be on the same device for operation".to_string());
-        }
-
-        match self.device {
-            Device::CPU => self.mul_cpu(other),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.mul_cuda(other),
-        }
-    }
 
     pub fn negate(&self) -> Tensor<T> {
         Tensor::new_with_device(self.data.mapv(|x| -x), self.device.clone())
     }
 
-    pub fn div_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn div(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         if self.shape() != other.shape() {
             return Err(format!(
                 "Shape mismatch: {:?} vs {:?}",
@@ -300,20 +275,7 @@ where
         ))
     }
 
-    // I think this repetition could be handled better via a macro but is not a priority right now.
-    /// Smart division
-    pub fn div(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
-        if self.device != other.device {
-            return Err("Tensors must be on the same device for operation".to_string());
-        }
-
-        match self.device {
-            Device::CPU => self.div_cpu(other),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.div_cuda(other),
-        }
-    }
-
+   
     // Detach operation - creates a new tensor that shares data but detaches from graph
     // Need to check if this is the right way to do it.
     // In Pytorch i think the detach operation sets the requires_grad flag to false, but we don't have that concept at the tensor level.
@@ -380,6 +342,8 @@ where
         })
     }
 
+
+
     /// Transfer tensor to specified device
     pub fn to_device(&self, device: Device) -> Result<Self, String> {
         match device {
@@ -435,7 +399,7 @@ where
     // CUDA - BASED ACTIVATION FUNCTIONS
     // -------------------------------------------------------------
     #[cfg(feature = "cuda")]
-    pub fn relu_cuda(&self) -> Result<Tensor<T>, String> {
+    pub fn relu(&self) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -449,7 +413,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn exp_cuda(&self) -> Result<Tensor<T>, String> {
+    pub fn exp(&self) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -467,7 +431,7 @@ where
     /// -------------------------------------------------------------
 
     #[cfg(feature = "cuda")]
-    pub fn add_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn add(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -486,7 +450,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn mul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn mul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -502,7 +466,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn div_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn div(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -523,7 +487,7 @@ where
     // ------------------------------------------
 
     #[cfg(feature = "cuda")]
-    pub fn add_scalar_cuda(&self, scalar: T) -> Result<Tensor<T>, String> {
+    pub fn add_scalar(&self, scalar: T) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -537,7 +501,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn mul_scalar_cuda(&self, scalar: T) -> Result<Tensor<T>, String> {
+    pub fn mul_scalar(&self, scalar: T) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -551,7 +515,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn div_scalar_cuda(&self, scalar: T) -> Result<Tensor<T>, String> {
+    pub fn div_scalar(&self, scalar: T) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -567,7 +531,7 @@ where
 
     /// CUDA-based matrix multiplication
     #[cfg(feature = "cuda")]
-    pub fn matmul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn matmul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -629,7 +593,7 @@ impl<T> Tensor<T>
 where
     T: Numeric + Clone + ndarray::LinalgScalar,
 {
-    pub fn matmul_cpu(&self, other: &Tensor<T>) -> Result<Tensor<T>, String>
+    pub fn matmul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String>
     where
         T: Clone + ndarray::LinalgScalar,
     {
@@ -662,29 +626,6 @@ where
         ))
     }
 
-    /// Smart matrix multiplication with automatic device selection
-    pub fn matmul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
-        // Check device compatibility
-        if self.device != other.device {
-            return Err("Tensors must be on the same device for matrix multiplication".to_string());
-        }
-
-        match self.device {
-            Device::CPU => self.matmul_cpu(other),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                // Try CUDA first, fallback to CPU if it fails
-                match self.matmul_cuda(other) {
-                    Ok(result) => Ok(result),
-                    Err(_) => {
-                        // Fallback to CPU operation
-                        self.matmul_cpu(other)
-                    }
-                }
-            }
-        }
-    }
-
 }
 
 // Implementation for operations requiring ScalarOperand
@@ -693,50 +634,19 @@ where
     T: Numeric + Clone + ndarray::ScalarOperand,
 {
     // Scalar operations
-    pub fn add_scalar_cpu(&self, scalar: T) -> Tensor<T> {
+    pub fn add_scalar(&self, scalar: T) -> Tensor<T> {
         Tensor::new_with_device(&self.data + scalar, self.device.clone())
     }
 
-    pub fn mul_scalar_cpu(&self, scalar: T) -> Tensor<T> {
+    pub fn mul_scalar(&self, scalar: T) -> Tensor<T> {
         Tensor::new_with_device(&self.data * scalar, self.device.clone())
     }
 
-    pub fn div_scalar_cpu(&self, scalar: T) -> Tensor<T> {
+    pub fn div_scalar(&self, scalar: T) -> Tensor<T> {
         Tensor::new_with_device(&self.data / scalar, self.device.clone())
     }
 
 
-    // Smart scalar operations with automatic device selection
-    pub fn add_scalar(&self, scalar: T) -> Tensor<T> {
-        match self.device {
-            Device::CPU => self.add_scalar_cpu(scalar),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.add_scalar_cuda(scalar).unwrap_or_else(|_| {
-                // Fallback to CPU if CUDA fails
-                self.add_scalar_cpu(scalar)
-            }),
-        }
-    }
-
-    pub fn mul_scalar(&self, scalar: T) -> Tensor<T> {
-        match self.device {
-            Device::CPU => self.mul_scalar_cpu(scalar),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self
-                .mul_scalar_cuda(scalar)
-                .unwrap_or_else(|_| self.mul_scalar_cpu(scalar)),
-        }
-    }
-
-    pub fn div_scalar(&self, scalar: T) -> Tensor<T> {
-        match self.device {
-            Device::CPU => self.div_scalar_cpu(scalar),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self
-                .div_scalar_cuda(scalar)
-                .unwrap_or_else(|_| self.div_scalar_cpu(scalar)),
-        }
-    }
 }
 
 // Implementation for floating-point operations
@@ -757,7 +667,7 @@ where
     }
 
     // Activation functions
-    pub fn relu_cpu(&self) -> Tensor<T> {
+    pub fn relu(&self) -> Tensor<T> {
         // ReLU activation function: max(0, x)
         Tensor::new_with_device(
             self.data.mapv(|x| {
@@ -769,7 +679,7 @@ where
     }
 
     // Additional activation functions
-    pub fn exp_cpu(&self) -> Tensor<T> {
+    pub fn exp(&self) -> Tensor<T> {
         Tensor::new_with_device(self.data.mapv(|x| x.exp()), self.device.clone())
     }
 
@@ -797,21 +707,6 @@ where
         Tensor::new_with_device(self.data.mapv(|x| x.powf(scalar)), self.device.clone())
     }
 
-    pub fn relu(&self) -> Tensor<T> {
-        match self.device {
-            Device::CPU => self.relu_cpu(),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.relu_cuda().unwrap_or_else(|_| self.relu_cpu()),
-        }
-    }
-
-    pub fn exp(&self) -> Tensor<T> {
-        match self.device {
-            Device::CPU => self.exp_cpu(),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => self.exp_cuda().unwrap_or_else(|_| self.exp_cpu()),
-        }
-    }
 
     
 }
