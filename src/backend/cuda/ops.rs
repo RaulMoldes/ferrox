@@ -149,6 +149,50 @@ impl<'a> CudaOps<'a> {
       Ok(result)
   }
 
+  pub fn matmul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + Copy,
+    {
+        // Check dimensions
+        if a.ndim() != 2 || b.ndim() != 2 {
+            return Err("Matrix multiplication requires 2D tensors".to_string());
+        }
+
+        let a_shape = a.shape();
+        let b_shape = b.shape();
+
+        if a_shape[1] != b_shape[0] {
+            return Err(format!(
+                "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
+                a_shape[0], a_shape[1], b_shape[0], b_shape[1]
+            ));
+        }
+
+        // Result shape will be [a_shape[0], b_shape[1]]
+        let result_shape = vec![a_shape[0], b_shape[1]];
+        let result_size = result_shape.iter().product();
+
+        // Allocate result tensor
+        let result_data = self.memory.alloc_zeros::<T>(result_size)?;
+        let mut result = CudaTensor::new(result_data, result_shape);
+
+        // Try to get matmul kernel
+        
+           
+        let cfg = self.get_launch_config(result_size);
+        self.kernels.launch_matmul(
+                cfg,
+                &a.data,
+                &b.data,
+                &mut result.data,
+                a_shape[0] as i32,
+                a_shape[1] as i32,
+                b_shape[1] as i32,
+            )?;
+        Ok(result)
+            
+    }
+
 
   
 }

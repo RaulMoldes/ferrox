@@ -1362,6 +1362,133 @@ where
 
 }
 
+
+// PartialEq implementation to fix comparison errors in tests
+#[cfg(feature = "cuda")]
+impl<T> PartialEq for GPUTensor<T>
+where
+    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        // Compare shapes first
+        if self.shape() != other.shape() {
+            return false;
+        }
+
+        // Compare devices
+        if self.device != other.device {
+            return false;
+        }
+
+        // Compare actual data - convert both to CPU for comparison
+        match (self.to_vec(), other.to_vec()) {
+            (Ok(self_data), Ok(other_data)) => self_data == other_data,
+            _ => false, // If we can't convert to vec, they're not equal
+        }
+    }
+}
+
+// Additional utility methods for better testing support
+#[cfg(feature = "cuda")]
+impl<T> GPUTensor<T>
+where
+    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+{
+    // Method to access data field for tests (similar to the errors we saw)
+    pub fn data(&self) -> &ArrayD<T> {
+        &self.data
+    }
+
+    // Transpose operation
+    pub fn transpose(&self) -> Result<Self, String> {
+        match self.ndim() {
+            0 | 1 => Ok(self.clone()), // 0D and 1D tensors remain unchanged
+            2 => {
+                // For 2D tensors, swap dimensions 0 and 1
+                let transposed = self.data.clone().reversed_axes();
+                Ok(Self::new_with_device(transposed, self.device.clone()))
+            }
+            _ => {
+                // For higher dimensional arrays, reverse the order of all axes
+                let axes_order: Vec<usize> = (0..self.ndim()).rev().collect();
+                let transposed = self.data.clone().permuted_axes(axes_order.as_slice());
+                Ok(Self::new_with_device(transposed, self.device.clone()))
+            }
+        }
+    }
+
+    // Negation operation
+    pub fn neg(&self) -> Self
+    where
+        T: std::ops::Neg<Output = T>,
+    {
+        Self::new_with_device(
+            self.data.mapv(|x| -x),
+            self.device.clone(),
+        )
+    }
+
+    // Sum over multiple axes - useful for gradient computation
+    pub fn sum_axes(&self, axes: Option<&[usize]>) -> Self 
+    where
+        T: rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    {
+        match axes {
+            Some(axes_list) => {
+                // Validate axes are within bounds
+                for &ax in axes_list {
+                    if ax >= self.ndim() {
+                        panic!(
+                            "Axis {} is out of bounds for tensor with {} dimensions",
+                            ax,
+                            self.ndim()
+                        );
+                    }
+                }
+
+                let mut result = self.data.clone();
+
+                // Sort axes in descending order to avoid index shifting issues
+                let mut sorted_axes = axes_list.to_vec();
+                sorted_axes.sort_unstable();
+                sorted_axes.reverse();
+
+                // Remove duplicates to avoid summing the same axis twice
+                sorted_axes.dedup();
+
+                for &ax in &sorted_axes {
+                    result = result.sum_axis(Axis(ax));
+                }
+
+                Self::new_with_device(result, self.device.clone())
+            }
+            None => self.sum(None),
+        }
+    }
+}
+
+// Add indexing support for GPUTensor
+#[cfg(feature = "cuda")]
+impl<T> Index<usize> for GPUTensor<T>
+where
+    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+{
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        // For simplicity, I access the CPU data directly
+        // In a production system, e would want to handle CUDA tensors properly
+        if index >= self.size() {
+            panic!("Index {} out of bounds for tensor with {} elements", index, self.size());
+        }
+        
+        // Convert flat index to multi-dimensional index and access data
+        let flat_data: Vec<T> = self.data.iter().cloned().collect();
+        &flat_data[index]
+    }
+}
+
+
 impl<T> CPUTensor<T>
 where
     T: Numeric + Clone + ndarray::LinalgScalar,

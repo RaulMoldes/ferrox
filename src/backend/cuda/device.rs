@@ -106,10 +106,11 @@ impl CudaBackend {
 
     /// Returns reference to operations interface
     /// This method provides access to CUDA operations for tensor computations
-    pub fn ops(&self) -> CudaOps {
+    pub fn ops(&self) -> CudaOps<'_> {
         let memory = self.memory_manager();
         CudaOps::new(&self.kernels, &memory)
     }
+
 }
 
 impl std::fmt::Debug for CudaBackend {
