@@ -659,7 +659,7 @@ where
 // This is a trait bound for operations that require floating point numbers.
 impl<T> Engine<T>
 where
-    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     // Power operation
     pub fn pow(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
@@ -723,7 +723,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Float
+    T: NumericCuda + Float
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
