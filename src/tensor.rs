@@ -1244,6 +1244,15 @@ where
         )
     }
 
+    // Placeholder for missing methods - implement later
+    pub fn powf(&self, _other: &Self) -> Result<Self, String> {
+        Err("powf operation not yet implemented".to_string())
+    }
+
+    pub fn log(&self) -> Result<Self, String> {
+        Err("log operation not yet implemented".to_string())
+    }
+
     // ------------------------------------------------------------
     // CUDA - BASED ACTIVATION FUNCTIONS
     // -------------------------------------------------------------
