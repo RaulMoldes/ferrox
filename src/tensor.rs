@@ -373,7 +373,7 @@ where
            use crate::backend::manager::get_backend;
            let backend = get_backend();
            let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-           let memory_manager = cuda_backend.memory();
+           let memory_manager = cuda_backend.memory_manager();
            
            memory_manager.device_to_host(&cuda_tensor.data)
        } else {
@@ -554,7 +554,7 @@ where
            // Convert CPU data to CUDA
            let host_data: Vec<T> = self.data.iter().cloned().collect();
            let shape: Vec<usize> = self.shape().to_vec();
-           let cuda_data = cuda_backend.memory().host_to_device(host_data)?;
+           let cuda_data = cuda_backend.memory_manager().host_to_device(host_data)?;
            Ok(crate::backend::cuda::CudaTensor::new(cuda_data, shape))
        }
    }
@@ -641,12 +641,12 @@ where
         let n = b_shape[1] as i32;  // cols of B
     
         // Get CUDA operations handle
-        let cuda_ops = cuda_backend.create_ops();
+        let cuda_ops = cuda_backend.ops();
         
         // Create result tensor on GPU
         let result_shape = vec![m as usize, n as usize];
         let mut result_cuda = crate::backend::cuda::CudaTensor::zeros(
-            cuda_backend.memory(), 
+            cuda_backend.memory_manager(), 
             result_shape.clone()
         )?;
     
