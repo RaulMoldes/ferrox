@@ -541,52 +541,7 @@ where
        }
    }
 
-   // The actual CUDA operations - these are already implemented in your existing code
-   // I'm just referencing them here so the smart methods can call them
-   fn add_cuda(&self, other: &Self) -> Result<Self, String> {
-       use crate::backend::manager::get_backend;
-
-       let backend = get_backend();
-       let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-       let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-       let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
-
-       let cuda_ops = cuda_backend.create_ops();
-       let result_cuda = cuda_ops.add(&cuda_a, &cuda_b)?;
-
-       self.create_tensor_from_cuda_result(result_cuda)
-   }
-
-   fn mul_cuda(&self, other: &Self) -> Result<Self, String> {
-       use crate::backend::manager::get_backend;
-
-       let backend = get_backend();
-       let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-       let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-       let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
-
-       let cuda_ops = cuda_backend.create_ops();
-       let result_cuda = cuda_ops.mul(&cuda_a, &cuda_b)?;
-
-       self.create_tensor_from_cuda_result(result_cuda)
-   }
-
-   fn div_cuda(&self, other: &Self) -> Result<Self, String> {
-       use crate::backend::manager::get_backend;
-
-       let backend = get_backend();
-       let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-       let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-       let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
-
-       let cuda_ops = cuda_backend.create_ops();
-       let result_cuda = cuda_ops.div(&cuda_a, &cuda_b)?;
-
-       self.create_tensor_from_cuda_result(result_cuda)
-   }
+  
 
    // Helper methods for CUDA operations
    fn get_or_create_cuda_tensor(
@@ -605,28 +560,6 @@ where
    }
 
    
- 
-
-   // Move tensor back to CPU
-   pub fn to_cpu(&self) -> Result<Self, String> {
-       if !self.is_cuda() {
-           return Ok(self.clone());
-       }
-
-       if let Some(cuda_tensor) = &self.cuda_storage {
-           let host_data = self.to_vec()?;
-           let cpu_array = ArrayD::from_shape_vec(IxDyn(&cuda_tensor.shape), host_data)
-               .map_err(|e| format!("Failed to create CPU array: {}", e))?;
-
-           Ok(Self {
-               data: cpu_array,
-               device: Device::CPU,
-               cuda_storage: None,
-           })
-       } else {
-           Ok(self.clone())
-       }
-   }
 }
 
 #[cfg(feature = "cuda")]
@@ -671,7 +604,11 @@ where
             }
         }
     }
-
+    //---------------------------------------------------------
+    // CUDA matrix multiplication implementation using tiled matmul kernel
+    // (see matmul.ptx)
+    // This function performs matrix multiplication on CUDA tensors
+    //----------------------------------------------------------
     fn matmul_cuda(&self, other: &Self) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
     
@@ -1069,8 +1006,8 @@ where
     /// CUDA - BASED ARITHMETIC OPERATIONS
     /// -------------------------------------------------------------
 
-    #[cfg(feature = "cuda")]
-    pub fn add(&self, other: &Tensor<T>) -> Result<Self, String> {
+
+    pub fn add_cuda(&self, other: &Tensor<T>) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1088,8 +1025,8 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    #[cfg(feature = "cuda")]
-    pub fn mul(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+
+    pub fn mul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1104,8 +1041,8 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    #[cfg(feature = "cuda")]
-    pub fn div(&self, other: &Tensor<T>) -> Result<Self, String> {
+
+    pub fn div_cuda(&self, other: &Tensor<T>) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1122,26 +1059,6 @@ where
 
 
    
-
-    /// CUDA-based matrix multiplication
-    #[cfg(feature = "cuda")]
-    pub fn matmul_cuda(&self, other: &Tensor<T>) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        // Get or create CUDA tensors for both operands
-        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
-
-        // Perform matrix multiplication using CUDA operations
-        let cuda_ops = cuda_backend.ops();
-        let result_cuda = cuda_ops.matmul(&cuda_a, &cuda_b)?;
-
-        // Convert result back to Tensor and return
-        self.create_tensor_from_cuda_result(result_cuda)
-    }
 
 
 
@@ -1397,23 +1314,6 @@ where
         &self.data
     }
 
-    // Transpose operation
-    pub fn transpose(&self) -> Result<Self, String> {
-        match self.ndim() {
-            0 | 1 => Ok(self.clone()), // 0D and 1D tensors remain unchanged
-            2 => {
-                // For 2D tensors, swap dimensions 0 and 1
-                let transposed = self.data.clone().reversed_axes();
-                Ok(Self::new_with_device(transposed, self.device.clone()))
-            }
-            _ => {
-                // For higher dimensional arrays, reverse the order of all axes
-                let axes_order: Vec<usize> = (0..self.ndim()).rev().collect();
-                let transposed = self.data.clone().permuted_axes(axes_order.as_slice());
-                Ok(Self::new_with_device(transposed, self.device.clone()))
-            }
-        }
-    }
 
     // Negation operation
     pub fn neg(&self) -> Self
@@ -1424,44 +1324,6 @@ where
             self.data.mapv(|x| -x),
             self.device.clone(),
         )
-    }
-
-    // Sum over multiple axes - useful for gradient computation
-    pub fn sum_axes(&self, axes: Option<&[usize]>) -> Self 
-    where
-        T: rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
-    {
-        match axes {
-            Some(axes_list) => {
-                // Validate axes are within bounds
-                for &ax in axes_list {
-                    if ax >= self.ndim() {
-                        panic!(
-                            "Axis {} is out of bounds for tensor with {} dimensions",
-                            ax,
-                            self.ndim()
-                        );
-                    }
-                }
-
-                let mut result = self.data.clone();
-
-                // Sort axes in descending order to avoid index shifting issues
-                let mut sorted_axes = axes_list.to_vec();
-                sorted_axes.sort_unstable();
-                sorted_axes.reverse();
-
-                // Remove duplicates to avoid summing the same axis twice
-                sorted_axes.dedup();
-
-                for &ax in &sorted_axes {
-                    result = result.sum_axis(Axis(ax));
-                }
-
-                Self::new_with_device(result, self.device.clone())
-            }
-            None => self.sum(None),
-        }
     }
 }
 
