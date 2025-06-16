@@ -6,7 +6,7 @@ use std::process::Command;
 
 use super::engine::Engine;
 use super::node::{Node, NodeId};
-use crate::backend::numeric::Numeric;
+use crate::backend::numeric::NumericCuda;
 
 /// Graph visualization module for the computational graph engine
 pub struct GraphVisualizer {
@@ -54,7 +54,7 @@ impl GraphVisualizer {
     /// Generate DOT format representation of the computational graph
     pub fn to_dot<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> String
     where
-        T: Numeric
+        T: NumericCuda
             + Clone
             + std::fmt::Debug
             + ndarray::LinalgScalar
@@ -99,7 +99,7 @@ impl GraphVisualizer {
     /// Find all nodes that are relevant to the given output nodes
     fn find_relevant_nodes<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> Vec<NodeId>
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+        T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
     {
         let mut visited = HashSet::new();
         let mut relevant = Vec::new();
@@ -119,7 +119,7 @@ impl GraphVisualizer {
         visited: &mut HashSet<NodeId>,
         relevant: &mut Vec<NodeId>,
     ) where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+        T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
     {
         if visited.contains(&node_id) {
             return;
@@ -137,7 +137,7 @@ impl GraphVisualizer {
     /// Create a descriptive label for a node
     fn create_node_label<T>(&self, engine: &Engine<T>, node_id: NodeId, node: &Node<T>) -> String
     where
-        T: Numeric
+        T: NumericCuda
             + Clone
             + std::fmt::Debug
             + ndarray::LinalgScalar
@@ -181,7 +181,7 @@ impl GraphVisualizer {
     /// Get appropriate color for a node based on its properties
     fn get_node_color<T>(&self, node: &Node<T>) -> &str
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+        T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
     {
         if node.op.is_some() {
             &self.config.op_color
@@ -195,7 +195,7 @@ impl GraphVisualizer {
     /// Get a human-readable name for an operation
     fn get_op_name<T>(&self, op: &Box<dyn super::op::Operator<T>>) -> String
     where
-        T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+        T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
     {
         // This is a very simplistic way to get the operation name.
         format!("{:?}", op)
@@ -209,7 +209,7 @@ impl GraphVisualizer {
         filename: &str,
     ) -> Result<(), std::io::Error>
     where
-        T: Numeric
+        T: NumericCuda
             + Clone
             + std::fmt::Debug
             + ndarray::LinalgScalar
@@ -231,7 +231,7 @@ impl GraphVisualizer {
         format: &str,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
-        T: Numeric
+        T: NumericCuda
             + Clone
             + std::fmt::Debug
             + ndarray::LinalgScalar
@@ -271,7 +271,7 @@ impl GraphVisualizer {
     /// Print the graph to console (simple text representation)
     pub fn print_graph<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId])
     where
-        T: Numeric
+        T: NumericCuda
             + Clone
             + std::fmt::Debug
             + ndarray::LinalgScalar
@@ -317,7 +317,7 @@ impl GraphVisualizer {
 // Extension trait to add visualization methods directly to Engine
 pub trait EngineVisualization<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn visualize(&self) -> GraphVisualizer;
     fn plot_graph(&self, output_nodes: &[NodeId]);
@@ -332,7 +332,7 @@ where
 
 impl<T> EngineVisualization<T> for Engine<T>
 where
-    T: Numeric
+    T: NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
