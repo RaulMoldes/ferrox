@@ -1,7 +1,11 @@
 use crate::backend::manager::get_backend;
-use crate::backend::numeric::{Float, Numeric};
+use crate::backend::numeric::{Float, Numeric, NumericCuda};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
+
+#[cfg(feature = "cuda")]
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+
 use std::ops::{Index, IndexMut};
 
 #[cfg(feature = "cuda")]
@@ -21,7 +25,7 @@ where
 
     // Optional CUDA storage for GPU tensors
     #[cfg(feature = "cuda")]
-    cuda_storage: Option<crate::backend::cuda::CudaTensor<f64>>, // For now we only support f64 on CUDA
+    cuda_storage: Option<crate::backend::cuda::CudaTensor<T>>, // For now we only support f64 on CUDA
                                                                  // It will require additional redefinition of the tensor storage to support other types. We are lazy and
                                                                  // will not do it for now.
 }
@@ -340,18 +344,9 @@ where
 
     /// Collect all elements into a Vec in row-major order.
     /// Works for both CPU and CUDA tensors.
-    pub fn to_vec(&self) -> Vec<T> {
-        #[cfg(feature = "cuda")]
-        {
-            if let Some(cuda_tensor) = &self.cuda_storage {
-                use crate::backend::manager::get_backend;
-                let backend = get_backend();
-                let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-                let memory_manager = cuda_backend.memory_manager();
-                return cuda_tensor.to_cpu(&memory_manager)?.to_vec();
-            }
-        }
-        self.data.iter().copied().collect()
+    pub fn to_vec(&self) -> Result<Vec<T>, String> {
+        Ok(self.data.iter().copied().collect())
+
     }
 
    
@@ -363,7 +358,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> Tensor<T>
 where
-    T: Numeric + Clone + cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Unpin,
+    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
     pub fn to_cuda(&self) -> Result<Self, String> {
         if self.is_cuda() {
@@ -376,7 +371,7 @@ where
 
         let shape: Vec<usize> = self.shape().to_vec();
         let host_data: Vec<T> = self.data.iter().cloned().collect();
-        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.memory_manager(), host_data, shape)?;
+        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.memory(), host_data, shape)?;
 
         Ok(Self {
             data: self.data.clone(),
@@ -391,6 +386,20 @@ where
             Device::CPU => self.to_cpu(),
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => self.to_cuda(),
+        }
+    }
+
+    // Cuda alternative for to_vec
+    pub fn to_vec_cuda(&self) -> Result<Vec<T>, String> {
+        if let Some(cuda_tensor) = &self.cuda_storage {
+            use crate::backend::manager::get_backend;
+            let backend = get_backend();
+            let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+            let memory_manager = cuda_backend.memory();
+            
+            memory_manager.device_to_host(&cuda_tensor.data)
+        } else {
+            Err("No CUDA storage available".to_string())
         }
     }
 
@@ -582,7 +591,7 @@ where
     fn get_or_create_cuda_tensor(
         &self,
         cuda_backend: &crate::backend::cuda::CudaBackend,
-    ) -> Result<crate::backend::cuda::CudaTensor<f64>, String> {
+    ) -> Result<crate::backend::cuda::CudaTensor<T>, String> {
         match &self.cuda_storage {
             Some(cuda_tensor) => Ok(cuda_tensor.clone()),
             None => {
@@ -602,7 +611,7 @@ where
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        let memory_manager = cuda_backend.memory_manager();
+        let memory_manager = cuda_backend.memory();
 
         // Transfer CUDA result back to CPU
         let result_cpu = cuda_result.to_cpu(&memory_manager)?;
@@ -669,7 +678,7 @@ where
                     Ok(result) => Ok(result),
                     Err(_) => {
                         // Fallback to CPU operation
-                        self.matmul_cpu(other)?
+                        self.matmul_cpu(other)
                     }
                 }
             }

@@ -2,6 +2,36 @@ use std::cmp::{PartialEq, PartialOrd};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
 
+
+#[cfg(feature = "cuda")]
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+
+
+// Cuda-specific trait for numeric types. Extends the CPU ased numeric types with CUDA-specific requirements.
+#[cfg(feature = "cuda")]
+pub trait NumericCuda: Numeric + DeviceRepr + ValidAsZeroBits + Unpin {}
+
+
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for f32 {}
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for f64 {}
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for i32 {}
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for i64 {}
+
+// When CUDA is not available, create a dummy trait
+#[cfg(not(feature = "cuda"))]
+pub trait NumericCuda: Numeric {}
+
+#[cfg(not(feature = "cuda"))]
+impl<T: Numeric> NumericCuda for T {}
+
 /// Trait that defines the basic operations and properties for numeric types.
 ///This trait is designed to be implemented by both integer and floating-point types,
 /// providing a common interface for arithmetic operations, comparisons, and conversions.
