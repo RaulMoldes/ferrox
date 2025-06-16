@@ -28,4 +28,8 @@ pub use nn::{Module, Parameter};
 pub use nn::{
     init_tensor_kaiming_uniform, init_tensor_xavier_uniform, kaiming_uniform, xavier_uniform,
 };
-pub use tensor::Tensor;
+
+pub use tensor::{Tensor, CPUTensor};
+
+#[cfg(feature = "cuda")]
+pub use tensor::GPUTensor;
