@@ -147,7 +147,7 @@ pub struct ReLUOp;
 
 impl<T> Operator<T> for ReLUOp
 where
-    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: Float + NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -420,7 +420,7 @@ pub struct PowOp;
 
 impl<T> Operator<T> for PowOp
 where
-    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -459,7 +459,7 @@ pub struct ExpOp;
 
 impl<T> Operator<T> for ExpOp
 where
-    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -489,7 +489,7 @@ pub struct LogOp;
 
 impl<T> Operator<T> for LogOp
 where
-    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1044,7 +1044,7 @@ pub struct SqrtOp;
 
 impl<T> Operator<T> for SqrtOp
 where
-    T: Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1350,6 +1350,7 @@ impl SoftmaxOp {
 impl<T> Operator<T> for SoftmaxOp
 where
     T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

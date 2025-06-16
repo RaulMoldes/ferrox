@@ -296,6 +296,7 @@ impl Default for BCELoss {
 impl<T> Module<T> for BCELoss
 where
     T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -538,6 +539,7 @@ impl Default for CCELoss {
 impl<T> Module<T> for CCELoss
 where
     T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

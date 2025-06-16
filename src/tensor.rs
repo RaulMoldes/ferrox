@@ -1551,7 +1551,7 @@ where
 // Implementation for floating-point operations
 impl<T> CPUTensor<T>
 where
-    T: Float + Clone + ndarray::ScalarOperand,
+    T: Float + Clone + ndarray::ScalarOperand + NumericCuda,
 {
     pub fn sigmoid(&self) -> CPUTensor<T> {
         // Euler's sigmoid function: 1 / (1 + exp(-x))
