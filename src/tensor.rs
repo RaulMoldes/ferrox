@@ -1127,7 +1127,7 @@ where
 
     /// CUDA-based matrix multiplication
     #[cfg(feature = "cuda")]
-    pub fn matmul(&self, other: &Tensor<T>) -> Result<Self, String> {
+    pub fn matmul_cuda(&self, other: &Tensor<T>) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
