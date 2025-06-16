@@ -1,0 +1,389 @@
+
+// Implement equality for testing, and because will be useful in the future.
+impl<T> PartialEq for GPUTensor<T>
+where
+    T: Numeric + Clone + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data && self.device == other.device
+    }
+}
+
+impl<T> Eq for GPUTensor<T> where T: Numeric + Clone + PartialEq {}
+
+pub struct GPUTensorIterator<T> {
+    data: ndarray::ArrayD<T>,
+    index: usize,
+}
+
+impl<T> Iterator for GPUTensorIterator<T>
+where
+    T: Copy,
+{
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.data.len() {
+            let item = self.data.as_slice().unwrap()[self.index];
+            self.index += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.data.len().saturating_sub(self.index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl<T> ExactSizeIterator for GPUTensorIterator<T>
+where
+    T: Copy,
+{
+    fn len(&self) -> usize {
+        self.data.len().saturating_sub(self.index)
+    }
+}
+
+// Implementation for owned Tensor (consumes the tensor)
+impl<T> IntoIterator for GPUTensor<T>
+where
+    T: Numeric + Clone + Copy,
+{
+    type Item = T;
+    type IntoIter = GPUTensorIterator<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        GPUTensorIterator {
+            data: self.data,
+            index: 0,
+        }
+    }
+}
+
+// Implementation for borrowed Tensor (&Tensor)
+impl<'a, T> IntoIterator for &'a GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Item = &'a T;
+    type IntoIter = ndarray::iter::Iter<'a, T, ndarray::IxDyn>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
+    }
+}
+
+// Implementation for mutable borrowed Tensor (&mut Tensor)
+impl<'a, T> IntoIterator for &'a mut GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Item = &'a mut T;
+    type IntoIter = ndarray::iter::IterMut<'a, T, ndarray::IxDyn>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter_mut()
+    }
+}
+
+// Implementation for single usize index (flat indexing for any dimensional tensor)
+// This attempts to mimic the behavior of NumPy's flat indexing,
+// therefore you could access elements in a multi-dimensional tensor as it was a flat array.
+impl<T> Index<usize> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        // Convert flat index to multi-dimensional coordinates
+        let flat_data = self
+            .data
+            .as_slice()
+            .expect("Tensor data should be contiguous");
+        &flat_data[index]
+    }
+}
+
+impl<T> IndexMut<usize> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        // Convert flat index to multi-dimensional coordinates
+        let flat_data = self
+            .data
+            .as_slice_mut()
+            .expect("Tensor data should be contiguous");
+        &mut flat_data[index]
+    }
+}
+
+// Implementation for slice of usize (multi-dimensional indexing)
+impl<T> Index<&[usize]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: &[usize]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> IndexMut<&[usize]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: &[usize]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+// Implementation for Vec<usize> (convenient alternative to slice)
+impl<T> Index<Vec<usize>> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: Vec<usize>) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> IndexMut<Vec<usize>> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: Vec<usize>) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+// Implementation for arrays of different sizes (up to 6D for common use cases)
+impl<T> Index<[usize; 1]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: [usize; 1]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> IndexMut<[usize; 1]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: [usize; 1]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> Index<[usize; 2]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: [usize; 2]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> IndexMut<[usize; 2]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: [usize; 2]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> Index<[usize; 3]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: [usize; 3]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> IndexMut<[usize; 3]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: [usize; 3]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> Index<[usize; 4]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: [usize; 4]) -> &Self::Output {
+        &self.data[IxDyn(&indices)]
+    }
+}
+
+impl<T> IndexMut<[usize; 4]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: [usize; 4]) -> &mut Self::Output {
+        &mut self.data[IxDyn(&indices)]
+    }
+}
+
+// Implementation for tuples (more ergonomic for 2D and 3D)
+impl<T> Index<(usize, usize)> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
+        &self.data[[i, j]]
+    }
+}
+
+impl<T> IndexMut<(usize, usize)> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
+        &mut self.data[[i, j]]
+    }
+}
+
+impl<T> Index<(usize, usize, usize)> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, (i, j, k): (usize, usize, usize)) -> &Self::Output {
+        &self.data[[i, j, k]]
+    }
+}
+
+impl<T> IndexMut<(usize, usize, usize)> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, (i, j, k): (usize, usize, usize)) -> &mut Self::Output {
+        &mut self.data[[i, j, k]]
+    }
+}
+
+impl<T> Index<(usize, usize, usize, usize)> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, (i, j, k, l): (usize, usize, usize, usize)) -> &Self::Output {
+        &self.data[[i, j, k, l]]
+    }
+}
+
+impl<T> IndexMut<(usize, usize, usize, usize)> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, (i, j, k, l): (usize, usize, usize, usize)) -> &mut Self::Output {
+        &mut self.data[[i, j, k, l]]
+    }
+}
+
+// Implementation for references to arrays of different sizes
+impl<T> Index<&[usize; 1]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: &[usize; 1]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> IndexMut<&[usize; 1]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: &[usize; 1]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> Index<&[usize; 2]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: &[usize; 2]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> IndexMut<&[usize; 2]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: &[usize; 2]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> Index<&[usize; 3]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: &[usize; 3]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> IndexMut<&[usize; 3]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: &[usize; 3]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
+
+impl<T> Index<&[usize; 4]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    type Output = T;
+
+    fn index(&self, indices: &[usize; 4]) -> &Self::Output {
+        &self.data[IxDyn(indices)]
+    }
+}
+
+
+impl<T> IndexMut<&[usize; 4]> for GPUTensor<T>
+where
+    T: Numeric + Clone,
+{
+    fn index_mut(&mut self, indices: &[usize; 4]) -> &mut Self::Output {
+        &mut self.data[IxDyn(indices)]
+    }
+}
