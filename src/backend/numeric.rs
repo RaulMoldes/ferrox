@@ -2,10 +2,9 @@ use std::cmp::{PartialEq, PartialOrd};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
 
-
+// Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-
 
 /// Trait that defines the basic operations and properties for numeric types.
 ///This trait is designed to be implemented by both integer and floating-point types,
@@ -117,6 +116,17 @@ pub trait Float: Numeric {
     /// Epsilon for floating-point comparisons
     fn epsilon() -> Self;
 }
+
+/// CUDA-compatible numeric trait that extends Numeric with GPU-specific requirements.
+/// This trait is only available when the "cuda" feature is enabled, allowing the
+/// same code to compile with or without CUDA support.
+#[cfg(feature = "cuda")]
+pub trait NumericCuda: Numeric + DeviceRepr + ValidAsZeroBits + Unpin {}
+
+/// When CUDA is not available, NumericCuda is just an alias for Numeric.
+/// This allows the same generic bounds to work regardless of CUDA availability.
+#[cfg(not(feature = "cuda"))]
+pub trait NumericCuda: Numeric {}
 
 // Implementation for f64
 impl Numeric for f64 {
@@ -230,22 +240,22 @@ impl Numeric for f32 {
         }
     }
     fn from_i32(value: i32) -> Option<Self> {
-        // f32 can exactly represent integers up to 2^24
+        // i32 values up to 2^24 can be exactly represented in f32
         if value.abs() <= (1 << 24) {
             Some(value as f32)
         } else {
-            Some(value as f32) // May have precision loss but is valid
+            None
         }
     }
     fn from_i16(value: i16) -> Option<Self> {
         Some(value as f32)
     }
     fn from_i64(value: i64) -> Option<Self> {
-        // f32 can exactly represent integers up to 2^24
-        if value.abs() <= (1 << 24) {
+        // Only small i64 values can be exactly represented in f32
+        if value.abs() <= (1i64 << 24) {
             Some(value as f32)
         } else {
-            Some(value as f32) // May have precision loss but is valid
+            None
         }
     }
 
@@ -293,147 +303,6 @@ impl Float for f32 {
     }
     fn epsilon() -> Self {
         f32::EPSILON
-    }
-}
-
-// Implementation for i8
-impl Numeric for i8 {
-    fn zero() -> Self {
-        0
-    }
-    fn one() -> Self {
-        1
-    }
-
-    fn abs(self) -> Self {
-        self.abs()
-    }
-    fn signum(self) -> Self {
-        self.signum()
-    }
-    fn powi(self, exp: i32) -> Self {
-        if exp < 0 {
-            if self == 1 {
-                1
-            } else if self == -1 && exp % 2 == 0 {
-                1
-            } else if self == -1 {
-                -1
-            } else {
-                0
-            }
-        } else {
-            self.saturating_pow(exp as u32)
-        }
-    }
-
-    fn to_f64(self) -> f64 {
-        self as f64
-    }
-    fn from_f64(value: f64) -> Option<Self> {
-        if value.fract() == 0.0 && value >= i8::MIN as f64 && value <= i8::MAX as f64 {
-            Some(value as i8)
-        } else {
-            None
-        }
-    }
-
-    fn from_i64(value: i64) -> Option<Self> {
-        if value >= i8::MIN as i64 && value <= i8::MAX as i64 {
-            Some(value as i8)
-        } else {
-            None
-        }
-    }
-
-    fn from_i32(value: i32) -> Option<Self> {
-        if value >= i8::MIN as i32 && value <= i8::MAX as i32 {
-            Some(value as i8)
-        } else {
-            None
-        }
-    }
-    fn from_i16(value: i16) -> Option<Self> {
-        if value >= i8::MIN as i16 && value <= i8::MAX as i16 {
-            Some(value as i8)
-        } else {
-            None
-        }
-    }
-
-    fn min_value() -> Self {
-        i8::MIN
-    }
-    fn max_value() -> Self {
-        i8::MAX
-    }
-}
-
-// Implementation for i16
-impl Numeric for i16 {
-    fn zero() -> Self {
-        0
-    }
-    fn one() -> Self {
-        1
-    }
-
-    fn abs(self) -> Self {
-        self.abs()
-    }
-    fn signum(self) -> Self {
-        self.signum()
-    }
-    fn powi(self, exp: i32) -> Self {
-        if exp < 0 {
-            if self == 1 {
-                1
-            } else if self == -1 && exp % 2 == 0 {
-                1
-            } else if self == -1 {
-                -1
-            } else {
-                0
-            }
-        } else {
-            self.saturating_pow(exp as u32)
-        }
-    }
-
-    fn to_f64(self) -> f64 {
-        self as f64
-    }
-    fn from_f64(value: f64) -> Option<Self> {
-        if value.fract() == 0.0 && value >= i16::MIN as f64 && value <= i16::MAX as f64 {
-            Some(value as i16)
-        } else {
-            None
-        }
-    }
-
-    fn from_i64(value: i64) -> Option<Self> {
-        if value >= i16::MIN as i64 && value <= i16::MAX as i64 {
-            Some(value as i16)
-        } else {
-            None
-        }
-    }
-    fn from_i32(value: i32) -> Option<Self> {
-        if value >= i16::MIN as i32 && value <= i16::MAX as i32 {
-            Some(value as i16)
-        } else {
-            None
-        }
-    }
-    fn from_i16(value: i16) -> Option<Self> {
-        Some(value)
-    }
-
-    fn min_value() -> Self {
-        i16::MIN
-    }
-    fn max_value() -> Self {
-        i16::MAX
     }
 }
 
@@ -564,17 +433,6 @@ impl Numeric for i64 {
         i64::MAX
     }
 }
-
-/// CUDA-compatible numeric trait that extends Numeric with GPU-specific requirements.
-/// This trait is only available when the "cuda" feature is enabled, allowing the
-/// same code to compile with or without CUDA support.
-#[cfg(feature = "cuda")]
-pub trait NumericCuda: Numeric + DeviceRepr + ValidAsZeroBits + Unpin {}
-
-/// When CUDA is not available, NumericCuda is just an alias for Numeric.
-/// This allows the same generic bounds to work regardless of CUDA availability.
-#[cfg(not(feature = "cuda"))]
-pub trait NumericCuda: Numeric {}
 
 // CUDA trait implementations - only compiled when cuda feature is enabled
 #[cfg(feature = "cuda")]
