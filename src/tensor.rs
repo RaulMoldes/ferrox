@@ -82,9 +82,7 @@ where
         let data_f64 = device.randn(shape);
         let data = data_f64.mapv(|x| T::from_f64(x).unwrap());
         Self { data, device,
-            #[cfg(feature = "cuda")] // Cuda storage is always initialized to None
-            // As the tensor must be created on cpu first, we do not need to initialize it here.
-        cuda_storage: None, }
+             }
     }
 
     pub fn randn_with_device(shape: &[usize], device: Device) -> Self {
