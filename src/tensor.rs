@@ -384,6 +384,10 @@ where
        }
    }
 
+   pub fn len(&self) -> usize {
+    self.size()
+    }
+
    // Helper method to perform CPU operations on this GPU-capable tensor
    // This allows us to fall back to CPU when CUDA fails
    fn add_cpu(&self, other: &Self) -> Result<Self, String> {
@@ -602,40 +606,8 @@ where
        }
    }
 
-   fn create_tensor_from_cuda_result(
-       &self,
-       cuda_result: crate::backend::cuda::CudaTensor<T>,
-   ) -> Result<Self, String> {
-       // Create new GPUTensor with CUDA storage
-       let mut result_tensor = Self {
-           data: self.data.clone(), // Keep CPU data as backup
-           device: self.device.clone(),
-           cuda_storage: Some(cuda_result),
-       };
-
-       Ok(result_tensor)
-   }
-
-   // Convert this tensor to CUDA device
-   pub fn to_cuda(&self) -> Result<Self, String> {
-       if self.is_cuda() {
-           return Ok(self.clone());
-       }
-
-       use crate::backend::manager::get_backend;
-       let backend = get_backend();
-       let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-       let shape: Vec<usize> = self.shape().to_vec();
-       let host_data: Vec<T> = self.data.iter().cloned().collect();
-       let cuda_tensor = CudaTensor::from_vec(cuda_backend.memory(), host_data, shape)?;
-
-       Ok(Self {
-           data: self.data.clone(),
-           device: Device::CUDA(0),
-           cuda_storage: Some(cuda_tensor),
-       })
-   }
+   
+ 
 
    // Move tensor back to CPU
    pub fn to_cpu(&self) -> Result<Self, String> {
@@ -1064,19 +1036,7 @@ where
         }
     }
 
-    // Cuda alternative for to_vec
-    pub fn to_vec(&self) -> Result<Vec<T>, String> {
-        if let Some(cuda_tensor) = &self.cuda_storage {
-            use crate::backend::manager::get_backend;
-            let backend = get_backend();
-            let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-            let memory_manager = cuda_backend.memory_manager();
-            
-            memory_manager.device_to_host(&cuda_tensor.data)
-        } else {
-            Err("No CUDA storage available".to_string())
-        }
-    }
+    
 
      /// Move tensor to CPU
      pub fn to_cpu(&self) -> Result<Self, String> {
@@ -1186,22 +1146,6 @@ where
     }
 
 
-    // Helper methods
-
-    fn get_or_create_cuda_tensor(
-        &self,
-        cuda_backend: &crate::backend::cuda::CudaBackend,
-    ) -> Result<crate::backend::cuda::CudaTensor<T>, String> {
-        match &self.cuda_storage {
-            Some(cuda_tensor) => Ok(cuda_tensor.clone()),
-            None => {
-                let host_data: Vec<T> = self.data.iter().cloned().collect();
-                let shape: Vec<usize> = self.shape().to_vec();
-                let cuda_tensor = cuda_backend.create_tensor_from_cpu(host_data, shape)?;
-                self.to_cuda()
-            }
-        }
-    }
 
     fn create_tensor_from_cuda_result(
         &self,
