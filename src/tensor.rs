@@ -688,7 +688,7 @@ where
         match axis {
             Some(ax) => {
                 let result = self.data.sum_axis(Axis(ax));
-                Self::new_with_device(result, self.device.clone())
+                Self::new_with_device(result, self.device.clone()) // Return Self, not CPUTensor
             }
             None => {
                 let total_sum = self.data.sum();
@@ -699,6 +699,7 @@ where
             }
         }
     }
+
 
     pub fn mean(&self, axis: Option<usize>) -> Self {
         match axis {
@@ -738,7 +739,7 @@ where
     }
 
     // Squeeze operation - remove dimensions of size 1
-    pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
+    ub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
         match axis {
             Some(ax) => {
                 if self.shape()[ax] != 1 {
@@ -749,25 +750,22 @@ where
                     ));
                 }
                 let squeezed = self.data.clone().remove_axis(Axis(ax));
-                Ok(Self::new_with_device(squeezed, self.device.clone()))
+                Ok(Self::new_with_device(squeezed, self.device.clone())) // Return Self, not CPUTensor
             }
             None => {
-                // Remove all dimensions of size 1
                 let mut result = self.data.clone();
-                let mut axis_to_remove = Vec::new();
+                let axes_to_remove: Vec<usize> = self.shape()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, &size)| size == 1)
+                    .map(|(i, _)| i)
+                    .collect();
 
-                for (i, &size) in self.shape().iter().enumerate() {
-                    if size == 1 {
-                        axis_to_remove.push(i);
-                    }
-                }
-
-                // Remove axes in reverse order to maintain indices
-                for &ax in axis_to_remove.iter().rev() {
+                for &ax in axes_to_remove.iter().rev() {
                     result = result.remove_axis(Axis(ax));
                 }
 
-                Ok(Self::new_with_device(result, self.device.clone()))
+                Ok(Self::new_with_device(result, self.device.clone())) // Return Self, not CPUTensor
             }
         }
     }
