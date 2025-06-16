@@ -28,7 +28,12 @@ impl Default for ReLU {
 
 impl<T> Module<T> for ReLU
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         graph.relu(input)
@@ -202,7 +207,12 @@ where
 #[derive(Debug, Clone)]
 pub struct LeakyReLU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// The negative slope parameter
     negative_slope: T,
@@ -211,7 +221,12 @@ where
 
 impl<T> LeakyReLU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// Creates a new LeakyReLU activation layer with default slope (0.01).
     pub fn new() -> Self
@@ -244,7 +259,13 @@ where
 
 impl<T> Default for LeakyReLU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + From<f64>,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + From<f64>,
 {
     fn default() -> Self {
         Self::new()
@@ -253,7 +274,12 @@ where
 
 impl<T> Module<T> for LeakyReLU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // LeakyReLU(x) = max(x, α * x) where α is the negative slope
@@ -316,7 +342,12 @@ where
 #[derive(Debug, Clone)]
 pub struct ELU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// The α parameter for negative inputs
     alpha: T,
@@ -325,7 +356,12 @@ where
 
 impl<T> ELU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// Creates a new ELU activation layer with default α = 1.0.
     pub fn new() -> Self
@@ -358,7 +394,13 @@ where
 
 impl<T> Default for ELU<T>
 where
-    T: NumericCuda + Float + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand + From<f64>,
+    T: NumericCuda
+        + Float
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand
+        + From<f64>,
 {
     fn default() -> Self {
         Self::new()

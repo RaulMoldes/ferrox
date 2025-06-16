@@ -321,6 +321,7 @@ where
 impl<T> Loss<T> for BCELoss
 where
     T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -564,6 +565,7 @@ where
 impl<T> Loss<T> for CCELoss
 where
     T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -710,6 +712,7 @@ impl Default for BCEWithLogitsLoss {
 impl<T> Module<T> for BCEWithLogitsLoss
 where
     T: Float
+    + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -732,6 +735,7 @@ where
 impl<T> Loss<T> for BCEWithLogitsLoss
 where
     T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

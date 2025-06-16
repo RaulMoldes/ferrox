@@ -1,5 +1,5 @@
-use crate::backend::numeric::{Float, Numeric};
 use crate::backend::NumericCuda;
+use crate::backend::numeric::{Float, Numeric};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::{Module, Parameter};
@@ -59,7 +59,12 @@ use crate::tensor::Tensor;
 #[derive(Debug)]
 pub struct BatchNorm1d<T>
 where
-    T: Float + NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: Float
+        + NumericCuda
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// Number of features/channels
     pub num_features: usize,
@@ -96,7 +101,7 @@ where
 impl<T> BatchNorm1d<T>
 where
     T: Float
-    + NumericCuda
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -223,8 +228,8 @@ where
 
 impl<T> Module<T> for BatchNorm1d<T>
 where
-    T: Float 
-    + NumericCuda 
+    T: Float
+        + NumericCuda
         + From<f64>
         + Clone
         + std::fmt::Debug
@@ -440,7 +445,12 @@ where
 #[derive(Debug)]
 pub struct LayerNorm<T>
 where
-    T: Float + NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: Float
+        + NumericCuda
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// Shape of normalized dimensions
     pub normalized_shape: Vec<usize>,
@@ -542,7 +552,7 @@ where
 impl<T> Module<T> for LayerNorm<T>
 where
     T: Float
-    + NumericCuda
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
