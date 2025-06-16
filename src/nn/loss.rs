@@ -1,4 +1,4 @@
-use crate::backend::numeric::{Float, Numeric};
+use crate::backend::numeric::{Float, Numeric, NumericCuda};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -16,7 +16,7 @@ use crate::nn::Module;
 /// - Batch processing capabilities
 pub trait Loss<T>: Module<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     /// Computes the loss between predictions and targets.
     ///
@@ -122,7 +122,7 @@ impl Default for MSELoss {
 
 impl<T> Module<T> for MSELoss
 where
-    T: Numeric
+    T: NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -146,7 +146,7 @@ where
 
 impl<T> Loss<T> for MSELoss
 where
-    T: Numeric
+    T: NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

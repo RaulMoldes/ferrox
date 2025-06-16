@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::numeric::{Float, Numeric};
+use crate::backend::numeric::{Float, Numeric, NumericCuda};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships
 #[derive(Debug)]
 pub struct Engine<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     // T must implement Clone and Debug traits{
     // Creating a graph is kind of boilerplate in Rust
@@ -27,7 +27,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     pub fn new() -> Self {
         Self {
@@ -63,7 +63,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Numeric
+    T: NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -79,7 +79,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand, // T must implement Clone and Debug traits
+    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand, // T must implement Clone and Debug traits
 {
     // Create ones tensor
 
@@ -90,7 +90,7 @@ where
 }
 impl<T> Engine<T>
 where
-    T: Numeric
+    T: NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -195,7 +195,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Numeric + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
 {
     /// GRAPH OPERATIONS:
     ///
@@ -338,7 +338,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: Numeric
+    T: NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
