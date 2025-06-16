@@ -388,7 +388,7 @@ where
 
    // Helper method to perform CPU operations on this GPU-capable tensor
    // This allows us to fall back to CPU when CUDA fails
-   fn add_cpu(&self, other: &Self) -> Result<Self, String> {
+   fn add_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
        if self.shape() != other.shape() {
            return Err(format!(
                "Shape mismatch: {:?} vs {:?}",
@@ -403,7 +403,7 @@ where
    }
 
    // Helper method to perform CPU multiplication
-   fn mul_cpu(&self, other: &Self) -> Result<Self, String> {
+   fn mul_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
        if self.shape() != other.shape() {
            return Err(format!(
                "Shape mismatch: {:?} vs {:?}",
@@ -418,7 +418,7 @@ where
    }
 
    // Helper method to perform CPU division
-   fn div_cpu(&self, other: &Self) -> Result<Self, String> {
+   fn div_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
        if self.shape() != other.shape() {
            return Err(format!(
                "Shape mismatch: {:?} vs {:?}",
@@ -440,7 +440,7 @@ where
 
    // Smart addition - this is the main API users will use
    // Automatically chooses between CPU and CUDA based on device
-   pub fn add(&self, other: &Self) -> Result<Self, String> {
+   pub fn add(&self, other: &Self) -> Result<GPUTensor<T>, String> {
        // Check device compatibility first
        if self.device != other.device {
            return Err("Tensors must be on the same device for operation".to_string());
@@ -462,7 +462,7 @@ where
    }
 
    // Smart multiplication with automatic device selection
-   pub fn mul(&self, other: &Self) -> Result<Self, String> {
+   pub fn mul(&self, other: &Self) -> Result<GPUTensor<T>, String> {
        if self.device != other.device {
            return Err("Tensors must be on the same device for operation".to_string());
        }
@@ -481,7 +481,7 @@ where
    }
 
    // Smart division with automatic device selection
-   pub fn div(&self, other: &Self) -> Result<Self, String> {
+   pub fn div(&self, other: &Self) -> Result<GPUTensor<T>, String> {
        if self.device != other.device {
            return Err("Tensors must be on the same device for operation".to_string());
        }
@@ -567,7 +567,7 @@ impl<T> GPUTensor<T>
 where
     T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::LinalgScalar,
 {
-    fn matmul_cpu(&self, other: &Self) -> Result<Self, String> {
+    fn matmul_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         if self.ndim() != 2 || other.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
@@ -589,7 +589,7 @@ where
         Ok(Self::new_with_device(result.into_dyn(), self.device.clone()))
     }
 
-    pub fn matmul(&self, other: &Self) -> Result<Self, String> {
+    pub fn matmul(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         if self.device != other.device {
             return Err("Tensors must be on the same device for matrix multiplication".to_string());
         }
@@ -609,7 +609,7 @@ where
     // (see matmul.ptx)
     // This function performs matrix multiplication on CUDA tensors
     //----------------------------------------------------------
-    fn matmul_cuda(&self, other: &Self) -> Result<Self, String> {
+    fn matmul_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
     
         // Basic validation - ensure we have 2D tensors
@@ -739,7 +739,7 @@ where
     }
 
     // Squeeze operation - remove dimensions of size 1
-    ub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
+    pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
         match axis {
             Some(ax) => {
                 if self.shape()[ax] != 1 {
@@ -1088,50 +1088,50 @@ where
     T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::ScalarOperand,
 {
     // CPU scalar operations for fallback
-    fn add_scalar_cpu(&self, scalar: T) -> Self {
+    fn add_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
         Self::new_with_device(&self.data + scalar, self.device.clone())
     }
 
-    fn mul_scalar_cpu(&self, scalar: T) -> Self {
+    fn mul_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
         Self::new_with_device(&self.data * scalar, self.device.clone())
     }
 
-    fn div_scalar_cpu(&self, scalar: T) -> Self {
+    fn div_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
         Self::new_with_device(&self.data / scalar, self.device.clone())
     }
 
     // Smart scalar operations
-    pub fn add_scalar(&self, scalar: T) -> Result<Self, String> {
+    pub fn add_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => Ok(self.add_scalar_cpu(scalar)),
             Device::CUDA(_) => {
-                self.add_scalar_cuda(scalar).or_else(|_| {
+                self.add_scalar_cuda(scalar).unwrap_or_else(|_| {
                     println!("CUDA add_scalar failed, falling back to CPU");
-                    Ok(self.add_scalar_cpu(scalar))
+                    self.add_scalar_cpu(scalar)
                 })
             }
         }
     }
 
-    pub fn mul_scalar(&self, scalar: T) -> Result<Self, String> {
+    pub fn mul_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => Ok(self.mul_scalar_cpu(scalar)),
             Device::CUDA(_) => {
-                self.mul_scalar_cuda(scalar).or_else(|_| {
+                self.mul_scalar_cuda(scalar).unwrap_or_else(|_| {
                     println!("CUDA mul_scalar failed, falling back to CPU");
-                    Ok(self.mul_scalar_cpu(scalar))
+                    self.mul_scalar_cpu(scalar)
                 })
             }
         }
     }
 
-    pub fn div_scalar(&self, scalar: T) -> Result<Self, String> {
+    pub fn div_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => Ok(self.div_scalar_cpu(scalar)),
             Device::CUDA(_) => {
-                self.div_scalar_cuda(scalar).or_else(|_| {
+                self.div_scalar_cuda(scalar).unwrap_or_else(|_| {
                     println!("CUDA div_scalar failed, falling back to CPU");
-                    Ok(self.div_scalar_cpu(scalar))
+                    self.div_scalar_cpu(scalar)
                 })
             }
         }
@@ -1141,7 +1141,7 @@ where
     // CUDA-based scalar operations
     // ------------------------------------------
 
-    #[cfg(feature = "cuda")]
+
     pub fn add_scalar_cuda(&self, scalar: T) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
 
@@ -1155,8 +1155,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    #[cfg(feature = "cuda")]
-    pub fn mul_scalar_cuda(&self, scalar: T) -> Result<Self, String> {
+    pub fn mul_scalar_cuda(&self, scalar: T) -> Reult<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1169,8 +1168,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    #[cfg(feature = "cuda")]
-    pub fn div_scalar_cuda(&self, scalar: T) -> Result<Self, String> {
+    pub fn div_scalar_cuda(&self, scalar: T) -> Reult<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1191,7 +1189,7 @@ where
     T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + Float + ndarray::ScalarOperand,
 {
     // CPU activation functions for fallback
-    fn relu_cpu(&self) -> Self {
+    fn relu_cpu(&self) -> GPUTensor<T> {
         Self::new_with_device(
             self.data.mapv(|x| {
                 let zero = T::zero();
@@ -1201,37 +1199,37 @@ where
         )
     }
 
-    fn exp_cpu(&self) -> Self {
+    fn exp_cpu(&self) -> GPUTensor<T> {
         Self::new_with_device(self.data.mapv(|x| x.exp()), self.device.clone())
     }
 
     // Smart activation functions
-    pub fn relu(&self) -> Result<Self, String> {
+    pub fn relu(&self) -> GPUTensor<T> {
         match &self.device {
-            Device::CPU => Ok(self.relu_cpu()),
+            Device::CPU => self.relu_cpu(),
             Device::CUDA(_) => {
-                self.relu_cuda().or_else(|_| {
+                self.relu_cuda().unwrap_or_else(|_| {
                     println!("CUDA relu failed, falling back to CPU");
-                    Ok(self.relu_cpu())
+                    self.relu_cpu()
                 })
             }
         }
     }
 
-    pub fn exp(&self) -> Result<Self, String> {
+    pub fn exp(&self) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => Ok(self.exp_cpu()),
             Device::CUDA(_) => {
-                self.exp_cuda().or_else(|_| {
+                self.exp_cuda().unwrap_or_else(|_| {
                     println!("CUDA exp failed, falling back to CPU");
-                    Ok(self.exp_cpu())
+                    self.exp_cpu()
                 })
             }
         }
     }
 
     // Other activation functions
-    pub fn sigmoid(&self) -> Self {
+    pub fn sigmoid(&self) -> GPUTensor<T> {
         Self::new_with_device(
             self.data.mapv(|x| {
                 let one = T::one();
@@ -1243,19 +1241,19 @@ where
     }
 
     // Placeholder for missing methods - implement later
-    pub fn powf(&self, _other: &Self) -> Result<Self, String> {
-        Err("powf operation not yet implemented".to_string())
+    pub fn powf(&self, _other: &Self) -> GPUTensor<T> {
+        panic!("powf operation not yet implemented".to_string())
     }
 
-    pub fn log(&self) -> Result<Self, String> {
-        Err("log operation not yet implemented".to_string())
+    pub fn log(&self) -> Reult<GPUTensor<T>, String> {
+        panic!("log operation not yet implemented".to_string())
     }
 
     // ------------------------------------------------------------
     // CUDA - BASED ACTIVATION FUNCTIONS
     // -------------------------------------------------------------
     #[cfg(feature = "cuda")]
-    pub fn relu_cuda(&self) -> Result<Self, String> {
+    pub fn relu_cuda(&self) -> Reult<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1269,7 +1267,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn exp_cuda(&self) -> Result<Self, String> {
+    pub fn exp_cuda(&self) -> Reult<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
