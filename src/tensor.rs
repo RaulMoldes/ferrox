@@ -24,7 +24,7 @@ pub type Tensor<T> = CPUTensor<T>;
 #[derive(Debug, Clone)]
 pub struct CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     // This `data` field is the main data storage of the tensor on CPU.
     pub data: ArrayD<T>, // As I documented in the device module, this will be changed toa generic type <T>
@@ -38,7 +38,7 @@ where
 // Main implementation block with basic operations
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     // Basically a constructor for the Tensor struct.
     // It takes an ArrayD<f64> and a Device, and returns a Tensor.
@@ -279,7 +279,7 @@ where
 #[derive(Debug, Clone)]
 pub struct GPUTensor<T>
 where
-   T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+   T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
    data: ArrayD<T>,
    device: Device,
@@ -289,7 +289,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-   T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+   T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
    // Basic constructor - creates a GPU-capable tensor with CPU data initially
    // Similar to CPUTensor but this one can be moved to GPU when needed
@@ -634,7 +634,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::LinalgScalar,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::LinalgScalar,
 {
     fn matmul_cpu(&self, other: &Self) -> Result<Self, String> {
         if self.ndim() != 2 || other.ndim() != 2 {
@@ -747,7 +747,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
 {
     pub fn sum(&self, axis: Option<usize>) -> Self {
         match axis {
@@ -957,7 +957,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-   T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::Zero,
+   T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::Zero,
 {
    pub fn zeros(shape: &[usize]) -> Self {
        let device = default_device();
@@ -981,7 +981,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-   T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::One,
+   T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::One,
 {
    pub fn ones(shape: &[usize]) -> Self {
        let device = default_device();
@@ -1005,7 +1005,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
     pub fn to_cuda(&self) -> Result<Self, String> {
         if self.is_cuda() {
@@ -1172,7 +1172,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::ScalarOperand,
 {
     // CPU scalar operations for fallback
     fn add_scalar_cpu(&self, scalar: T) -> Self {
@@ -1275,7 +1275,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + Float + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + Float + ndarray::ScalarOperand,
 {
     // CPU activation functions for fallback
     fn relu_cpu(&self) -> Self {
@@ -1367,7 +1367,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> PartialEq for GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin + PartialEq,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         // Compare shapes first
@@ -1392,7 +1392,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
     // Method to access data field for tests (similar to the errors we saw)
     pub fn data(&self) -> &ArrayD<T> {
@@ -1471,7 +1471,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> Index<usize> for GPUTensor<T>
 where
-    T: Numeric + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
     type Output = T;
 
@@ -1491,7 +1491,7 @@ where
 
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone + ndarray::LinalgScalar,
+    T: NumericCuda + Clone + ndarray::LinalgScalar,
 {
     pub fn matmul(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String>
     where
@@ -1532,7 +1532,7 @@ where
 // Implementation for operations requiring ScalarOperand
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone + ndarray::ScalarOperand,
+    T: NumericCuda + Clone + ndarray::ScalarOperand,
 {
     // Scalar operations
     pub fn add_scalar(&self, scalar: T) -> CPUTensor<T> {
@@ -1615,7 +1615,7 @@ where
 // Implementation for reduction operations and tensor manipulations
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: NumericCuda + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
 {
     // Reduction operations.
     // As we do not know the shape of the tensor at compile time, we use `ndarray`'s dynamic arrays.
@@ -1852,7 +1852,7 @@ where
 // Implementation for tensor creation with Zero trait
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone + rand_distr::num_traits::Zero,
+    T: NumericCuda + Clone + rand_distr::num_traits::Zero,
 {
     // Initialization functions for creating tensors with specific shapes.
     // They all have a `_with_device` variant that allows specifying the device.
@@ -1879,7 +1879,7 @@ where
 
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     /// Check if tensor is on CUDA
     pub fn is_cuda(&self) -> bool {
@@ -1892,7 +1892,7 @@ where
 // Implementation for tensor creation with One trait
 impl<T> CPUTensor<T>
 where
-    T: Numeric + Clone + rand_distr::num_traits::One,
+    T: NumericCuda + Clone + rand_distr::num_traits::One,
 {
     // Ones
     pub fn ones(shape: &[usize]) -> Self {
@@ -1919,14 +1919,14 @@ where
 // Implement equality for testing, and because will be useful in the future.
 impl<T> PartialEq for CPUTensor<T>
 where
-    T: Numeric + Clone + PartialEq,
+    T: NumericCuda + Clone + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data && self.device == other.device
     }
 }
 
-impl<T> Eq for CPUTensor<T> where T: Numeric + Clone + PartialEq {}
+impl<T> Eq for CPUTensor<T> where T: NumericCuda + Clone + PartialEq {}
 
 pub struct CPUTensorIterator<T> {
     data: ndarray::ArrayD<T>,
@@ -1967,7 +1967,7 @@ where
 // Implementation for owned Tensor (consumes the tensor)
 impl<T> IntoIterator for CPUTensor<T>
 where
-    T: Numeric + Clone + Copy,
+    T: NumericCuda + Clone + Copy,
 {
     type Item = T;
     type IntoIter = CPUTensorIterator<T>;
@@ -1983,7 +1983,7 @@ where
 // Implementation for borrowed Tensor (&Tensor)
 impl<'a, T> IntoIterator for &'a CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Item = &'a T;
     type IntoIter = ndarray::iter::Iter<'a, T, ndarray::IxDyn>;
@@ -1996,7 +1996,7 @@ where
 // Implementation for mutable borrowed Tensor (&mut Tensor)
 impl<'a, T> IntoIterator for &'a mut CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Item = &'a mut T;
     type IntoIter = ndarray::iter::IterMut<'a, T, ndarray::IxDyn>;
@@ -2011,7 +2011,7 @@ where
 // therefore you could access elements in a multi-dimensional tensor as it was a flat array.
 impl<T> Index<usize> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2027,7 +2027,7 @@ where
 
 impl<T> IndexMut<usize> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         // Convert flat index to multi-dimensional coordinates
@@ -2042,7 +2042,7 @@ where
 // Implementation for slice of usize (multi-dimensional indexing)
 impl<T> Index<&[usize]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2053,7 +2053,7 @@ where
 
 impl<T> IndexMut<&[usize]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: &[usize]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2063,7 +2063,7 @@ where
 // Implementation for Vec<usize> (convenient alternative to slice)
 impl<T> Index<Vec<usize>> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2074,7 +2074,7 @@ where
 
 impl<T> IndexMut<Vec<usize>> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: Vec<usize>) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -2084,7 +2084,7 @@ where
 // Implementation for arrays of different sizes (up to 6D for common use cases)
 impl<T> Index<[usize; 1]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2095,7 +2095,7 @@ where
 
 impl<T> IndexMut<[usize; 1]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 1]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -2104,7 +2104,7 @@ where
 
 impl<T> Index<[usize; 2]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2115,7 +2115,7 @@ where
 
 impl<T> IndexMut<[usize; 2]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 2]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -2124,7 +2124,7 @@ where
 
 impl<T> Index<[usize; 3]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2135,7 +2135,7 @@ where
 
 impl<T> IndexMut<[usize; 3]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 3]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -2144,7 +2144,7 @@ where
 
 impl<T> Index<[usize; 4]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2155,7 +2155,7 @@ where
 
 impl<T> IndexMut<[usize; 4]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 4]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -2165,7 +2165,7 @@ where
 // Implementation for tuples (more ergonomic for 2D and 3D)
 impl<T> Index<(usize, usize)> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2176,7 +2176,7 @@ where
 
 impl<T> IndexMut<(usize, usize)> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j]]
@@ -2185,7 +2185,7 @@ where
 
 impl<T> Index<(usize, usize, usize)> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2196,7 +2196,7 @@ where
 
 impl<T> IndexMut<(usize, usize, usize)> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, (i, j, k): (usize, usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j, k]]
@@ -2205,7 +2205,7 @@ where
 
 impl<T> Index<(usize, usize, usize, usize)> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2216,7 +2216,7 @@ where
 
 impl<T> IndexMut<(usize, usize, usize, usize)> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, (i, j, k, l): (usize, usize, usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j, k, l]]
@@ -2226,7 +2226,7 @@ where
 // Implementation for references to arrays of different sizes
 impl<T> Index<&[usize; 1]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2237,7 +2237,7 @@ where
 
 impl<T> IndexMut<&[usize; 1]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 1]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2246,7 +2246,7 @@ where
 
 impl<T> Index<&[usize; 2]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2257,7 +2257,7 @@ where
 
 impl<T> IndexMut<&[usize; 2]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 2]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2266,7 +2266,7 @@ where
 
 impl<T> Index<&[usize; 3]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2277,7 +2277,7 @@ where
 
 impl<T> IndexMut<&[usize; 3]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 3]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2286,7 +2286,7 @@ where
 
 impl<T> Index<&[usize; 4]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     type Output = T;
 
@@ -2297,7 +2297,7 @@ where
 
 impl<T> IndexMut<&[usize; 4]> for CPUTensor<T>
 where
-    T: Numeric + Clone,
+    T: NumericCuda + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 4]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
