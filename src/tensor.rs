@@ -371,7 +371,7 @@ where
 
         let shape: Vec<usize> = self.shape().to_vec();
         let host_data: Vec<T> = self.data.iter().cloned().collect();
-        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.memory(), host_data, shape)?;
+        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.memory_manager(), host_data, shape)?;
 
         Ok(Self {
             data: self.data.clone(),
@@ -395,7 +395,7 @@ where
             use crate::backend::manager::get_backend;
             let backend = get_backend();
             let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-            let memory_manager = cuda_backend.memory();
+            let memory_manager = cuda_backend.memory_manager();
             
             memory_manager.device_to_host(&cuda_tensor.data)
         } else {
@@ -611,7 +611,7 @@ where
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        let memory_manager = cuda_backend.memory();
+        let memory_manager = cuda_backend.memory_manager();
 
         // Transfer CUDA result back to CPU
         let result_cpu = cuda_result.to_cpu(&memory_manager)?;
