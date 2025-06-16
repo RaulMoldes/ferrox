@@ -7,31 +7,6 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, Su
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
 
-// Cuda-specific trait for numeric types. Extends the CPU ased numeric types with CUDA-specific requirements.
-#[cfg(feature = "cuda")]
-pub trait NumericCuda: Numeric + DeviceRepr + ValidAsZeroBits + Unpin {}
-
-
-
-#[cfg(feature = "cuda")]
-impl NumericCuda for f32 {}
-
-#[cfg(feature = "cuda")]
-impl NumericCuda for f64 {}
-
-#[cfg(feature = "cuda")]
-impl NumericCuda for i32 {}
-
-#[cfg(feature = "cuda")]
-impl NumericCuda for i64 {}
-
-// When CUDA is not available, create a dummy trait
-#[cfg(not(feature = "cuda"))]
-pub trait NumericCuda: Numeric {}
-
-#[cfg(not(feature = "cuda"))]
-impl<T: Numeric> NumericCuda for T {}
-
 /// Trait that defines the basic operations and properties for numeric types.
 ///This trait is designed to be implemented by both integer and floating-point types,
 /// providing a common interface for arithmetic operations, comparisons, and conversions.
@@ -589,3 +564,31 @@ impl Numeric for i64 {
         i64::MAX
     }
 }
+
+/// CUDA-compatible numeric trait that extends Numeric with GPU-specific requirements.
+/// This trait is only available when the "cuda" feature is enabled, allowing the
+/// same code to compile with or without CUDA support.
+#[cfg(feature = "cuda")]
+pub trait NumericCuda: Numeric + DeviceRepr + ValidAsZeroBits + Unpin {}
+
+/// When CUDA is not available, NumericCuda is just an alias for Numeric.
+/// This allows the same generic bounds to work regardless of CUDA availability.
+#[cfg(not(feature = "cuda"))]
+pub trait NumericCuda: Numeric {}
+
+// CUDA trait implementations - only compiled when cuda feature is enabled
+#[cfg(feature = "cuda")]
+impl NumericCuda for f32 {}
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for f64 {}
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for i32 {}
+
+#[cfg(feature = "cuda")]
+impl NumericCuda for i64 {}
+
+// When CUDA is not available, provide blanket implementation for all Numeric types
+#[cfg(not(feature = "cuda"))]
+impl<T: Numeric> NumericCuda for T {}

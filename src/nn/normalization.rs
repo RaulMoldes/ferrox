@@ -350,10 +350,10 @@ where
 
             // Create tensors for running statistics
             let running_mean_node =
-                graph.tensor_from_vec(self.running_mean.to_vec(), &[self.num_features], false)?;
+                graph.tensor_from_vec(self.running_mean.to_vec()?, &[self.num_features], false)?;
 
             let running_var_node =
-                graph.tensor_from_vec(self.running_var.to_vec(), &[self.num_features], false)?;
+                graph.tensor_from_vec(self.running_var.to_vec()?, &[self.num_features], false)?;
 
             // Normalize using running statistics
             let eps_tensor = graph.tensor_from_vec(
