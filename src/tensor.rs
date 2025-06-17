@@ -1372,18 +1372,26 @@ where
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-        // For simplicity, I access the CPU data directly
-        // In a production system, e would want to handle CUDA tensors properly
         if index >= self.size() {
             panic!("Index {} out of bounds for tensor with {} elements", index, self.size());
         }
         
-        // Convert flat index to multi-dimensional index and access data
-        let flat_data: Vec<T> = self.data.iter().cloned().collect();
-        &flat_data[index]
+        // Convert flat index to multi-dimensional coordinates
+        let shape = self.data.shape();
+        let mut coords = vec![0; shape.len()];
+        let mut remaining = index;
+        
+        for i in (0..shape.len()).rev() {
+            coords[i] = remaining % shape[i];
+            remaining /= shape[i];
+        }
+        
+        // Access using multi-dimensional indexing
+        // Aparently this t¡is not the safest way to do this, but it is the fastest.
+        // This returns a reference to the element at the specified index.
+        &self.data[&coords[..]]
     }
 }
-
 
 impl<T> CPUTensor<T>
 where
