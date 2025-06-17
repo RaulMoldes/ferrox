@@ -239,7 +239,7 @@ impl<'a> CudaOps<'a> {
         
 
         // Calculate total number of elements
-        let size = input.shape.iter().product::<usize>() as i32;
+        let size = input.shape.iter().product::<usize>() ;
         
         // Create output tensor with same shape as input
         let mut output = self.memory.alloc_zeros::<T>(size)?;
@@ -277,7 +277,7 @@ impl<'a> CudaOps<'a> {
         }
 
         // Calculate total number of elements
-        let size = a.shape.iter().product::<usize>() as i32;
+        let size = a.shape.iter().product::<usize>() ;
 
         // Create output tensor with same shape as inputs
         let mut output = self.memory.alloc_zeros::<T>(size)?;
@@ -330,7 +330,7 @@ impl<'a> CudaOps<'a> {
         let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
 
         // Calculate total number of elements
-        let size = input.shape.iter().product::<usize>() as i32;
+        let size = input.shape.iter().product::<usize>() ;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
