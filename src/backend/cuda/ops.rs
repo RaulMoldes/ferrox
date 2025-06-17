@@ -239,10 +239,10 @@ impl<'a> CudaOps<'a> {
         
 
         // Calculate total number of elements
-        let size = input.shape.iter().product::<usize>() ;
+        let size = input.shape.iter().product::<usize>() as i32;
         
         // Create output tensor with same shape as input
-        let mut output = self.memory.alloc_zeros::<T>(size)?;
+        let mut output = self.memory.alloc_zeros::<T>(size.try_into().unwrap())?;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -277,10 +277,10 @@ impl<'a> CudaOps<'a> {
         }
 
         // Calculate total number of elements
-        let size = a.shape.iter().product::<usize>() ;
+        let size = a.shape.iter().product::<usize>() as i32;
 
         // Create output tensor with same shape as inputs
-        let mut output = self.memory.alloc_zeros::<T>(size)?;
+        let mut output = self.memory.alloc_zeros::<T>(size.try_into().unwrap())?;
 
 
         // Configure CUDA launch parameters
@@ -327,10 +327,11 @@ impl<'a> CudaOps<'a> {
             + std::marker::Unpin,
     {
         // Create output tensor with same shape as input
-        let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
+        
 
         // Calculate total number of elements
-        let size = input.shape.iter().product::<usize>() ;
+        let size = input.shape.iter().product::<usize>() as i32;
+        let mut output = self.memory.alloc_zeros::<T>(size.try_into().unwrap())?;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
