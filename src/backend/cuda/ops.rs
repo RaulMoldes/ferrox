@@ -206,11 +206,11 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        // Create output tensor with same shape as input
-        let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
+      
 
         // Calculate total number of elements
-        let size = input.shape.iter().product::<usize>() as i32;
+       
+        let mut output = self.memory.alloc_zeros::<T>(size)?;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -236,11 +236,13 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        // Create output tensor with same shape as input
-        let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
+        
 
         // Calculate total number of elements
         let size = input.shape.iter().product::<usize>() as i32;
+        
+        // Create output tensor with same shape as input
+        let mut output = self.memory.alloc_zeros::<T>(size)?;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -274,11 +276,12 @@ impl<'a> CudaOps<'a> {
             ));
         }
 
-        // Create output tensor with same shape as inputs
-        let mut output = self.memory.alloc_zeros::<T>(a.shape.clone())?;
-
         // Calculate total number of elements
         let size = a.shape.iter().product::<usize>() as i32;
+
+        // Create output tensor with same shape as inputs
+        let mut output = self.memory.alloc_zeros::<T>(size)?;
+
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -309,9 +312,7 @@ impl<'a> CudaOps<'a> {
             + std::marker::Unpin,
     {
         // Create a tensor filled with the scalar exponent
-        let exponent_tensor = self
-            .memory
-            .alloc_zeros_filled(base.shape.clone(), exponent)?;
+        let exponent_tensor = self.full(base.shape.clone(), exponent)?;
 
         // Use the regular power operation
         self.power(base, &exponent_tensor)
