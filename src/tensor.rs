@@ -1330,14 +1330,12 @@ where
             return false; // Different lengths, cannot be equal
         }
         // Compare each element
-        match self_data.iter().zip(other_data.iter()) {
-            (Some(a), Some(b)) => {
-                if a != b {
-                    return false; // Found a mismatch
-                }
+        for (a, b) in self_data.iter().zip(other_data.iter()) {
+            if a != b {
+                return false; // Found a mismatch
             }
-            _ => return false, // If any element is None, they are not equal
         }
+        true // All checks passed, tensors are equal
     }
 }
 
