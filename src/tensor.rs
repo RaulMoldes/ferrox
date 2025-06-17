@@ -1163,7 +1163,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    pub fn mul_scalar_cuda(&self, scalar: T) -> Reult<GPUTensor<T>, String> {
+    pub fn mul_scalar_cuda(&self, scalar: T) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1176,7 +1176,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    pub fn div_scalar_cuda(&self, scalar: T) -> Reult<GPUTensor<T>, String> {
+    pub fn div_scalar_cuda(&self, scalar: T) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1253,7 +1253,7 @@ where
         panic!("powf operation not yet implemented".to_string())
     }
 
-    pub fn log(&self) -> Reult<GPUTensor<T>, String> {
+    pub fn log(&self) -> Result<GPUTensor<T>, String> {
         panic!("log operation not yet implemented".to_string())
     }
 
@@ -1261,7 +1261,7 @@ where
     // CUDA - BASED ACTIVATION FUNCTIONS
     // -------------------------------------------------------------
     #[cfg(feature = "cuda")]
-    pub fn relu_cuda(&self) -> Reult<GPUTensor<T>, String> {
+    pub fn relu_cuda(&self) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1275,7 +1275,7 @@ where
     }
 
     #[cfg(feature = "cuda")]
-    pub fn exp_cuda(&self) -> Reult<GPUTensor<T>, String> {
+    pub fn exp_cuda(&self) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
