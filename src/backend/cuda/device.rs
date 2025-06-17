@@ -10,6 +10,7 @@ pub struct CudaBackend {
     device: Arc<CudaDevice>, // CudaDevice::new() returns this type directly
     kernels: CudaKernels,
     device_id: usize,
+    memory_manager: CudaMemoryManager,
 }
 
 impl CudaBackend {
@@ -21,7 +22,7 @@ impl CudaBackend {
 
         // device is already Arc<CudaDevice>, so we can clone it directly
         let mut kernels = CudaKernels::new(device.clone());
-
+        let memory_manager = CudaMemoryManager::new(device.clone());
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
 
@@ -29,6 +30,7 @@ impl CudaBackend {
             device,
             kernels,
             device_id,
+            memory_manager,
         })
     }
 
@@ -89,7 +91,7 @@ impl CudaBackend {
         }
 
         // Create memory manager for this device
-        let memory_manager = CudaMemoryManager::new(self.device.clone());
+        let memory_manager = self.memory_manager();
 
         // Transfer data from host to device
         let cuda_data = memory_manager.host_to_device(data)?;
@@ -100,15 +102,15 @@ impl CudaBackend {
 
     /// Returns reference to memory manager
     /// This method provides access to the memory manager for external use
-    pub fn memory_manager(&self) -> CudaMemoryManager {
-        CudaMemoryManager::new(self.device.clone())
+    pub fn memory_manager(&self) -> &CudaMemoryManager {
+        &self.memory_manager
     }
 
     /// Returns reference to operations interface
     /// This method provides access to CUDA operations for tensor computations
     pub fn ops(&self) -> CudaOps<'_> {
         let memory = self.memory_manager();
-        CudaOps::new(&self.kernels, &memory)
+        CudaOps::new(&self.kernels, memory)
     }
 
 }

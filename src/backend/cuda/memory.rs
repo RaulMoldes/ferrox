@@ -43,10 +43,12 @@ impl CudaMemoryManager {
         // SAFETY: This method does not initialize the memory, so it may contain garbage data.
         // Use with caution, as it may lead to undefined behavior if the data is not initialized.
         // It is the user's responsibility to ensure the memory is initialized before use.
-
+        unsafe {
+          
         self.device
             .alloc(size)
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
+        }
     }
 
     // -------- `cudaMemcpy` equivalents for host to device transfers  -------- //
