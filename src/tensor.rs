@@ -757,7 +757,7 @@ where
                 let axes_to_remove: Vec<usize> = self.shape()
                     .iter()
                     .enumerate()
-                    .filter(|(_, &size)| size == 1)
+                    .filter(|&(_, &size)| size == 1)
                     .map(|(i, _)| i)
                     .collect();
 
@@ -1316,7 +1316,7 @@ where
             return false // No CUDA backend available, cannot compare
         };
         
-        let memory_manager = cuda_backend.memory_manager();
+        
 
         // Compare data
         let self_data = self.to_vec().unwrap_or_else(|_| {
@@ -1632,7 +1632,7 @@ where
     // We need to check the size of the axis before removing it, as it is not possible to remove an axis with size greater than 1.
     // Imagine a tensor: [[[1, 3, 1, 5],[1,2,3,4]],[[1, 3, 1, 5],[1,2,3,4]],] if we try to squeeze axis 1, we would need to remove the two elements on that axis,
     // which is not the purpose of the squeeze operation.
-    pub fn squeeze(&self, axis: Option<usize>) -> Result<Tensor<T>, String> {
+    pub fn squeeze(&self, axis: Option<usize>) -> Result<CPUTensor<T>, String> {
         match axis {
             Some(ax) => {
                 if self.shape()[ax] != 1 {
@@ -1808,8 +1808,7 @@ where
         Self {
             data: device.ones(shape),
             device,
-            #[cfg(feature = "cuda")]
-            cuda_storage: None,
+           
         }
     }
 }

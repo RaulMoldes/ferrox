@@ -561,7 +561,7 @@ mod tests {
                 assert_eq!(tensor.shape(), &shape);
                 assert_eq!(tensor.size(), 6);
                 assert_eq!(tensor.ndim(), 2);
-
+                let memory = backend.memory_manager();
                 // Verify data by transferring back to CPU
                 let cpu_data = tensor.to_cpu(&memory).unwrap();
                 assert_eq!(

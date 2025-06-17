@@ -19,6 +19,10 @@ impl<'a> CudaOps<'a> {
         Self { kernels, memory }
     }
 
+    pub fn kernels(&self) -> &CudaKernels {
+        self.kernels
+    }
+
     /// Calculate optimal launch configuration for given size
     fn get_launch_config(&self, size: usize) -> LaunchConfig {
         let block_size = 256;
