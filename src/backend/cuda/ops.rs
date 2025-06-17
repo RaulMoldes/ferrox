@@ -312,7 +312,7 @@ impl<'a> CudaOps<'a> {
             + std::marker::Unpin,
     {
         // Create a tensor filled with the scalar exponent
-        let exponent_tensor = self.full(base.shape.clone(), exponent)?;
+        let exponent_tensor = self.full(&base.shape, exponent)?;
 
         // Use the regular power operation
         self.power(base, &exponent_tensor)
