@@ -279,7 +279,7 @@ pub struct GPUTensor<T>
 where
    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
 {
-   data: ArrayD<T>,
+   pub data: ArrayD<T>,
    device: Device,
    cuda_storage: Option<CudaTensor<T>>,
 }
@@ -646,7 +646,7 @@ where
         // Create result tensor on GPU
         let result_shape = vec![m as usize, n as usize];
         let mut result_cuda = crate::backend::cuda::CudaTensor::zeros(
-            cuda_backend.memory_manager(), 
+            &cuda_backend.memory_manager(), 
             result_shape.clone()
         )?;
     
@@ -1111,7 +1111,7 @@ where
     // Smart scalar operations
     pub fn add_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
-            Device::CPU => Ok(self.add_scalar_cpu(scalar)),
+            Device::CPU =>self.add_scalar_cpu(scalar),
             Device::CUDA(_) => {
                 self.add_scalar_cuda(scalar).unwrap_or_else(|_| {
                     println!("CUDA add_scalar failed, falling back to CPU");
@@ -1249,7 +1249,7 @@ where
     }
 
     // Placeholder for missing methods - implement later
-    pub fn powf(&self, _other: &Self) -> GPUTensor<T> {
+    pub fn powf(&self, _other: &Self) -> Result<GPUTensor<T>,String> {
         panic!("powf operation not yet implemented")
     }
 
@@ -1310,13 +1310,33 @@ where
 
         use crate::backend::manager::get_backend;
         let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        let memory_manager = if let Some(cuda_backend) =  backend.cuda_backend() {
+            cuda_backend.memory_manager()
+        } else {
+            return false // No CUDA backend available, cannot compare
+        };
+        
         let memory_manager = cuda_backend.memory_manager();
 
-        // Compare actual data - convert both to CPU for comparison
-        match (self.to_vec(&memory_manager)?, other.to_vec(&memory_manager)?) {
-            (Ok(self_data), Ok(other_data)) => self_data == other_data,
-            _ => false, // If we can't convert to vec, they're not equal
+        // Compare data
+        let self_data = self.to_vec().unwrap_or_else(|_| {
+            panic!("Failed to convert GPUTensor to vector for comparison");
+        });
+        let other_data = other.to_vec().unwrap_or_else(|_| {
+            panic!("Failed to convert GPUTensor to vector for comparison");
+        });
+
+        if self_data.len() != other_data.len() {
+            return false; // Different lengths, cannot be equal
+        }
+        // Compare each element
+        match self_data.iter().zip(other_data.iter()) {
+            (Some(a), Some(b)) => {
+                if a != b {
+                    return false; // Found a mismatch
+                }
+            }
+            _ => return false, // If any element is None, they are not equal
         }
     }
 }
@@ -1590,7 +1610,7 @@ where
     // https://docs.rs/ndarray/latest/ndarray/struct.ArrayBase.html#method.broadcast
     pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<CPUTensor<T>, String> {
         match self.data.broadcast(target_shape) {
-            Some(broadcasted) => Ok(Tensor::new_with_device(
+            Some(broadcasted) => Ok(CPUTensor::new_with_device(
                 broadcasted.to_owned(),
                 self.device.clone(),
             )),
