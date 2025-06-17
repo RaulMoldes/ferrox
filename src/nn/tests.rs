@@ -364,7 +364,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "cuda"))]
     fn test_softmax_with_cross_entropy_loss() {
         let mut graph = Engine::new();
 
@@ -1037,7 +1036,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "cuda"))]
     fn test_bce_loss_functionality() {
         let mut graph = Engine::new();
 
@@ -1116,7 +1114,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "cuda"))]
     fn test_cce_loss_functionality() {
         let mut graph = Engine::new();
 
@@ -1215,7 +1212,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "cuda"))]
     fn test_bce_with_logits_loss_functionality() {
         let mut graph = Engine::new();
 
