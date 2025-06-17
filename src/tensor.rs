@@ -1299,43 +1299,13 @@ where
 {
     fn eq(&self, other: &Self) -> bool {
         // Compare shapes first
-        if self.shape() != other.shape() {
+        if self.shape() != other.shape() || self.device != other.device {
             return false;
         }
 
-        // Compare devices
-        if self.device != other.device {
-            return false;
-        }
-
-        use crate::backend::manager::get_backend;
-        let backend = get_backend();
-        let memory_manager = if let Some(cuda_backend) =  backend.cuda_backend() {
-            cuda_backend.memory_manager()
-        } else {
-            return false // No CUDA backend available, cannot compare
-        };
-        
-        
-
-        // Compare data
-        let self_data = self.to_vec().unwrap_or_else(|_| {
-            panic!("Failed to convert GPUTensor to vector for comparison");
-        });
-        let other_data = other.to_vec().unwrap_or_else(|_| {
-            panic!("Failed to convert GPUTensor to vector for comparison");
-        });
-
-        if self_data.len() != other_data.len() {
-            return false; // Different lengths, cannot be equal
-        }
-        // Compare each element
-        for (a, b) in self_data.iter().zip(other_data.iter()) {
-            if a != b {
-                return false; // Found a mismatch
-            }
-        }
-        true // All checks passed, tensors are equal
+        // Not the best implementation as we should compare the CUDA storage
+        // But for now, we compare the data directly
+        self.data == other.data
     }
 }
 
