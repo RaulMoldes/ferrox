@@ -206,11 +206,10 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-      
-
+        // Create output tensor with same shape as input
+        let mut output = CudaTensor::zeros(self.memory, input.shape.clone())?;
         // Calculate total number of elements
-       
-        let mut output = self.memory.alloc_zeros::<T>(size)?;
+        let size = input.shape.iter().product::<usize>() as i32;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -236,13 +235,11 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        
+        // Create output tensor with same shape as input
+        let mut output = CudaTensor::zeros(self.memory, input.shape.clone())?;
 
         // Calculate total number of elements
         let size = input.shape.iter().product::<usize>() as i32;
-        
-        // Create output tensor with same shape as input
-        let mut output = self.memory.alloc_zeros::<T>(size.try_into().unwrap())?;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -276,12 +273,11 @@ impl<'a> CudaOps<'a> {
             ));
         }
 
+        // Create output tensor with same shape as input
+        let mut output = CudaTensor::zeros(self.memory, input.shape.clone())?;
+
         // Calculate total number of elements
         let size = a.shape.iter().product::<usize>() as i32;
-
-        // Create output tensor with same shape as inputs
-        let mut output = self.memory.alloc_zeros::<T>(size.try_into().unwrap())?;
-
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;
@@ -327,11 +323,10 @@ impl<'a> CudaOps<'a> {
             + std::marker::Unpin,
     {
         // Create output tensor with same shape as input
-        
+        let mut output = CudaTensor::zeros(self.memory, input.shape.clone())?;
 
         // Calculate total number of elements
         let size = input.shape.iter().product::<usize>() as i32;
-        let mut output = self.memory.alloc_zeros::<T>(size.try_into().unwrap())?;
 
         // Configure CUDA launch parameters
         let threads_per_block = 256;

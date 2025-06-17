@@ -1998,12 +1998,10 @@ where
     pub fn sigmoid(&self) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => self.sigmoid_cpu(),
-            Device::CUDA(_) => {
-                self.sigmoid_cuda().unwrap_or_else(|_| {
-                    println!("CUDA sigmoid failed, falling back to CPU");
-                    self.sigmoid_cpu()
-                })
-            }
+            Device::CUDA(_) => self.sigmoid_cuda().unwrap_or_else(|_| {
+                println!("CUDA sigmoid failed, falling back to CPU");
+                self.sigmoid_cpu()
+            }),
         }
     }
 
@@ -2016,12 +2014,10 @@ where
 
         match &self.device {
             Device::CPU => self.powf_cpu(other),
-            Device::CUDA(_) => {
-                self.powf_cuda(other).unwrap_or_else(|_| {
-                    println!("CUDA power failed, falling back to CPU");
-                    self.powf_cpu(other)
-                })
-            }
+            Device::CUDA(_) => self.powf_cuda(other).unwrap_or_else(|_| {
+                println!("CUDA power failed, falling back to CPU");
+                self.powf_cpu(other)
+            }),
         }
     }
 
@@ -2029,12 +2025,10 @@ where
     pub fn power_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => self.power_scalar_cpu(scalar),
-            Device::CUDA(_) => {
-                self.power_scalar_cuda(scalar).unwrap_or_else(|_| {
-                    println!("CUDA scalar power failed, falling back to CPU");
-                    self.power_scalar_cpu(scalar)
-                })
-            }
+            Device::CUDA(_) => self.power_scalar_cuda(scalar).unwrap_or_else(|_| {
+                println!("CUDA scalar power failed, falling back to CPU");
+                self.power_scalar_cpu(scalar)
+            }),
         }
     }
 
@@ -2047,7 +2041,7 @@ where
                 other.shape()
             ));
         }
-        
+
         Ok(Self::new_with_device(
             ndarray::Zip::from(&self.data)
                 .and(&other.data)
@@ -2057,13 +2051,8 @@ where
     }
 
     fn power_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
-        Self::new_with_device(
-            self.data.mapv(|x| x.powf(scalar)), 
-            self.device.clone()
-        )
+        Self::new_with_device(self.data.mapv(|x| x.powf(scalar)), self.device.clone())
     }
-
-    
 
     /// Natural logarithm with CUDA support and CPU fallback
     pub fn log(&self) -> GPUTensor<T> {
@@ -2103,10 +2092,6 @@ where
         )
     }
 
-    
-
-    
-
     // ------------------------------------------------------------
     // CUDA - BASED ACTIVATION FUNCTIONS
     // -------------------------------------------------------------
@@ -2123,7 +2108,6 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-   
     pub fn exp_cuda(&self) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
@@ -2146,14 +2130,13 @@ where
         // Convert both tensors to CUDA
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
-        
+
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.power(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    
     fn power_scalar_cuda(&self, scalar: T) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 

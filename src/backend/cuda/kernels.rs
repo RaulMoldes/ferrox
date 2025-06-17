@@ -321,9 +321,12 @@ impl CudaKernels {
         b: &CudaSlice<T>,
         c: &mut CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> 
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         let kernel = self
             .get_function_cloned("power")
