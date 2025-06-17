@@ -1123,7 +1123,7 @@ where
 
     pub fn mul_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
-            Device::CPU => Ok(self.mul_scalar_cpu(scalar)),
+            Device::CPU => self.mul_scalar_cpu(scalar),
             Device::CUDA(_) => {
                 self.mul_scalar_cuda(scalar).unwrap_or_else(|_| {
                     println!("CUDA mul_scalar failed, falling back to CPU");
@@ -1135,7 +1135,7 @@ where
 
     pub fn div_scalar(&self, scalar: T) -> GPUTensor<T> {
         match &self.device {
-            Device::CPU => Ok(self.div_scalar_cpu(scalar)),
+            Device::CPU => self.div_scalar_cpu(scalar),
             Device::CUDA(_) => {
                 self.div_scalar_cuda(scalar).unwrap_or_else(|_| {
                     println!("CUDA div_scalar failed, falling back to CPU");
@@ -1226,7 +1226,7 @@ where
 
     pub fn exp(&self) -> GPUTensor<T> {
         match &self.device {
-            Device::CPU => Ok(self.exp_cpu()),
+            Device::CPU => self.exp_cpu(),
             Device::CUDA(_) => {
                 self.exp_cuda().unwrap_or_else(|_| {
                     println!("CUDA exp failed, falling back to CPU");
@@ -1250,11 +1250,11 @@ where
 
     // Placeholder for missing methods - implement later
     pub fn powf(&self, _other: &Self) -> GPUTensor<T> {
-        panic!("powf operation not yet implemented".to_string())
+        panic!("powf operation not yet implemented")
     }
 
-    pub fn log(&self) -> Result<GPUTensor<T>, String> {
-        panic!("log operation not yet implemented".to_string())
+    pub fn log(&self) -> GPUTensor<T> {
+        panic!("log operation not yet implemented")
     }
 
     // ------------------------------------------------------------
