@@ -2019,7 +2019,7 @@ where
             Device::CUDA(_) => {
                 self.powf_cuda(other).unwrap_or_else(|_| {
                     println!("CUDA power failed, falling back to CPU");
-                    self.powf_cpu(other)?
+                    self.powf_cpu(other)
                 })
             }
         }
