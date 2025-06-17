@@ -207,7 +207,7 @@ impl<'a> CudaOps<'a> {
             + std::marker::Unpin,
     {
         // Create output tensor with same shape as input
-        let mut output = self.memory.allocate_tensor::<T>(input.shape.clone())?;
+        let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
 
         // Calculate total number of elements
         let size = input.shape.iter().product::<usize>() as i32;
@@ -237,7 +237,7 @@ impl<'a> CudaOps<'a> {
             + std::marker::Unpin,
     {
         // Create output tensor with same shape as input
-        let mut output = self.memory.allocate_tensor::<T>(input.shape.clone())?;
+        let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
 
         // Calculate total number of elements
         let size = input.shape.iter().product::<usize>() as i32;
@@ -259,13 +259,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise power operation using CUDA kernel: a^b
-    pub fn power<T>(
-        &self, 
-        a: &CudaTensor<T>, 
-        b: &CudaTensor<T>
-    ) -> Result<CudaTensor<T>, String>
+    pub fn power<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         // Validate tensor shapes match
         if a.shape != b.shape {
@@ -274,13 +273,13 @@ impl<'a> CudaOps<'a> {
                 a.shape, b.shape
             ));
         }
-        
+
         // Create output tensor with same shape as inputs
-        let mut output = self.memory.allocate_tensor::<T>(a.shape.clone())?;
-        
+        let mut output = self.memory.alloc_zeros::<T>(a.shape.clone())?;
+
         // Calculate total number of elements
         let size = a.shape.iter().product::<usize>() as i32;
-        
+
         // Configure CUDA launch parameters
         let threads_per_block = 256;
         let blocks = (size + threads_per_block - 1) / threads_per_block;
@@ -289,16 +288,11 @@ impl<'a> CudaOps<'a> {
             block_dim: (threads_per_block as u32, 1, 1),
             shared_mem_bytes: 0,
         };
-        
+
         // Launch the power kernel
-        self.kernels.launch_power(
-            cfg,
-            &a.data,
-            &b.data,
-            &mut output.data,
-            size,
-        )?;
-        
+        self.kernels
+            .launch_power(cfg, &a.data, &b.data, &mut output.data, size)?;
+
         Ok(output)
     }
 
@@ -309,11 +303,16 @@ impl<'a> CudaOps<'a> {
         exponent: T,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         // Create a tensor filled with the scalar exponent
-        let exponent_tensor = self.memory.allocate_tensor_filled(base.shape.clone(), exponent)?;
-        
+        let exponent_tensor = self
+            .memory
+            .alloc_zeros_filled(base.shape.clone(), exponent)?;
+
         // Use the regular power operation
         self.power(base, &exponent_tensor)
     }
@@ -321,14 +320,17 @@ impl<'a> CudaOps<'a> {
     /// Sigmoid activation function using CUDA kernel
     pub fn sigmoid<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         // Create output tensor with same shape as input
-        let mut output = self.memory.allocate_tensor::<T>(input.shape.clone())?;
-        
+        let mut output = self.memory.alloc_zeros::<T>(input.shape.clone())?;
+
         // Calculate total number of elements
         let size = input.shape.iter().product::<usize>() as i32;
-        
+
         // Configure CUDA launch parameters
         let threads_per_block = 256;
         let blocks = (size + threads_per_block - 1) / threads_per_block;
@@ -337,16 +339,11 @@ impl<'a> CudaOps<'a> {
             block_dim: (threads_per_block as u32, 1, 1),
             shared_mem_bytes: 0,
         };
-        
+
         // Launch the sigmoid kernel using the generic activation launcher
-        self.kernels.launch_activation(
-            "sigmoid",
-            cfg,
-            &input.data,
-            &mut output.data,
-            size,
-        )?;
-        
+        self.kernels
+            .launch_activation("sigmoid", cfg, &input.data, &mut output.data, size)?;
+
         Ok(output)
     }
 }
