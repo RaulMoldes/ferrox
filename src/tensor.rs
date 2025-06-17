@@ -2005,7 +2005,8 @@ where
         }
     }
 
-    /// Element-wise power operation with CUDA support and CPU fallback
+    /// Element-wise power operation with CUDA support
+    /// No unwrapping here, we handle errors gracefully
     pub fn powf(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         // Ensure tensors are on the same device
         if self.device != other.device {
@@ -2014,12 +2015,17 @@ where
 
         match &self.device {
             Device::CPU => self.powf_cpu(other),
-            Device::CUDA(_) => self.powf_cuda(other).unwrap_or_else(|_| {
-                println!("CUDA power failed, falling back to CPU");
-                self.powf_cpu(other)
-            }),
+            Device::CUDA(_) => {
+                
+                if let Ok(result) = self.powf_cuda(other) {
+                    Ok(result)
+                } else {
+                    println!("CUDA power operation failed, falling back to CPU");
+                    self.powf_cpu(other)
+                }
         }
     }
+}
 
     /// Scalar power operation with CUDA support
     pub fn power_scalar(&self, scalar: T) -> GPUTensor<T> {

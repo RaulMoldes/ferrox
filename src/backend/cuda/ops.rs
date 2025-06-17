@@ -274,7 +274,7 @@ impl<'a> CudaOps<'a> {
         }
 
         // Create output tensor with same shape as input
-        let mut output = CudaTensor::zeros(self.memory, input.shape.clone())?;
+        let mut output = CudaTensor::zeros(self.memory, a.shape.clone())?;
 
         // Calculate total number of elements
         let size = a.shape.iter().product::<usize>() as i32;
