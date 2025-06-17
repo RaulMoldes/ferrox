@@ -712,7 +712,7 @@ impl Default for BCEWithLogitsLoss {
 impl<T> Module<T> for BCEWithLogitsLoss
 where
     T: Float
-    + NumericCuda
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

@@ -10,10 +10,10 @@ pub const RELU_PTX: &[u8] = include_bytes!("../../../kernels/relu.ptx");
 pub const MUL_PTX: &[u8] = include_bytes!("../../../kernels/mul.ptx");
 pub const DIV_PTX: &[u8] = include_bytes!("../../../kernels/div.ptx");
 pub const EXP_PTX: &[u8] = include_bytes!("../../../kernels/exp.ptx");
-//pub const LOG_PTX: &[u8] = include_bytes!("../../../kernels/log.ptx");
+pub const LOG_PTX: &[u8] = include_bytes!("../../../kernels/log.ptx");
 pub const SIGMOID_PTX: &[u8] = include_bytes!("../../../kernels/sigmoid.ptx");
-//pub const TANH_PTX: &[u8] = include_bytes!("../../../kernels/tanh.ptx");
-
+pub const TANH_PTX: &[u8] = include_bytes!("../../../kernels/tanh.ptx");
+pub const POWER_PTX: &[u8] = include_bytes!("../../../kernels/powf.ptx");
 /// CUDA kernel manager that handles loading and executing kernels
 pub struct CudaKernels {
     device: Arc<CudaDevice>,
@@ -108,6 +108,37 @@ impl CudaKernels {
                     .ok_or_else(|| "Failed to get div function".to_string())?;
                 self.functions.insert("div".to_string(), func);
             }
+            "log" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "log_module", &["log_forward"])
+                    .map_err(|e| format!("Failed to load log kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("log_module", "log_forward")
+                    .ok_or_else(|| "Failed to get log function".to_string())?;
+                self.functions.insert("log".to_string(), func);
+            }
+            "tanh" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "tanh_module", &["tanh_forward"])
+                    .map_err(|e| format!("Failed to load tanh kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("tanh_module", "tanh_forward")
+                    .ok_or_else(|| "Failed to get tanh function".to_string())?;
+                self.functions.insert("tanh".to_string(), func);
+            }
+            "power" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "power_module", &["power_forward"])
+                    .map_err(|e| format!("Failed to load power kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("power_module", "power_forward")
+                    .ok_or_else(|| "Failed to get power function".to_string())?;
+                self.functions.insert("power".to_string(), func);
+            }
+
             _ => return Err(format!("Unknown kernel name: {}", name)),
         }
 
@@ -134,9 +165,12 @@ impl CudaKernels {
         b: &cudarc::driver::CudaSlice<T>,
         c: &mut cudarc::driver::CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> 
-    where 
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         let kernel = self
             .get_function_cloned("add")
@@ -157,9 +191,12 @@ impl CudaKernels {
         b: &cudarc::driver::CudaSlice<T>,
         c: &mut cudarc::driver::CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> 
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         let kernel = self
             .get_function_cloned("div")
@@ -180,9 +217,12 @@ impl CudaKernels {
         b: &CudaSlice<T>,
         c: &mut CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> 
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         let kernel = self
             .get_function_cloned("mul")
@@ -202,9 +242,12 @@ impl CudaKernels {
         input: &cudarc::driver::CudaSlice<T>,
         output: &mut cudarc::driver::CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> 
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         let kernel = self
             .get_function_cloned("relu")
@@ -225,10 +268,13 @@ impl CudaKernels {
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
         size: i32,
-    ) -> Result<(), String> 
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
-        {
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
+    {
         let kernel = self
             .get_function_cloned(kernel_name)
             .ok_or_else(|| format!("{} kernel not found", kernel_name))?;
@@ -250,9 +296,12 @@ impl CudaKernels {
         m: i32,
         n: i32,
         k: i32,
-    ) -> Result<(), String> 
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
         let kernel = self
             .get_function_cloned("matmul")
@@ -262,6 +311,28 @@ impl CudaKernels {
             kernel
                 .launch(cfg, (a, b, c, m, n, k))
                 .map_err(|e| format!("Failed to launch matmul kernel: {}", e))
+        }
+    }
+
+    pub fn launch_power<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        c: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String> 
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("power")
+            .ok_or_else(|| "Power kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch power kernel: {}", e))
         }
     }
 
@@ -285,9 +356,10 @@ pub fn load_all_kernels(kernels: &mut CudaKernels) -> Result<(), String> {
         ("matmul", MATMUL_PTX),
         ("relu", RELU_PTX),
         ("exp", EXP_PTX),
-        // ("log", LOG_PTX),
+        ("log", LOG_PTX),
         ("sigmoid", SIGMOID_PTX),
-        //  ("tanh", TANH_PTX),
+        ("tanh", TANH_PTX),
+        ("power", POWER_PTX),
     ];
 
     for (name, ptx_bytes) in kernel_list.iter() {

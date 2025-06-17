@@ -82,7 +82,12 @@ where
 /// - lr: learning rate
 pub struct SGD<T>
 where
-    T: Float + NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: Float
+        + NumericCuda
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// Map of NodeId to their momentum buffers
     /// Each NodeId corresponds to a parameter tensor in the computation graph
@@ -113,7 +118,8 @@ where
 
 impl<T> SGD<T>
 where
-    T: Float + NumericCuda
+    T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -216,7 +222,8 @@ where
 
 impl<T> Optimizer<T> for SGD<T>
 where
-    T: Float + NumericCuda
+    T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -318,7 +325,12 @@ where
 /// - eps: small constant for numerical stability (typically 1e-8)
 pub struct Adam<T>
 where
-    T: Float + NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: Float
+        + NumericCuda
+        + Clone
+        + std::fmt::Debug
+        + ndarray::LinalgScalar
+        + ndarray::ScalarOperand,
 {
     /// Map of NodeId to their first moment estimates (momentum)
     first_moments: HashMap<NodeId, Tensor<T>>,
@@ -370,7 +382,8 @@ where
 /// It also includes bias correction to account for the initialization of these moments.
 impl<T> Adam<T>
 where
-    T: Float + NumericCuda
+    T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -466,7 +479,8 @@ where
 
 impl<T> Optimizer<T> for Adam<T>
 where
-    T: Float + NumericCuda
+    T: Float
+        + NumericCuda
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

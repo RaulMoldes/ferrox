@@ -112,7 +112,6 @@ impl CudaBackend {
         let memory = self.memory_manager();
         CudaOps::new(&self.kernels, memory)
     }
-
 }
 
 impl std::fmt::Debug for CudaBackend {

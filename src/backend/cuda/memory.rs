@@ -44,10 +44,9 @@ impl CudaMemoryManager {
         // Use with caution, as it may lead to undefined behavior if the data is not initialized.
         // It is the user's responsibility to ensure the memory is initialized before use.
         unsafe {
-          
-        self.device
-            .alloc(size)
-            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
+            self.device
+                .alloc(size)
+                .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
         }
     }
 
@@ -167,7 +166,6 @@ where
         // Use the memory manager to perform the device-to-host transfer
         memory_manager.device_to_host(&self.data)
     }
-
 
     // Same as `to_cpu`, but returns a vector of the data
     /// Transfers CUDA tensor data back to CPU as a vector
