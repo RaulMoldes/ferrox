@@ -247,7 +247,7 @@ where
     pub fn randn(shape: &[usize]) -> Self {
         let device = default_device();
         let data_f64 = device.randn(shape);
-        let data = data_f64.mapv(|x| T::from_f64(x).unwrap());
+        let data = data_f64.mapv(|x| <T as CPUNumber>::from_f64(x).unwrap());
         Self {
             data,
             device,
@@ -257,7 +257,7 @@ where
 
     pub fn randn_with_device(shape: &[usize], device: Device) -> Self {
         let data_f64 = device.randn(shape);
-        let data = data_f64.mapv(|x| T::from_f64(x).unwrap());
+        let data = data_f64.mapv(|x| <T as CPUNumber>::from_f64(x).unwrap());
         Self {
             data,
             device,
@@ -981,13 +981,13 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // CPU activation functions for fallback
     fn relu_cpu(&self) -> GPUTensor<T> {
         Self::new_with_device(
             self.data.mapv(|x| {
-                let zero = T::zero();
+                let zero = <T as CPUNumber>::zero();
                 if x > zero { x } else { zero }
             }),
             self.device.clone(),
@@ -1023,7 +1023,7 @@ where
     pub fn sigmoid_cpu(&self) -> GPUTensor<T> {
         Self::new_with_device(
             self.data.mapv(|x| {
-                let one = T::one();
+                let one = <T as CPUNumber>::one();
                 let neg_x = -x;
                 one / (one + neg_x.exp())
             }),
@@ -1231,8 +1231,6 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 }
-
-
 
 // Additional utility methods for better testing support
 #[cfg(feature = "cuda")]
