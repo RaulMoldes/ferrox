@@ -485,7 +485,7 @@ impl CudaKernels {
     let indices_ref: &mut CudaSlice<i32> = match indices {
         Some(slice) => slice,
         None => {
-            dummy = self.device.alloc_zeros::<i32>(input.len());
+            dummy = self.device.alloc_zeros::<i32>(input.len()).ok_or_else(|| "Unable to allocate memory".to_string())?;
             &mut dummy.clone()
         }
     };
@@ -583,11 +583,18 @@ impl CudaKernels {
             .get_function_cloned("min")
             .ok_or_else(|| "Min kernel not found".to_string())?;
 
-        let indices_ptr = indices.map(|i| i as *mut _).unwrap_or(std::ptr::null_mut());
+            let dummy;
+            let indices_ref: &mut CudaSlice<i32> = match indices {
+                Some(slice) => slice,
+                None => {
+                    dummy = self.device.alloc_zeros::<i32>(input.len()).ok_or_else(|| "Unable to allocate memory".to_string())?;
+                    &mut dummy.clone()
+                }
+            };
 
         unsafe {
             kernel
-                .launch(cfg, (input, output, indices_ptr, batch_size, dim_size))
+                .launch(cfg, (input, output, indices_ref, batch_size, dim_size))
                 .map_err(|e| format!("Failed to launch min kernel: {}", e))
         }
     }
