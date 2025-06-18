@@ -480,11 +480,15 @@ impl CudaKernels {
             .get_function_cloned("max")
             .ok_or_else(|| "Max kernel not found".to_string())?;
 
-        let null_ptr: CudaSlice<i32> = CudaSlice::zeros(self.device.clone(), input.len())?;
-        let indices_ref = match indices {
-            Some(i) => i,
-            None => &mut null_ptr,
-        };
+         // Handle optional indices
+    let dummy;
+    let indices_slice: &mut CudaSlice<i32> = match indices {
+        Some(slice) => slice,
+        None => {
+            dummy = self.device.alloc_zeros::<i32>(input.len())?;
+            &mut dummy.clone()
+        }
+    };
 
         unsafe {
             kernel
