@@ -641,20 +641,8 @@ impl<'a> CudaOps<'a> {
         self.div(&sum_result, &divisor_tensor)
     }
 
-    /// Sum all elements (convenience method using sum_axis recursively)
-    pub fn sum_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-    {
-        let mut current = input.clone();
-        
-        // Sum along each axis, starting from the last dimension
-        for axis in (0..input.shape.len()).rev() {
-            current = self.sum_axis(&current, axis, false)?;
-        }
-        
-        Ok(current)
-    }
+    
+
 
     /// Mean of all elements (sum_all / total_count)
     pub fn mean_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>

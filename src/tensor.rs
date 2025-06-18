@@ -1262,10 +1262,7 @@ where
         }
     }
 
-    // Element-wise negation - works on both CPU and CUDA
-    pub fn negate(&self) -> Self {
-        Self::new_with_device(self.data.mapv(|x| -x), self.device.clone())
-    }
+   
 
     // Detach operation - creates a new tensor without gradient tracking
     // Useful for autograd system
@@ -2312,7 +2309,7 @@ where
 
     // Negate operation for GPUTensor
     fn negate_cpu(&self) -> GPUTensor<T> {
-        Self::new_with_device(-&self.data, self.device.clone())
+        Self::new_with_device(self.data.mapv(|x| -x), self.device.clone())
     }
 
     fn negate_cuda(&self) -> Result<GPUTensor<T>, String> {

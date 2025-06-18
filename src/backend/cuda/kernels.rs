@@ -480,11 +480,18 @@ impl CudaKernels {
             .get_function_cloned("max")
             .ok_or_else(|| "Max kernel not found".to_string())?;
 
-        let indices_ptr = indices.map(|i| i as *mut _).unwrap_or(std::ptr::null_mut());
+        let indices_ref = match indices {
+            Some(i) => i,
+            None => CudaSlice::zeros(
+                self.device.clone(),
+               input.len() as usize,
+                cudarc::driver::DeviceRepr::zero(),
+            )
+        };
 
         unsafe {
             kernel
-                .launch(cfg, (input, output, indices_ptr, batch_size, dim_size))
+                .launch(cfg, (input, output, indices_ref, batch_size, dim_size))
                 .map_err(|e| format!("Failed to launch max kernel: {}", e))
         }
     }
