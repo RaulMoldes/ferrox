@@ -2,7 +2,7 @@ use crate::backend::manager::get_backend;
 use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
-use std::ops::Index;
+use std::ops::{Index,BitOr};
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -879,7 +879,7 @@ where
         // Create a new ArrayD from the CPU result
         let result_array = ArrayD::from_shape_vec(IxDyn(shape), result_cpu)
             .map_err(|e| format!("Failed to create array from CUDA result: {}", e))?;
-        let mut result_tensor = Tensor::new_with_device(result_array, Device::CUDA(0));
+        let mut result_tensor = GPUTensor::new_with_device(result_array, Device::CUDA(0));
         result_tensor.cuda_storage = Some(cuda_result);
         Ok(result_tensor)
     }
