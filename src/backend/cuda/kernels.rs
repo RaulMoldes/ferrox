@@ -482,10 +482,10 @@ impl CudaKernels {
 
          // Handle optional indices
     let dummy;
-    let indices_slice: &mut CudaSlice<i32> = match indices {
+    let indices_ref: &mut CudaSlice<i32> = match indices {
         Some(slice) => slice,
         None => {
-            dummy = self.device.alloc_zeros::<i32>(input.len())?;
+            dummy = self.device.alloc_zeros::<i32>(input.len());
             &mut dummy.clone()
         }
     };
