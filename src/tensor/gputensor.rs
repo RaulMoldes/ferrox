@@ -1,7 +1,8 @@
 use crate::backend::manager::get_backend;
-use crate::backend::number::{CPUNumber, Float, GPUNumber};
+use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
+use std::ops::Index;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -813,7 +814,7 @@ where
     /// CUDA - BASED ARITHMETIC OPERATIONS
     /// -------------------------------------------------------------
 
-    pub fn add_cuda(&self, other: &Tensor<T>) -> Result<Self, String> {
+    pub fn add_cuda(&self, other: &GPUTensor<T>) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -831,7 +832,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    pub fn mul_cuda(&self, other: &Tensor<T>) -> Result<Tensor<T>, String> {
+    pub fn mul_cuda(&self, other: &GPUTensor<T>) -> Result<GPUTensor<T>, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -846,7 +847,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    pub fn div_cuda(&self, other: &Tensor<T>) -> Result<Self, String> {
+    pub fn div_cuda(&self, other: &GPUTensor<T>) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
@@ -1300,7 +1301,7 @@ where
 {
     type Output = T;
 
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: usize) -> &<GPUTensor<T> as BitOr>::Output {
         if index >= self.size() {
             panic!(
                 "Index {} out of bounds for tensor with {} elements",
