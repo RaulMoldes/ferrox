@@ -2,7 +2,7 @@
 // This module contains abstarctions for CUDA tensor operations that mirror existent CPU tensor operations
 use super::kernels::CudaKernels;
 use super::memory::{CudaMemoryManager, CudaTensor};
-use cudarc::driver::LaunchConfig;
+use cudarc::driver::{LaunchConfig};
 
 // The lifetime parameter `'a` allows CudaOps to borrow CudaKernels and CudaMemoryManager,
 // ensuring that the operations do not outlive the resources they depend on.

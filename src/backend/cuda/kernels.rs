@@ -1,5 +1,5 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchAsync, LaunchConfig, DeviceSlice};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -480,13 +480,10 @@ impl CudaKernels {
             .get_function_cloned("max")
             .ok_or_else(|| "Max kernel not found".to_string())?;
 
+        let null_ptr: CudaSlice<i32> = CudaSlice::zeros(self.device.clone(), input.len())?;
         let indices_ref = match indices {
             Some(i) => i,
-            None => CudaSlice::zeros(
-                self.device.clone(),
-               input.len() as usize,
-                cudarc::driver::DeviceRepr::zero(),
-            )
+            None => &mut null_ptr,
         };
 
         unsafe {
