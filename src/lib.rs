@@ -20,7 +20,7 @@ pub mod nn;
 pub mod tensor; // New neural network module
 
 // Re-export commonly used types for convenience
-pub use backend::{Device, Float, Numeric, cpu, default_device};
+pub use backend::{CPUNumber, Device, GPUFloat, cpu, default_device};
 pub use graph::{
     Engine, EngineVisualization, GraphVisualizer, NodeId, VisualizationConfig, next_node_id,
 };

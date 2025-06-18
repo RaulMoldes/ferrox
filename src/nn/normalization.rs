@@ -1,5 +1,4 @@
-use crate::backend::NumericCuda;
-use crate::backend::numeric::{Float, Numeric};
+use crate::backend::number::{CPUNumber, GPUFloat};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::{Module, Parameter};
@@ -59,12 +58,7 @@ use crate::tensor::Tensor;
 #[derive(Debug)]
 pub struct BatchNorm1d<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// Number of features/channels
     pub num_features: usize,
@@ -100,21 +94,14 @@ where
 
 impl<T> BatchNorm1d<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat + From<f64>,
 {
     /// Creates a new BatchNorm1d layer.
     ///
     /// # Arguments
     ///
     /// * `num_features` - Number of features in the input
-    /// * `eps` - Small constant for numerical stability (default: 1e-5)
+    /// * `eps` - Small constant for numerical stabilitydefault: 1e-5)
     /// * `momentum` - Momentum for running statistics (default: 0.1)
     /// * `affine` - Whether to use learnable affinity parameters (default: true)
     /// * `track_running_stats` - Whether to track running statistics (default: true)
@@ -206,7 +193,7 @@ where
             return;
         }
 
-        let one_minus_momentum = <T as Numeric>::one() - self.momentum;
+        let one_minus_momentum = <T as CPUNumber>::one() - self.momentum;
 
         // Update running mean: (1 - momentum) * old + momentum * new
         for i in 0..self.num_features {
@@ -228,14 +215,7 @@ where
 
 impl<T> Module<T> for BatchNorm1d<T>
 where
-    T: Float
-        + NumericCuda
-        + From<f64>
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         let input_shape = graph.get_shape(input);
@@ -297,8 +277,8 @@ where
             // batch_mean = (1 / N) * Σ x_i
             let batch_mean = graph.summation(reshaped_input, Some(vec![0]))?;
             let n_elements =
-                <T as Numeric>::from_f64(batch_size as f64 * other_dims as f64).unwrap();
-            let mean = graph.mul_scalar(batch_mean, <T as Numeric>::one() / n_elements)?;
+                <T as CPUNumber>::from_f64(batch_size as f64 * other_dims as f64).unwrap();
+            let mean = graph.mul_scalar(batch_mean, <T as CPUNumber>::one() / n_elements)?;
 
             // Compute batch variance
             // Broadcast mean to input shape
@@ -312,7 +292,7 @@ where
             // squared = (x - mean) * (x - mean)
             let squared = graph.mul(centered, centered)?;
             let sum_squared = graph.summation(squared, Some(vec![0]))?;
-            let variance = graph.mul_scalar(sum_squared, <T as Numeric>::one() / n_elements)?;
+            let variance = graph.mul_scalar(sum_squared, <T as CPUNumber>::one() / n_elements)?;
 
             // Normalize: (x - mean) / sqrt(var + eps)
             let eps_tensor = graph.tensor_from_vec(vec![self.eps; features], &[features], false)?;
@@ -445,12 +425,7 @@ where
 #[derive(Debug)]
 pub struct LayerNorm<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// Shape of normalized dimensions
     pub normalized_shape: Vec<usize>,
@@ -477,21 +452,14 @@ where
 
 impl<T> LayerNorm<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat + From<f64>,
 {
     /// Creates a new LayerNorm layer.
     ///
     /// # Arguments
     ///
     /// * `normalized_shape` - Shape of the dimensions to normalize over
-    /// * `eps` - Small constant for numerical stability (default: 1e-5)
+    /// * `eps` - Small constant for numerical stabilitydefault: 1e-5)
     /// * `elementwise_affine` - Whether to use learnable affine parameters (default: true)
     pub fn new(normalized_shape: Vec<usize>, eps: f64, elementwise_affine: bool) -> Self {
         let eps_val = T::from(eps);
@@ -551,13 +519,7 @@ where
 
 impl<T> Module<T> for LayerNorm<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         let input_shape = graph.get_shape(input);
@@ -594,8 +556,8 @@ where
 
         // Mean over normalized dimensions
         let sum = graph.summation(reshaped_input, Some(vec![last_dim]))?;
-        let n_elements = <T as Numeric>::from_f64(norm_size as f64).unwrap();
-        let mean = graph.mul_scalar(sum, <T as Numeric>::one() / n_elements)?;
+        let n_elements = <T as CPUNumber>::from_f64(norm_size as f64).unwrap();
+        let mean = graph.mul_scalar(sum, <T as CPUNumber>::one() / n_elements)?;
 
         // Broadcast mean back for subtraction
         let mean_expanded = graph.expand_dims_at(mean, last_dim)?;
@@ -609,7 +571,7 @@ where
         // Compute variance
         let squared = graph.mul(centered, centered)?;
         let var_sum = graph.summation(squared, Some(vec![last_dim]))?;
-        let variance = graph.mul_scalar(var_sum, <T as Numeric>::one() / n_elements)?;
+        let variance = graph.mul_scalar(var_sum, <T as CPUNumber>::one() / n_elements)?;
 
         // Add epsilon and take square root
         let eps_tensor = {

@@ -1,5 +1,5 @@
 use super::initializers::xavier_uniform;
-use crate::backend::numeric::NumericCuda;
+use crate::backend::number::GPUNumber;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::{Module, Parameter};
@@ -29,7 +29,7 @@ impl Default for Identity {
 
 impl<T> Module<T> for Identity
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         Ok(input)
@@ -55,7 +55,7 @@ where
 #[derive(Debug)]
 pub struct Linear<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     pub weight: Parameter<T>,
     pub bias: Option<Parameter<T>>, // Bias is optional as it is common to have layers without bias
@@ -68,7 +68,7 @@ where
 
 impl<T> Linear<T>
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -188,7 +188,7 @@ where
 
 impl<T> Module<T> for Linear<T>
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -354,7 +354,7 @@ impl Default for Flatten {
 
 impl<T> Module<T> for Flatten
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -394,7 +394,7 @@ where
 /// Rust does not allow tinheritance of structs.
 pub struct Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     modules: Vec<Box<dyn Module<T>>>,
     training: bool,
@@ -402,7 +402,7 @@ where
 
 impl<T> Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Creates a new empty Sequential container.
     pub fn new() -> Self {
@@ -473,7 +473,7 @@ where
 
 impl<T> Default for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn default() -> Self {
         Self::new()
@@ -482,7 +482,7 @@ where
 
 impl<T> Module<T> for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         let mut current = input;
@@ -523,7 +523,7 @@ where
 // Added index-based access to modules. Utility following the ModuleList impl.
 impl<T> std::ops::Index<usize> for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     type Output = Box<dyn Module<T>>;
 
@@ -533,7 +533,7 @@ where
 }
 impl<T> std::ops::IndexMut<usize> for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.modules[index]
@@ -542,7 +542,7 @@ where
 
 impl<T> IntoIterator for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     type Item = Box<dyn Module<T>>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -553,7 +553,7 @@ where
 }
 impl<T> std::iter::FromIterator<Box<dyn Module<T>>> for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn from_iter<I: IntoIterator<Item = Box<dyn Module<T>>>>(iter: I) -> Self {
         Self {
@@ -565,7 +565,7 @@ where
 
 impl<T> From<Vec<Box<dyn Module<T>>>> for Sequential<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn from(modules: Vec<Box<dyn Module<T>>>) -> Self {
         Self {

@@ -1,4 +1,4 @@
-use crate::backend::numeric::NumericCuda;
+use crate::backend::number::GPUNumber;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::parameter::Parameter;
@@ -26,7 +26,7 @@ use std::collections::HashMap;
 /// while still being compatible with the overall framework.
 pub trait Module<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Performs the forward pass of the module.
     ///
@@ -124,7 +124,7 @@ where
 /// In Rust we do not have inheritance so I decided to keep both.
 pub struct ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     modules: Vec<Box<dyn Module<T>>>, // Dynamic dispatching modules here allows for any type of module to be stored in the mpdule list.
     training: bool,
@@ -132,7 +132,7 @@ where
 
 impl<T> ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Creates a new empty ModuleList.
     pub fn new() -> Self {
@@ -198,7 +198,7 @@ where
 
 impl<T> Default for ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn default() -> Self {
         Self::new()
@@ -210,7 +210,7 @@ where
 // You know you are deep into computer science when everything gets so recursive that you have to implement a trait for a trait that contains itself.
 impl<T> Module<T> for ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         self.forward_sequential(graph, input)
@@ -249,7 +249,7 @@ where
 // also you can check in Pytorch docs that ModuleList supports indexing like a Python list does.
 impl<T> std::ops::Index<usize> for ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     type Output = Box<dyn Module<T>>;
 
@@ -260,7 +260,7 @@ where
 
 impl<T> std::ops::IndexMut<usize> for ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.modules[index]
@@ -269,7 +269,7 @@ where
 
 impl<T> IntoIterator for ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     type Item = Box<dyn Module<T>>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -280,7 +280,7 @@ where
 }
 impl<T> From<Vec<Box<dyn Module<T>>>> for ModuleList<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn from(modules: Vec<Box<dyn Module<T>>>) -> Self {
         Self {

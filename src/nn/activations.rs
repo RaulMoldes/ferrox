@@ -1,4 +1,4 @@
-use crate::backend::numeric::{Float, Numeric, NumericCuda};
+use crate::backend::number::{CPUNumber, GPUFloat, CPUFloat};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -28,12 +28,7 @@ impl Default for ReLU {
 
 impl<T> Module<T> for ReLU
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         graph.relu(input)
@@ -72,13 +67,7 @@ impl Default for Sigmoid {
 
 impl<T> Module<T> for Sigmoid
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // Sigmoid(x) = 1 / (1 + exp(-x))
@@ -93,7 +82,7 @@ where
         // Add 1 to get (1 + exp(-x))
         let one_plus_exp = graph.add_scalar(
             exp_neg_input,
-            <T as crate::backend::numeric::Numeric>::one(),
+            <T as crate::backend::number::CPUNumber>::one(),
         )?;
 
         // Create a tensor of ones with the same shape as input
@@ -137,20 +126,14 @@ impl Default for Tanh {
 
 impl<T> Module<T> for Tanh
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // Tanh(x) = (e^x - e^(-x)) / (e^x + e^(-x))
         // We can implement this more efficiently as: tanh(x) = (e^(2x) - 1) / (e^(2x) + 1)
 
         // Compute 2x
-        let two_x = graph.mul_scalar(input, <T as Numeric>::from_f64(2.0).unwrap())?;
+        let two_x = graph.mul_scalar(input, <T as CPUNumber>::from_f64(2.0).unwrap())?;
 
         // Compute e^(2x)
         let exp_2x = graph.exp(two_x)?;
@@ -207,12 +190,7 @@ where
 #[derive(Debug, Clone)]
 pub struct LeakyReLU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// The negative slope parameter
     negative_slope: T,
@@ -221,12 +199,7 @@ where
 
 impl<T> LeakyReLU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// Creates a new LeakyReLU activation layer with default slope (0.01).
     pub fn new() -> Self
@@ -259,13 +232,7 @@ where
 
 impl<T> Default for LeakyReLU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>,
+    T: GPUFloat + From<f64>,
 {
     fn default() -> Self {
         Self::new()
@@ -274,12 +241,7 @@ where
 
 impl<T> Module<T> for LeakyReLU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // LeakyReLU(x) = max(x, α * x) where α is the negative slope
@@ -342,12 +304,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ELU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// The α parameter for negative inputs
     alpha: T,
@@ -356,20 +313,15 @@ where
 
 impl<T> ELU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// Creates a new ELU activation layer with default α = 1.0.
     pub fn new() -> Self
     where
-        T: From<f64>,
+        T: GPUFloat
     {
         Self {
-            alpha: T::from(1.0),
+            alpha: <T as CPUFloat>::from_f64(1.0).unwrap(),
             training: true,
         }
     }
@@ -394,13 +346,7 @@ where
 
 impl<T> Default for ELU<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>,
+    T: GPUFloat,
 {
     fn default() -> Self {
         Self::new()
@@ -409,13 +355,7 @@ where
 
 impl<T> Module<T> for ELU<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // ELU(x) = x if x > 0, α * (e^x - 1) if x ≤ 0
@@ -486,9 +426,9 @@ where
 /// logits -> Softmax -> probabilities
 /// ```
 ///
-/// # Numerical Stability
+/// # numerical stability
 ///
-/// This implementation uses the numerically stable version that subtracts
+/// This implementation uses the CPUNumberally stable version that subtracts
 /// the maximum value before exponentiation to prevent overflow with large inputs.
 #[derive(Debug, Clone)]
 pub struct Softmax {
@@ -538,13 +478,7 @@ impl Default for Softmax {
 
 impl<T> Module<T> for Softmax
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // Get input shape to validate dimension

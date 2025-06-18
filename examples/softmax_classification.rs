@@ -168,8 +168,8 @@ fn demonstrate_softmax_properties() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("  Sum of probabilities: {:.6}", sum);
 
-    // Test 2: Numerical stability with large values
-    println!("\n2. Numerical Stability:");
+    // Test 2: numerical stability with large values
+    println!("\n2. numerical stability:");
     let large_logits = engine.tensor_from_vec(vec![1000.0, 1001.0, 1002.0], &[1, 3], true)?;
     let stable_probs = softmax.forward(&mut engine, large_logits)?;
     let stable_data = engine.get_data(stable_probs);

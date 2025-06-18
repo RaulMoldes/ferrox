@@ -1,5 +1,5 @@
 use crate::backend::manager::get_backend;
-use crate::backend::numeric::{Float, Numeric, NumericCuda};
+use crate::backend::number::{CPUNumber, Float, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 
@@ -13,7 +13,7 @@ use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 #[derive(Debug, Clone)]
 pub struct GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: GPUNumber,
 {
     pub data: ArrayD<T>,
     device: Device,
@@ -23,7 +23,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: GPUNumber,
 {
     // Basic constructor - creates a GPU-capable tensor with CPU data initially
     // Similar to CPUTensor but this one can be moved to GPU when needed
@@ -286,7 +286,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::LinalgScalar,
+    T: GPUNumber,
 {
     fn matmul_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         if self.ndim() != 2 || other.ndim() != 2 {
@@ -404,13 +404,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda
-        + Clone
-        + DeviceRepr
-        + ValidAsZeroBits
-        + Unpin
-        + rand_distr::num_traits::Zero
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUNumber,
 {
     // Summation operations for GPUTensor
     // These methods handle summation along specified axes or over the entire tensor.
@@ -700,7 +694,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::Zero,
+    T: GPUNumber,
 {
     pub fn zeros(shape: &[usize]) -> Self {
         let device = default_device();
@@ -724,7 +718,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + rand_distr::num_traits::One,
+    T: GPUNumber,
 {
     pub fn ones(shape: &[usize]) -> Self {
         let device = default_device();
@@ -748,7 +742,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: GPUNumber,
 {
     pub fn to_cuda(&self) -> Result<Self, String> {
         if self.is_cuda() {
@@ -893,7 +887,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     // CPU scalar operations for fallback
     fn add_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
@@ -986,7 +980,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + Float + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     // CPU activation functions for fallback
     fn relu_cpu(&self) -> GPUTensor<T> {
@@ -1237,29 +1231,13 @@ where
     }
 }
 
-// PartialEq implementation to fix comparison errors in tests
-#[cfg(feature = "cuda")]
-impl<T> PartialEq for GPUTensor<T>
-where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin + PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        // Compare shapes first
-        if self.shape() != other.shape() || self.device != other.device {
-            return false;
-        }
 
-        // Not the best implementation as we should compare the CUDA storage
-        // But for now, we compare the data directly
-        self.data == other.data
-    }
-}
 
 // Additional utility methods for better testing support
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: GPUNumber,
 {
     // Method to access data field for tests (similar to the errors we saw)
     pub fn data(&self) -> &ArrayD<T> {
@@ -1296,11 +1274,29 @@ where
     }
 }
 
+// PartialEq implementation to fix comparison errors in tests
+#[cfg(feature = "cuda")]
+impl<T> PartialEq for GPUTensor<T>
+where
+    T: GPUNumber + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        // Compare shapes first
+        if self.shape() != other.shape() || self.device != other.device {
+            return false;
+        }
+
+        // Not the best implementation as we should compare the CUDA storage
+        // But for now, we compare the data directly
+        self.data == other.data
+    }
+}
+
 // Add indexing support for GPUTensor
 #[cfg(feature = "cuda")]
 impl<T> Index<usize> for GPUTensor<T>
 where
-    T: NumericCuda + Clone + DeviceRepr + ValidAsZeroBits + Unpin,
+    T: GPUNumber,
 {
     type Output = T;
 

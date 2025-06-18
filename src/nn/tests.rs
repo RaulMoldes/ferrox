@@ -1095,7 +1095,7 @@ mod tests {
             "BCE loss should be positive for imperfect predictions"
         );
 
-        // Test case 4: Numerical stability (values close to 0 and 1)
+        // Test case 4: numerical stability (values close to 0 and 1)
         let extreme_probs = graph
             .tensor_from_vec(vec![0.0001, 0.9999], &[2], true)
             .unwrap();
@@ -1263,7 +1263,7 @@ mod tests {
             large_neg_loss_data[0]
         );
 
-        // Test case 4: Numerical stability comparison
+        // Test case 4: numerical stability comparison
         // Compare BCE with logits vs manual sigmoid + BCE for extreme values
         let extreme_logits = graph
             .tensor_from_vec(vec![100.0, -100.0], &[2], true)
@@ -1279,7 +1279,7 @@ mod tests {
         // Should be finite and reasonable (close to 0 for correct predictions)
         assert!(
             stable_loss_data[0].is_finite(),
-            "BCE with logits should be numerically stable for extreme values"
+            "BCE with logits should be CPUNumberally stable for extreme values"
         );
         assert!(
             stable_loss_data[0] < 1.0,

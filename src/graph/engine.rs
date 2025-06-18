@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::numeric::{Float, Numeric, NumericCuda};
+use crate::backend::number::{GPUFloat, GPUNumber, CPUNumber};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships
 #[derive(Debug)]
 pub struct Engine<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     // T must implement Clone and Debug traits{
     // Creating a graph is kind of boilerplate in Rust
@@ -27,7 +27,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     pub fn new() -> Self {
         Self {
@@ -63,7 +63,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -79,7 +79,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand, // T must implement Clone and Debug traits
+    T: GPUNumber, // T must implement Clone and Debug traits
 {
     // Create ones tensor
 
@@ -90,7 +90,7 @@ where
 }
 impl<T> Engine<T>
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -195,7 +195,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// GRAPH OPERATIONS:
     ///
@@ -313,7 +313,7 @@ where
         let data_a = self.nodes[&a].borrow().cached_data.clone();
 
         // Check for zero scalar before creating the operation
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
         if scalar == zero {
             return Err("Cannot divide by zero scalar".to_string());
         }
@@ -338,7 +338,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -347,7 +347,7 @@ where
 {
     /// Find maximum values along a specified dimension.
     ///
-    /// This is essential for numerically stable softmax computation.
+    /// This is essential for CPUNumberally stable softmax computation.
     ///
     /// # Arguments
     ///
@@ -379,7 +379,7 @@ where
         // Use ndarray's fold_axis to find maximum along specified axis
         let result_data = input_data.data().fold_axis(
             ndarray::Axis(dim),
-            <T as Numeric>::min_value(), // Start with minimum value
+            <T as CPUNumber>::min_value(), // Start with minimum value
             |&acc, &x| if acc > x { acc } else { x },
         );
 
@@ -659,12 +659,7 @@ where
 // This is a trait bound for operations that require floating point numbers.
 impl<T> Engine<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     // Power operation
     pub fn pow(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
@@ -728,18 +723,13 @@ where
 
 impl<T> Engine<T>
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
+    T: GPUFloat
+    
 {
     /// Convenience method to clamp probabilities for numerical stability.
     ///
     /// This is a specialized version of clamp specifically designed for probability
-    /// values, clamping them to [eps, 1-eps] to prevent numerical issues in
+    /// values, clamping them to [eps, 1-eps] to prevent CPUNumberal issues in
     /// logarithmic operations.
     ///
     /// # Arguments
@@ -752,8 +742,8 @@ where
         eps: f64,
     ) -> Result<NodeId, String> {
         let eps_val =
-            <T as Numeric>::from_f64(eps).ok_or("Failed to convert epsilon to tensor type")?;
-        let one_minus_eps = <T as Numeric>::from_f64(1.0 - eps)
+            <T as CPUNumber>::from_f64(eps).ok_or("Failed to convert epsilon to tensor type")?;
+        let one_minus_eps = <T as CPUNumber>::from_f64(1.0 - eps)
             .ok_or("Failed to convert 1-epsilon to tensor type")?;
 
         self.clamp(probabilities, eps_val, one_minus_eps)

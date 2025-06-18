@@ -1,4 +1,4 @@
-use crate::backend::numeric::{Float, Numeric, NumericCuda};
+use crate::backend::number::{CPUNumber,GPUNumber, GPUFloat};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -16,7 +16,7 @@ use crate::nn::Module;
 /// - Batch processing capabilities
 pub trait Loss<T>: Module<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Computes the loss between predictions and targets.
     ///
@@ -122,7 +122,7 @@ impl Default for MSELoss {
 
 impl<T> Module<T> for MSELoss
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -146,7 +146,7 @@ where
 
 impl<T> Loss<T> for MSELoss
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -196,7 +196,7 @@ where
                 // Divide by number of elements to get mean
                 graph.mul_scalar(
                     sum_loss,
-                    <T as Numeric>::from_f64(1.0 / total_elements as f64)
+                    <T as CPUNumber>::from_f64(1.0 / total_elements as f64)
                         .ok_or("Failed to create mean divisor")?,
                 )
             }
@@ -295,13 +295,7 @@ impl Default for BCELoss {
 
 impl<T> Module<T> for BCELoss
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // For the Module trait, we just return the input unchanged
@@ -320,13 +314,7 @@ where
 
 impl<T> Loss<T> for BCELoss
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn compute_loss(
         &self,
@@ -345,9 +333,9 @@ where
         }
 
         // Clamp predictions to [eps, 1-eps] for numerical stability using our new clamp operation
-        let eps_val =
-            <T as Numeric>::from_f64(self.eps).ok_or("Failed to convert epsilon to tensor type")?;
-        let one_minus_eps = <T as Numeric>::from_f64(1.0 - self.eps)
+        let eps_val = <T as CPUNumber>::from_f64(self.eps)
+            .ok_or("Failed to convert epsilon to tensor type")?;
+        let one_minus_eps = <T as CPUNumber>::from_f64(1.0 - self.eps)
             .ok_or("Failed to convert 1-epsilon to tensor type")?;
 
         let clamped_preds = graph.clamp(predictions, eps_val, one_minus_eps)?;
@@ -401,7 +389,7 @@ where
                 // Divide by number of elements to get mean
                 graph.mul_scalar(
                     sum_loss,
-                    <T as Numeric>::from_f64(1.0 / total_elements as f64)
+                    <T as CPUNumber>::from_f64(1.0 / total_elements as f64)
                         .ok_or("Failed to create mean divisor")?,
                 )
             }
@@ -539,13 +527,7 @@ impl Default for CCELoss {
 
 impl<T> Module<T> for CCELoss
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // For the Module trait, we just return the input unchanged
@@ -564,13 +546,7 @@ where
 
 impl<T> Loss<T> for CCELoss
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn compute_loss(
         &self,
@@ -603,9 +579,9 @@ where
         };
 
         // Clamp predictions for numerical stability using our new clamp operation
-        let eps_val =
-            <T as Numeric>::from_f64(self.eps).ok_or("Failed to convert epsilon to tensor type")?;
-        let one_minus_eps = <T as Numeric>::from_f64(1.0 - self.eps)
+        let eps_val = <T as CPUNumber>::from_f64(self.eps)
+            .ok_or("Failed to convert epsilon to tensor type")?;
+        let one_minus_eps = <T as CPUNumber>::from_f64(1.0 - self.eps)
             .ok_or("Failed to convert 1-epsilon to tensor type")?;
 
         let clamped_preds = graph.clamp(predictions, eps_val, one_minus_eps)?;
@@ -644,7 +620,7 @@ where
                 // Divide by batch size to get mean
                 graph.mul_scalar(
                     sum_loss,
-                    <T as Numeric>::from_f64(1.0 / batch_size as f64)
+                    <T as CPUNumber>::from_f64(1.0 / batch_size as f64)
                         .ok_or("Failed to create mean divisor")?,
                 )
             }
@@ -653,7 +629,7 @@ where
 }
 /// Binary Cross Entropy with Logits Loss function.
 ///
-/// This is a numerically stable version of Binary Cross Entropy that combines
+/// This is a CPUNumberally stable version of Binary Cross Entropy that combines
 /// sigmoid activation and BCE loss in a single operation. This is more stable
 /// than applying sigmoid followed by BCE separately.
 ///
@@ -663,7 +639,7 @@ where
 /// BCE_with_logits(logits, targets) = max(logits, 0) - logits * targets + log(1 + exp(-abs(logits)))
 /// ```
 ///
-/// This formulation avoids numerical issues with very large or small logits.
+/// This formulation avoids CPUNumberal issues with very large or small logits.
 #[derive(Debug, Clone)]
 pub struct BCEWithLogitsLoss {
     /// Reduction strategy for aggregating batch losses
@@ -711,13 +687,7 @@ impl Default for BCEWithLogitsLoss {
 
 impl<T> Module<T> for BCEWithLogitsLoss
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         Ok(input)
@@ -734,13 +704,7 @@ where
 
 impl<T> Loss<T> for BCEWithLogitsLoss
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn compute_loss(
         &self,
@@ -758,7 +722,7 @@ where
             ));
         }
 
-        // Implement the numerically stable formula:
+        // Implement the CPUNumberally stable formula:
         // loss = max(logits, 0) - logits * targets + log(1 + exp(-abs(logits)))
 
         // Compute max(logits, 0) using ReLU
@@ -797,7 +761,7 @@ where
                 let total_elements: usize = logits_shape.iter().product();
                 graph.mul_scalar(
                     sum_loss,
-                    <T as Numeric>::from_f64(1.0 / total_elements as f64)
+                    <T as CPUNumber>::from_f64(1.0 / total_elements as f64)
                         .ok_or("Failed to create mean divisor")?,
                 )
             }

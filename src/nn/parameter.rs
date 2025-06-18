@@ -1,4 +1,4 @@
-use crate::backend::numeric::NumericCuda;
+use crate::backend::number::GPUNumber;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::tensor::Tensor;
@@ -12,7 +12,7 @@ use crate::tensor::Tensor;
 #[derive(Debug, Clone)]
 pub struct Parameter<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// The actual tensor data
     pub data: Tensor<T>,
@@ -24,7 +24,7 @@ where
 
 impl<T> Parameter<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Creates a new parameter from tensor data.
     ///
@@ -115,7 +115,7 @@ where
 
 impl<T> From<Tensor<T>> for Parameter<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn from(tensor: Tensor<T>) -> Self {
         Self::new(tensor)
@@ -125,14 +125,14 @@ where
 /// Helper trait for converting various types to parameters
 pub trait ToParameter<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn to_parameter(self) -> Parameter<T>;
 }
 
 impl<T> ToParameter<T> for Tensor<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn to_parameter(self) -> Parameter<T> {
         Parameter::new(self)
@@ -141,7 +141,7 @@ where
 
 impl<T> ToParameter<T> for Vec<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn to_parameter(self) -> Parameter<T> {
         // Default to 1D tensor

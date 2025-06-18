@@ -1,6 +1,6 @@
 use super::module::Module;
 use crate::NodeId;
-use crate::backend::{Float, Numeric, NumericCuda};
+use crate::backend::{GPUFloat, GPUNumber, CPUNumber};
 use crate::graph::Engine;
 use crate::tensor::Tensor;
 use core::panic;
@@ -19,7 +19,7 @@ use std::collections::HashSet;
 /// from a base optimizer class.
 pub trait Optimizer<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Perform one optimization step using computed gradients
     ///
@@ -82,12 +82,7 @@ where
 /// - lr: learning rate
 pub struct SGD<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     /// Map of NodeId to their momentum buffers
     /// Each NodeId corresponds to a parameter tensor in the computation graph
@@ -118,14 +113,7 @@ where
 
 impl<T> SGD<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat  + From<f64>,
 {
     /// Creates a new SGD optimizer
     ///
@@ -178,7 +166,7 @@ where
     /// * `engine` - The computation graph engine
     /// * `max_norm` - Maximum allowed gradient norm
     pub fn clip_grad_norm(&mut self, engine: &mut Engine<T>, max_norm: T) {
-        let mut total_norm_sq = <T as Numeric>::zero();
+        let mut total_norm_sq = <T as CPUNumber>::zero();
 
         // Calculate total gradient norm across all parameters
         for &param_node in &self.param_nodes {
@@ -222,17 +210,11 @@ where
 
 impl<T> Optimizer<T> for SGD<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn step(&mut self, engine: &mut Engine<T>) {
-        let zero = <T as Numeric>::zero();
-        let one = <T as Numeric>::one();
+        let zero = <T as CPUNumber>::zero();
+        let one = <T as CPUNumber>::one();
 
         for &param_node in &self.param_nodes {
             if let Some(grad) = engine.get_gradient(param_node) {
@@ -322,15 +304,10 @@ where
 /// - m_hat_t, v_hat_t: bias-corrected estimates
 /// - beta1: exponential decay rate for first moment (typically 0.9)
 /// - beta2: exponential decay rate for second moment (typically 0.999)
-/// - eps: small constant for numerical stability (typically 1e-8)
+/// - eps: small constant for CPUNumbereral stability (typically 1e-8)
 pub struct Adam<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     /// Map of NodeId to their first moment estimates (momentum)
     first_moments: HashMap<NodeId, Tensor<T>>,
@@ -352,7 +329,7 @@ where
     /// Controls the adaptive learning rate behavior (typically 0.999)
     beta2: T,
 
-    /// Small constant for numerical stability (typically 1e-8)
+    /// Small constant for CPUNumbereral stability (typically 1e-8)
     /// Added to denominator to prevent division by zero
     eps: T,
 
@@ -382,14 +359,7 @@ where
 /// It also includes bias correction to account for the initialization of these moments.
 impl<T> Adam<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat + From<f64>,
 {
     /// Creates a new Adam optimizer with custom parameters
     ///
@@ -397,7 +367,7 @@ where
     /// * `lr` - Learning rate (typically 1e-3)
     /// * `beta1` - Exponential decay rate for first moment (typically 0.9)
     /// * `beta2` - Exponential decay rate for second moment (typically 0.999)
-    /// * `eps` - Small constant for numerical stability (typically 1e-8)
+    /// * `eps` - Small constant for CPUNumbereral stability (typically 1e-8)
     /// * `weight_decay` - Weight decay coefficient (typically 0.0)
     /// * `amsgrad` - Whether to use AMSGrad variant (typically false)
     pub fn new(lr: T, beta1: T, beta2: T, eps: T, weight_decay: T, amsgrad: bool) -> Self {
@@ -479,18 +449,11 @@ where
 
 impl<T> Optimizer<T> for Adam<T>
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + From<f64>
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn step(&mut self, engine: &mut Engine<T>) {
-        let zero = <T as Numeric>::zero();
-        let one = <T as Numeric>::one();
+        let zero = <T as CPUNumber>::zero();
+        let one = <T as CPUNumber>::one();
 
         // Increment step count for bias correction
         self.step_count += 1;

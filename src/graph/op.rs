@@ -3,12 +3,12 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
-use crate::backend::{Float, Numeric, NumericCuda};
+use crate::backend::{CPUNumber, GPUFloat, GPUNumber};
 use crate::tensor::Tensor;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     // Defines the interface for operators in the computational graph
     // Compute function computes the output in the computational graph.
@@ -36,7 +36,7 @@ pub struct AddOp;
 
 impl<T> Operator<T> for AddOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -64,7 +64,7 @@ pub struct MulOp;
 
 impl<T> Operator<T> for MulOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -94,7 +94,7 @@ pub struct MatMulOp;
 
 impl<T> Operator<T> for MatMulOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -147,12 +147,7 @@ pub struct ReLUOp;
 
 impl<T> Operator<T> for ReLUOp
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -167,8 +162,8 @@ where
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of ReLU: 1 if input > 0, 0 otherwise
-        let zero = <T as Numeric>::zero();
-        let one = <T as Numeric>::one();
+        let zero = <T as CPUNumber>::zero();
+        let one = <T as CPUNumber>::one();
 
         let mask = Tensor::new_with_device(
             inputs[0].data().mapv(|x| if x > zero { one } else { zero }),
@@ -197,12 +192,7 @@ impl SumOp {
 
 impl<T> Operator<T> for SumOp
 where
-    T: NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + rand_distr::num_traits::FromPrimitive
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -244,14 +234,14 @@ where
 #[derive(Debug, Clone)]
 pub struct AddScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     scalar: T,
 }
 
 impl<T> AddScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -260,7 +250,7 @@ where
 
 impl<T> Operator<T> for AddScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -285,14 +275,14 @@ where
 #[derive(Debug, Clone)]
 pub struct MulScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     scalar: T,
 }
 
 impl<T> MulScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -301,7 +291,7 @@ where
 
 impl<T> Operator<T> for MulScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -326,17 +316,17 @@ where
 #[derive(Debug, Clone)]
 pub struct DivScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     scalar: T,
 }
 
 impl<T> DivScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     pub fn new(scalar: T) -> Self {
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
         if scalar == zero {
             panic!(
                 "Cannot create DivScalarOp with zero scalar - this would cause division by zero"
@@ -348,14 +338,14 @@ where
 
 impl<T> Operator<T> for DivScalarOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("DivScalarOp requires exactly 1 input".to_string());
         }
 
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
         if self.scalar == zero {
             return Err("Division by zero: scalar divisor is zero".to_string());
         }
@@ -372,7 +362,7 @@ where
         // dz/da = 1/scalar
         // So grad_a = grad_output * (1/scalar) = grad_output / scalar
 
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
         if self.scalar == zero {
             return Err("Cannot compute gradient: scalar divisor is zero".to_string());
         }
@@ -390,7 +380,7 @@ pub struct DivOp;
 
 impl<T> Operator<T> for DivOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -425,12 +415,7 @@ pub struct PowOp;
 
 impl<T> Operator<T> for PowOp
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -447,7 +432,7 @@ where
         // d(a^b)/da = b * a^(b-1), d(a^b)/db = a^b * ln(a)
         let a = &inputs[0];
         let b = &inputs[1];
-        let one = <T as Numeric>::one();
+        let one = <T as CPUNumber>::one();
         let b_minus_one = b.add_scalar(-one);
         let a_pow_b_minus_one = a.powf(&b_minus_one)?;
         let grad_a = grad_output.mul(&b.mul(&a_pow_b_minus_one)?)?;
@@ -469,12 +454,7 @@ pub struct ExpOp;
 
 impl<T> Operator<T> for ExpOp
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -504,12 +484,7 @@ pub struct LogOp;
 
 impl<T> Operator<T> for LogOp
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -539,7 +514,7 @@ pub struct NegateOp;
 
 impl<T> Operator<T> for NegateOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -575,7 +550,7 @@ impl TransposeOp {
 
 impl<T> Operator<T> for TransposeOp
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + rand_distr::num_traits::FromPrimitive
@@ -635,7 +610,7 @@ impl ReshapeOp {
 
 impl<T> Operator<T> for ReshapeOp
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + rand_distr::num_traits::FromPrimitive
@@ -680,7 +655,7 @@ impl BroadcastToOp {
 
 impl<T> Operator<T> for BroadcastToOp
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + rand_distr::num_traits::FromPrimitive
         + std::fmt::Debug
@@ -746,7 +721,7 @@ impl SummationOp {
 
 impl<T> Operator<T> for SummationOp
 where
-    T: NumericCuda
+    T: GPUNumber
         + rand_distr::num_traits::FromPrimitive
         + Clone
         + std::fmt::Debug
@@ -814,7 +789,7 @@ pub struct MinOp;
 
 impl<T> Operator<T> for MinOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -849,7 +824,7 @@ where
         // ∂min(a,b)/∂b = 0 if a <= b else 1
         // When a == b, we assign gradient to the first input (arbitrary choice)
 
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
 
         let grad_a = Tensor::new_with_device(
             ndarray::Zip::from(inputs[0].data())
@@ -890,7 +865,7 @@ pub struct MaxOp;
 
 impl<T> Operator<T> for MaxOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -925,7 +900,7 @@ where
         // ∂max(a,b)/∂b = 0 if a >= b else 1
         // When a == b, we assign gradient to the first input (arbitrary choice)
 
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
 
         let grad_a = Tensor::new_with_device(
             ndarray::Zip::from(inputs[0].data())
@@ -954,7 +929,7 @@ where
 /// Clamp operation that constrains values to a specified range.
 ///
 /// Clamps all elements in the input tensor to the range [min_val, max_val].
-/// This is crucial for numerical stability in loss functions, especially
+/// This is crucial for numerical stabilityn loss functions, especially
 /// when computing logarithms to avoid log(0) or log(negative).
 ///
 /// # Mathematical Definition
@@ -965,7 +940,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ClampOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     min_val: T,
     max_val: T,
@@ -973,7 +948,7 @@ where
 
 impl<T> ClampOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     pub fn new(min_val: T, max_val: T) -> Self {
         if min_val > max_val {
@@ -988,7 +963,7 @@ where
 
 impl<T> Operator<T> for ClampOp<T>
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1019,7 +994,7 @@ where
         // Gradient of clamp(x, min_val, max_val):
         // ∂clamp(x)/∂x = 1 if min_val <= x <= max_val else 0
 
-        let zero = <T as Numeric>::zero();
+        let zero = <T as CPUNumber>::zero();
 
         let grad = Tensor::new_with_device(
             ndarray::Zip::from(inputs[0].data())
@@ -1058,18 +1033,13 @@ where
 ///
 /// - Input values must be non-negative for real square roots
 /// - The gradient is undefined at x = 0 (returns 0 by convention)
-/// - For numerical stability, very small positive values near 0 should be handled carefully
+/// - For numerical stabilityvery small positive values near 0 should be handled carefully
 #[derive(Debug, Clone)]
 pub struct SqrtOp;
 
 impl<T> Operator<T> for SqrtOp
 where
-    T: NumericCuda
-        + Float
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1077,7 +1047,10 @@ where
         }
 
         // Check for negative values which would result in NaN
-        let has_negative = inputs[0].data().iter().any(|&x| x < <T as Numeric>::zero());
+        let has_negative = inputs[0]
+            .data()
+            .iter()
+            .any(|&x| x < <T as CPUNumber>::zero());
         if has_negative {
             return Err("SqrtOp: Cannot compute square root of negative values".to_string());
         }
@@ -1098,8 +1071,8 @@ where
         // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
         // Special case: at x = 0, we return 0 instead of infinity
 
-        let zero = <T as Numeric>::zero();
-        let two = <T as Numeric>::from_f64(2.0).unwrap();
+        let zero = <T as CPUNumber>::zero();
+        let two = <T as CPUNumber>::from_f64(2.0).unwrap();
 
         let grad = Tensor::new_with_device(
             ndarray::Zip::from(inputs[0].data())
@@ -1143,7 +1116,7 @@ pub struct AbsOp;
 
 impl<T> Operator<T> for AbsOp
 where
-    T: NumericCuda + Clone + std::fmt::Debug + ndarray::LinalgScalar + ndarray::ScalarOperand,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1166,8 +1139,8 @@ where
         // Gradient of abs(x):
         // ∂abs(x)/∂x = 1 if x > 0, -1 if x < 0, 0 if x = 0 (by convention)
 
-        let zero = <T as Numeric>::zero();
-        let one = <T as Numeric>::one();
+        let zero = <T as CPUNumber>::zero();
+        let one = <T as CPUNumber>::one();
         let neg_one = -one;
 
         let grad = Tensor::new_with_device(
@@ -1196,7 +1169,7 @@ where
 // Maximum reduction operation along a specified dimension.
 ///
 /// Computes the maximum values along a specified dimension, reducing that dimension.
-/// This is essential for numerically stable softmax computation.
+/// This is essential for CPUNumberally stable softmax computation.
 ///
 /// # Mathematical Definition
 ///
@@ -1229,7 +1202,7 @@ impl MaxAlongDimOp {
 
 impl<T> Operator<T> for MaxAlongDimOp
 where
-    T: NumericCuda
+    T: GPUNumber
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -1256,7 +1229,7 @@ where
         // Use ndarray's fold_axis to find maximum along specified axis
         let result_data = input.data().fold_axis(
             ndarray::Axis(self.dim),
-            <T as Numeric>::min_value(), // Start with minimum value
+            <T as CPUNumber>::min_value(), // Start with minimum value
             |&acc, &x| if acc > x { acc } else { x },
         );
 
@@ -1278,7 +1251,7 @@ where
         // First, compute the maximum values again to determine which elements were maximal
         let max_values = input.data().fold_axis(
             ndarray::Axis(self.dim),
-            <T as Numeric>::min_value(),
+            <T as CPUNumber>::min_value(),
             |&acc, &x| if acc > x { acc } else { x },
         );
 
@@ -1289,8 +1262,8 @@ where
             .ok_or("Failed to broadcast max values")?;
 
         // Create mask where input equals max (these get gradients)
-        let zero = <T as Numeric>::zero();
-        let one = <T as Numeric>::one();
+        let zero = <T as CPUNumber>::zero();
+        let one = <T as CPUNumber>::one();
 
         let mask = ndarray::Zip::from(input.data())
             .and(&expanded_max_broadcasted)
@@ -1339,9 +1312,9 @@ where
 }
 /// Softmax operation along a specified dimension.
 ///
-/// Computes the softmax function along the specified dimension with numerical stability.
+/// Computes the softmax function along the specified dimension with numerical stability
 /// This operation combines finding the maximum, subtracting it, exponentiating,
-/// summing, and dividing in a single operation for efficiency and numerical stability.
+/// summing, and dividing in a single operation for efficiency and numerical stability
 ///
 /// # Mathematical Definition
 ///
@@ -1374,13 +1347,7 @@ impl SoftmaxOp {
 
 impl<T> Operator<T> for SoftmaxOp
 where
-    T: Float
-        + NumericCuda
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1404,7 +1371,7 @@ where
         // Step 1: Find maximum along the specified dimension for numerical stability
         let max_vals = input
             .data()
-            .fold_axis(axis, <T as Numeric>::min_value(), |&acc, &x| {
+            .fold_axis(axis, <T as CPUNumber>::min_value(), |&acc, &x| {
                 if acc > x { acc } else { x }
             });
 

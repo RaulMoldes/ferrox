@@ -1,21 +1,22 @@
-// src/backend/numeric.rs - Fixed trait implementations
+// src/backend/CPUNumber.rs - Fixed trait implementations
 
 use std::cmp::{PartialEq, PartialOrd};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
-
+use rand_distr::num_traits::{Zero, One,FromPrimitive};
+use ndarray::{LinalgScalar, ScalarOperand};
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
-/// Trait that defines the basic operations and properties for numeric types.
+/// Trait that defines the basic operations and properties for CPUNumber types.
 /// This trait is designed to be implemented by both integer and floating-point types,
 /// providing a common interface for arithmetic operations, comparisons, and conversions.
 /// I did not implement it for unsigned integers because they do not support negative values,
 /// which is a requirement for some operations like negation and signum.
 /// It includes methods for basic arithmetic operations, assignment operations,
-/// and conversions between different numeric types.
-pub trait Numeric: 
+/// and conversions between different CPUNumber types.
+pub trait CPUNumber: 
     // Basic arithmetic operations
     Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self> +
     // Assignment operations
@@ -30,8 +31,11 @@ pub trait Numeric:
     Clone + Copy + Debug + Display +
     // Only conversions that always work without loss
     From<i8> +
-    // Known size at compile time
-    Sized
+    Sized 
+    + Zero 
+    + One
+    + FromPrimitive
+    + LinalgScalar + ScalarOperand
 {
     /// Neutral element for addition (zero)
     fn zero() -> Self;
@@ -41,12 +45,12 @@ pub trait Numeric:
     
     /// Checks if the value is zero
     fn is_zero(&self) -> bool {
-        *self == Self::zero()
+        *self == <Self as CPUNumber>::zero()
     }
     
     /// Checks if the value is one
     fn is_one(&self) -> bool {
-        *self == Self::one()
+        *self == <Self as CPUNumber>::one()
     }
     
     /// Absolute value
@@ -80,8 +84,17 @@ pub trait Numeric:
     fn max_value() -> Self;
 }
 
-/// Additional trait for floating-point numeric types
-pub trait Float: Numeric {
+/// Additional trait for floating-point CPUNumber types
+pub trait CPUFloat: CPUNumber {
+
+    fn zero() -> Self {
+        <Self as CPUNumber>::from_f64(0.0)
+            .expect("Failed to convert 0.0 to CPUFloat type")
+    }
+    fn one() -> Self {
+        <Self as CPUNumber>::from_f64(1.0)
+        .expect("Failed to convert 1.0 to CPUFloat type")
+    }
     /// Square root
     fn sqrt(self) -> Self;
 
@@ -117,21 +130,37 @@ pub trait Float: Numeric {
 
     /// Epsilon for floating-point comparisons
     fn epsilon() -> Self;
+
+    fn to_f64(self) -> f64 {
+        // Default implementation for Float types
+        CPUNumber::to_f64(self)
+    }
+
+    fn from_f64(value: f64) -> Option<Self> {
+        // Default implementation for Float types
+        CPUNumber::from_f64(value)
+    }
+
+    fn from_i32(value: i32) -> Option<Self> {
+        // Default implementation for Float types
+        CPUNumber::from_i32(value)
+    }
+
+    fn from_i16(value: i16) -> Option<Self> {
+        // Default implementation for Float types
+        CPUNumber::from_i16(value)
+    }
+
+    fn from_i64(value: i64) -> Option<Self> {
+        // Default implementation for Float types
+        CPUNumber::from_i64(value)
+    }
+
+    
 }
 
-/// CUDA-compatible numeric trait that extends Numeric with GPU-specific requirements.
-/// This trait is only available when the "cuda" feature is enabled, allowing the
-/// same code to compile with or without CUDA support.
-#[cfg(feature = "cuda")]
-pub trait NumericCuda: Numeric + DeviceRepr + ValidAsZeroBits + Unpin {}
-
-/// When CUDA is not available, NumericCuda is just an alias for Numeric.
-/// This allows the same generic bounds to work regardless of CUDA availability.
-#[cfg(not(feature = "cuda"))]
-pub trait NumericCuda: Numeric {}
-
 // Implementation for f64
-impl Numeric for f64 {
+impl CPUNumber for f64 {
     fn zero() -> Self {
         0.0
     }
@@ -173,7 +202,10 @@ impl Numeric for f64 {
     }
 }
 
-impl Float for f64 {
+impl CPUFloat for f64 {
+
+    
+
     fn sqrt(self) -> Self {
         self.sqrt()
     }
@@ -213,7 +245,7 @@ impl Float for f64 {
 }
 
 // Implementation for f32
-impl Numeric for f32 {
+impl CPUNumber for f32 {
     fn zero() -> Self {
         0.0
     }
@@ -269,7 +301,7 @@ impl Numeric for f32 {
     }
 }
 
-impl Float for f32 {
+impl CPUFloat for f32 {
     fn sqrt(self) -> Self {
         self.sqrt()
     }
@@ -306,10 +338,12 @@ impl Float for f32 {
     fn epsilon() -> Self {
         f32::EPSILON
     }
+
+    
 }
 
 // Implementation for i32
-impl Numeric for i32 {
+impl CPUNumber for i32 {
     fn zero() -> Self {
         0
     }
@@ -373,7 +407,7 @@ impl Numeric for i32 {
 }
 
 // Implementation for i64
-impl Numeric for i64 {
+impl CPUNumber for i64 {
     fn zero() -> Self {
         0
     }
@@ -437,20 +471,52 @@ impl Numeric for i64 {
 }
 
 // CUDA trait implementations - only compiled when cuda feature is enabled
-// These implementations ensure that f32, f64, i32, and i64 can be used with NumericCuda
+// These implementations ensure that f32, f64, i32, and i64 can be used with GPUNumber
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
 #[cfg(feature = "cuda")]
-impl NumericCuda for f32 {}
+impl GPUNumber for f32 {}
 
 #[cfg(feature = "cuda")]
-impl NumericCuda for f64 {}
+impl GPUNumber for f64 {}
 
 #[cfg(feature = "cuda")]
-impl NumericCuda for i32 {}
+impl GPUFloat for f32 {}
 
 #[cfg(feature = "cuda")]
-impl NumericCuda for i64 {}
+impl GPUFloat for f64 {}
 
-// When CUDA is not available, provide blanket implementation for all Numeric types
+#[cfg(feature = "cuda")]
+impl GPUNumber for i32 {}
+
+#[cfg(feature = "cuda")]
+impl GPUNumber for i64 {}
+
+/// CUDA-compatible CPUNumber trait that extends CPUNumber with GPU-specific requirements.
+/// This trait is only available when the "cuda" feature is enabled, allowing the
+/// same code to compile with or without CUDA support.
+#[cfg(feature = "cuda")]
+pub trait GPUNumber: CPUNumber + DeviceRepr + ValidAsZeroBits + Unpin {}
+
+#[cfg(feature = "cuda")]
+pub trait GPUFloat: CPUFloat + DeviceRepr + ValidAsZeroBits + Unpin {
+    // Additional GPU-specific methods can be added here if needed
+}
+
+/// When CUDA is not available, GPUNumber is just an alias for CPUNumber.
+/// This allows the same generic bounds to work regardless of CUDA availability.
 #[cfg(not(feature = "cuda"))]
-impl<T: Numeric> NumericCuda for T {}
+pub trait GPUNumber: CPUNumber {}
+
+#[cfg(not(feature = "cuda"))]
+pub trait GPUFloat: CPUFloat {}
+
+// When CUDA is not available, provide blanket implementation for all CPUNumber types
+#[cfg(not(feature = "cuda"))]
+impl<T: CPUNumber> GPUNumber for T {}
+
+#[cfg(not(feature = "cuda"))]
+impl<T: CPUFloat> GPUFloat for T {}
+
+
+
+
