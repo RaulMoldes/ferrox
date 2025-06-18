@@ -44,6 +44,10 @@ fn compile_cuda_kernels() {
         "clamp",         // New kernel
         "max",           // New kernel  
         "sum_axis",      // New kernel
+        "negate",      // New kernel
+        "transpose",     // New kernel
+        "min",
+        "sub"
   
     ];
     
