@@ -85,6 +85,7 @@ pub trait CPUNumber:
 }
 
 /// Additional trait for floating-point CPUNumber types
+
 pub trait CPUFloat: CPUNumber {
 
     fn zero() -> Self {
@@ -470,6 +471,9 @@ impl CPUNumber for i64 {
     }
 }
 
+
+
+
 // CUDA trait implementations - only compiled when cuda feature is enabled
 // These implementations ensure that f32, f64, i32, and i64 can be used with GPUNumber
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
@@ -498,7 +502,7 @@ impl GPUNumber for i64 {}
 pub trait GPUNumber: CPUNumber + DeviceRepr + ValidAsZeroBits + Unpin {}
 
 #[cfg(feature = "cuda")]
-pub trait GPUFloat: CPUFloat + DeviceRepr + ValidAsZeroBits + Unpin {
+pub trait GPUFloat: CPUFloat + GPUNumber {
     // Additional GPU-specific methods can be added here if needed
 }
 
