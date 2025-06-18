@@ -14,6 +14,11 @@ pub const LOG_PTX: &[u8] = include_bytes!("../../../kernels/log.ptx");
 pub const SIGMOID_PTX: &[u8] = include_bytes!("../../../kernels/sigmoid.ptx");
 pub const TANH_PTX: &[u8] = include_bytes!("../../../kernels/tanh.ptx");
 pub const POWER_PTX: &[u8] = include_bytes!("../../../kernels/powf.ptx");
+pub const SUB_PTX: &[u8] = include_bytes!("../../../kernels/sub.ptx");
+pub const CLAMP_PTX: &[u8] = include_bytes!("../../../kernels/clamp.ptx");
+pub const MAX_PTX: &[u8] = include_bytes!("../../../kernels/max.ptx");
+pub const SUM_AXIS_PTX: &[u8] = include_bytes!("../../../kernels/sum_axis.ptx");
+
 /// CUDA kernel manager that handles loading and executing kernels
 pub struct CudaKernels {
     device: Arc<CudaDevice>,
