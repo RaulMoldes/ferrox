@@ -1,5 +1,5 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchAsync, LaunchConfig, DeviceSlice};
+use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -480,15 +480,18 @@ impl CudaKernels {
             .get_function_cloned("max")
             .ok_or_else(|| "Max kernel not found".to_string())?;
 
-         // Handle optional indices
-    let dummy;
-    let indices_ref: &mut CudaSlice<i32> = match indices {
-        Some(slice) => slice,
-        None => {
-            dummy = self.device.alloc_zeros::<i32>(input.len()).ok_or_else(|| "Unable to allocate memory".to_string())?;
-            &mut dummy.clone()
-        }
-    };
+        // Handle optional indices
+        let dummy;
+        let indices_ref: &mut CudaSlice<i32> = match indices {
+            Some(slice) => slice,
+            None => {
+                dummy = self
+                    .device
+                    .alloc_zeros::<i32>(input.len())
+                    .ok_or_else(|| "Unable to allocate memory".to_string())?;
+                &mut dummy.clone()
+            }
+        };
 
         unsafe {
             kernel
@@ -583,14 +586,17 @@ impl CudaKernels {
             .get_function_cloned("min")
             .ok_or_else(|| "Min kernel not found".to_string())?;
 
-            let dummy;
-            let indices_ref: &mut CudaSlice<i32> = match indices {
-                Some(slice) => slice,
-                None => {
-                    dummy = self.device.alloc_zeros::<i32>(input.len()).ok_or_else(|| "Unable to allocate memory".to_string())?;
-                    &mut dummy.clone()
-                }
-            };
+        let dummy;
+        let indices_ref: &mut CudaSlice<i32> = match indices {
+            Some(slice) => slice,
+            None => {
+                dummy = self
+                    .device
+                    .alloc_zeros::<i32>(input.len())
+                    .ok_or_else(|| "Unable to allocate memory".to_string())?;
+                &mut dummy.clone()
+            }
+        };
 
         unsafe {
             kernel
@@ -598,8 +604,6 @@ impl CudaKernels {
                 .map_err(|e| format!("Failed to launch min kernel: {}", e))
         }
     }
-
-
 
     /// Returns reference to the CUDA device
     pub fn device(&self) -> &Arc<CudaDevice> {

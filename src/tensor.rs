@@ -1262,8 +1262,6 @@ where
         }
     }
 
-   
-
     // Detach operation - creates a new tensor without gradient tracking
     // Useful for autograd system
     pub fn detach(&self) -> Self {
@@ -1448,9 +1446,7 @@ where
         + Unpin
         + rand_distr::num_traits::Zero
         + rand_distr::num_traits::FromPrimitive,
-{   
-
-
+{
     // Summation operations for GPUTensor
     // These methods handle summation along specified axes or over the entire tensor.
     fn sum_cpu(&self, axis: Option<usize>) -> GPUTensor<T> {
@@ -1589,9 +1585,6 @@ where
         }
     }
 
-    
-
-
     // Efficient 2D transpose operation using CUDA
     // This is a specialized operation for 2D tensors, leveraging CUDA capabilities
     // It assumes the tensor is 2D and transposes it by swapping rows and columns, in parallel
@@ -1660,10 +1653,9 @@ where
                             Device::CPU => {
                                 let transposed = self.data.clone().reversed_axes();
                                 Ok(Self::new_with_device(transposed, self.device.clone()))
-                            },
+                            }
                             Device::CUDA(_) => self.transpose_2D_cuda(),
                         }
-                        
                     }
                     _ => {
                         // Till now it has been easy. Now we need to handle higher dimensional arrays.
@@ -1681,58 +1673,62 @@ where
         }
     }
 
-        /// Sum along multiple axes (matches CPU tensor functionality)
-        fn sum_axes_cpu(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
-            match axes {
-                Some(axes_list) => {
-                    // Validate axes are within bounds
-                    for &ax in axes_list {
-                        if ax >= self.ndim() {
-                            panic!("Axis {} out of bounds for tensor with {} dimensions", ax, self.ndim());
-                        }
+    /// Sum along multiple axes (matches CPU tensor functionality)
+    fn sum_axes_cpu(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
+        match axes {
+            Some(axes_list) => {
+                // Validate axes are within bounds
+                for &ax in axes_list {
+                    if ax >= self.ndim() {
+                        panic!(
+                            "Axis {} out of bounds for tensor with {} dimensions",
+                            ax,
+                            self.ndim()
+                        );
                     }
-    
-                    // Sort axes in reverse order to maintain correct indexing
-                    let mut sorted_axes = axes_list.to_vec();
-                    sorted_axes.sort_by(|a, b| b.cmp(a));
-    
-                    let mut current = self.clone();
-                    for &axis in &sorted_axes {
-                        current = current.sum(Some(axis));
-                    }
-                    current
                 }
-                None => self.sum(None),
+
+                // Sort axes in reverse order to maintain correct indexing
+                let mut sorted_axes = axes_list.to_vec();
+                sorted_axes.sort_by(|a, b| b.cmp(a));
+
+                let mut current = self.clone();
+                for &axis in &sorted_axes {
+                    current = current.sum(Some(axis));
+                }
+                current
             }
+            None => self.sum(None),
         }
-    
-        fn sum_axes_cuda(&self, axes: Option<&[usize]>) -> Result<GPUTensor<T>, String> {
-            use crate::backend::manager::get_backend;
-    
-            let backend = get_backend();
-            let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-    
-            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
-            let cuda_ops = cuda_backend.ops();
-    
-            let result_cuda = match axes {
-                Some(axes_list) => cuda_ops.sum_axes(&cuda_tensor, axes_list, false)?,
-                None => cuda_ops.sum_all(&cuda_tensor)?,
-            };
-    
-            self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    fn sum_axes_cuda(&self, axes: Option<&[usize]>) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+
+        let result_cuda = match axes {
+            Some(axes_list) => cuda_ops.sum_axes(&cuda_tensor, axes_list, false)?,
+            None => cuda_ops.sum_all(&cuda_tensor)?,
+        };
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    /// Smart sum_axes operation
+    pub fn sum_axes(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
+        match &self.device {
+            Device::CPU => self.sum_axes_cpu(axes),
+            Device::CUDA(_) => self.sum_axes_cuda(axes).unwrap_or_else(|_| {
+                println!("CUDA sum_axes failed, falling back to CPU");
+                self.sum_axes_cpu(axes)
+            }),
         }
-    
-        /// Smart sum_axes operation
-        pub fn sum_axes(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
-            match &self.device {
-                Device::CPU => self.sum_axes_cpu(axes),
-                Device::CUDA(_) => self.sum_axes_cuda(axes).unwrap_or_else(|_| {
-                    println!("CUDA sum_axes failed, falling back to CPU");
-                    self.sum_axes_cpu(axes)
-                }),
-            }
-        }
+    }
 }
 
 // Zero initialization for GPU tensors
@@ -2097,16 +2093,15 @@ where
         match &self.device {
             Device::CPU => self.powf_cpu(other),
             Device::CUDA(_) => {
-                
                 if let Ok(result) = self.powf_cuda(other) {
                     Ok(result)
                 } else {
                     println!("CUDA power operation failed, falling back to CPU");
                     self.powf_cpu(other)
                 }
+            }
         }
     }
-}
 
     /// Scalar power operation with CUDA support
     pub fn power_scalar(&self, scalar: T) -> GPUTensor<T> {
@@ -2306,7 +2301,6 @@ where
         &self.data
     }
 
-
     // Negate operation for GPUTensor
     fn negate_cpu(&self) -> GPUTensor<T> {
         Self::new_with_device(self.data.mapv(|x| -x), self.device.clone())
@@ -2335,7 +2329,6 @@ where
             }),
         }
     }
-
 }
 
 // Add indexing support for GPUTensor
