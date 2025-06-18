@@ -343,4 +343,372 @@ impl<'a> CudaOps<'a> {
 
         Ok(output)
     }
+
+        /// Element-wise subtraction: a - b
+        pub fn sub<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            if a.shape != b.shape {
+                return Err("Shape mismatch for subtraction".to_string());
+            }
+    
+            let size = a.size();
+            let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
+            let cfg = self.get_launch_config(size);
+    
+            self.kernels
+                .launch_sub(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            Ok(result)
+        }
+    
+        /// Scalar subtraction: a - scalar
+        pub fn sub_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            let scalar_tensor = self.full(&a.shape, scalar)?;
+            self.sub(a, &scalar_tensor)
+        }
+    
+        /// Clamp tensor values between min and max
+        pub fn clamp<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            let size = input.size();
+            let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
+            let cfg = self.get_launch_config(size);
+    
+            self.kernels
+                .launch_clamp(cfg, &input.data, &mut result.data, min_val, max_val, size as i32)?;
+            Ok(result)
+        }
+    
+        /// Find maximum values along an axis
+        /// Returns (max_values, indices) - indices can be None if not needed
+        pub fn max_reduce<T>(
+            &self, 
+            input: &CudaTensor<T>, 
+            axis: usize,
+            keep_dims: bool
+        ) -> Result<(CudaTensor<T>, Option<CudaTensor<i32>>), String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            let input_shape = &input.shape;
+            
+            // Validate axis
+            if axis >= input_shape.len() {
+                return Err(format!("Axis {} out of bounds for tensor with {} dimensions", axis, input_shape.len()));
+            }
+    
+            // Calculate output shape
+            let mut output_shape = input_shape.clone();
+            if keep_dims {
+                output_shape[axis] = 1;
+            } else {
+                output_shape.remove(axis);
+            }
+    
+            // Calculate dimensions for kernel
+            let batch_size = input_shape[..axis].iter().product::<usize>() as i32;
+            let dim_size = input_shape[axis] as i32;
+            let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
+    
+            // Create output tensors
+            let mut max_values = CudaTensor::zeros(self.memory, output_shape.clone())?;
+            let mut indices = CudaTensor::zeros(self.memory, output_shape)?;
+    
+            // Configure kernel launch
+            let cfg = LaunchConfig {
+                grid_dim: (batch_size as u32, 1, 1),
+                block_dim: (1, 1, 1), // This kernel processes one batch element per block
+                shared_mem_bytes: 0,
+            };
+    
+            self.kernels.launch_max_reduce(
+                cfg,
+                &input.data,
+                &mut max_values.data,
+                Some(&mut indices.data),
+                batch_size * inner_size,
+                dim_size,
+            )?;
+    
+            Ok((max_values, Some(indices)))
+        }
+    
+        /// Sum tensor along specified axis
+        pub fn sum_axis<T>(
+            &self,
+            input: &CudaTensor<T>,
+            axis: usize,
+            keep_dims: bool
+        ) -> Result<CudaTensor<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            let input_shape = &input.shape;
+            
+            // Validate axis
+            if axis >= input_shape.len() {
+                return Err(format!("Axis {} out of bounds for tensor with {} dimensions", axis, input_shape.len()));
+            }
+    
+            // Calculate output shape
+            let mut output_shape = input_shape.clone();
+            if keep_dims {
+                output_shape[axis] = 1;
+            } else {
+                output_shape.remove(axis);
+            }
+    
+            // Calculate dimensions for the kernel
+            let outer_size = input_shape[..axis].iter().product::<usize>() as i32;
+            let axis_size = input_shape[axis] as i32;
+            let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
+    
+            // Create output tensor
+            let mut result = CudaTensor::zeros(self.memory, output_shape)?;
+    
+            // Configure kernel launch - each thread processes one inner element
+            let total_output_elements = (outer_size * inner_size) as usize;
+            let cfg = LaunchConfig {
+                grid_dim: (outer_size as u32, 1, 1),
+                block_dim: (inner_size.min(1024) as u32, 1, 1), // Limit block size to 1024
+                shared_mem_bytes: 0,
+            };
+    
+            self.kernels.launch_sum_axis(
+                cfg,
+                &input.data,
+                &mut result.data,
+                outer_size,
+                axis_size,
+                inner_size,
+            )?;
+    
+            Ok(result)
+        }
+    
+        /// Convenience method: sum all elements in tensor (equivalent to flatten + sum)
+        pub fn sum_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            // Sum along each axis sequentially
+            let mut current = input.clone();
+            for axis in (0..input.shape.len()).rev() {
+                current = self.sum_axis(&current, axis, false)?;
+            }
+            Ok(current)
+        }
+    
+        /// ReLU with configurable clamp max (Leaky ReLU when min_val > 0)
+        pub fn relu_clamp<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
+        where
+            T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        {
+            // First apply ReLU, then clamp the result
+            let relu_result = self.relu(input)?;
+            self.clamp(&relu_result, min_val, max_val)
+        }
+
+        /// Unary negation: -tensor
+    pub fn negate<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let size = input.size();
+        let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels
+            .launch_negate(cfg, &input.data, &mut result.data, size as i32)?;
+        Ok(result)
+    }
+
+    /// 2D Matrix transpose
+    /// Essential for neural networks (weight matrices, etc.)
+    pub fn transpose_2d<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        // Validate that input is 2D
+        if input.shape.len() != 2 {
+            return Err("Transpose operation requires 2D tensor".to_string());
+        }
+
+        let rows = input.shape[0] as i32;
+        let cols = input.shape[1] as i32;
+        
+        // Create output tensor with transposed shape
+        let output_shape = vec![input.shape[1], input.shape[0]];
+        let mut result = CudaTensor::zeros(self.memory, output_shape)?;
+
+        // Configure 2D grid for transpose
+        let block_size = 16; // 16x16 thread blocks work well for transpose
+        let grid_x = (cols + block_size - 1) / block_size;
+        let grid_y = (rows + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_x as u32, grid_y as u32, 1),
+            block_dim: (block_size as u32, block_size as u32, 1),
+            shared_mem_bytes: 0,
+        };
+
+        self.kernels
+            .launch_transpose_2d(cfg, &input.data, &mut result.data, rows, cols)?;
+        Ok(result)
+    }
+
+    /// Find minimum values along an axis (complement to max_reduce)
+    pub fn min_reduce<T>(
+        &self, 
+        input: &CudaTensor<T>, 
+        axis: usize,
+        keep_dims: bool
+    ) -> Result<(CudaTensor<T>, Option<CudaTensor<i32>>), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let input_shape = &input.shape;
+        
+        // Validate axis
+        if axis >= input_shape.len() {
+            return Err(format!("Axis {} out of bounds for tensor with {} dimensions", axis, input_shape.len()));
+        }
+
+        // Calculate output shape
+        let mut output_shape = input_shape.clone();
+        if keep_dims {
+            output_shape[axis] = 1;
+        } else {
+            output_shape.remove(axis);
+        }
+
+        // Calculate dimensions for kernel
+        let batch_size = input_shape[..axis].iter().product::<usize>() as i32;
+        let dim_size = input_shape[axis] as i32;
+        let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
+
+        // Create output tensors
+        let mut min_values = CudaTensor::zeros(self.memory, output_shape.clone())?;
+        let mut indices = CudaTensor::zeros(self.memory, output_shape)?;
+
+        // Configure kernel launch
+        let cfg = LaunchConfig {
+            grid_dim: (batch_size as u32, 1, 1),
+            block_dim: (1, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        self.kernels.launch_min_reduce(
+            cfg,
+            &input.data,
+            &mut min_values.data,
+            Some(&mut indices.data),
+            batch_size * inner_size,
+            dim_size,
+        )?;
+
+        Ok((min_values, Some(indices)))
+    }
+
+    /// Mean along axis (uses sum_axis + division)
+    /// This reuses existing kernels rather than creating a new one
+    pub fn mean_axis<T>(
+        &self,
+        input: &CudaTensor<T>,
+        axis: usize,
+        keep_dims: bool
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + From<f32>,
+    {
+        // First sum along the axis
+        let sum_result = self.sum_axis(input, axis, keep_dims)?;
+        
+        // Get the size of the reduced dimension
+        let axis_size = input.shape[axis];
+        let divisor = T::from(axis_size as f32);
+        
+        // Create a tensor filled with the divisor
+        let divisor_tensor = self.full(&sum_result.shape, divisor)?;
+        
+        // Divide sum by count to get mean
+        self.div(&sum_result, &divisor_tensor)
+    }
+
+    /// Sum all elements (convenience method using sum_axis recursively)
+    pub fn sum_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let mut current = input.clone();
+        
+        // Sum along each axis, starting from the last dimension
+        for axis in (0..input.shape.len()).rev() {
+            current = self.sum_axis(&current, axis, false)?;
+        }
+        
+        Ok(current)
+    }
+
+    /// Mean of all elements (sum_all / total_count)
+    pub fn mean_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + From<f32>,
+    {
+        let sum_result = self.sum_all(input)?;
+        let total_elements = input.size();
+        let divisor = T::from(total_elements as f32);
+        
+        // Create scalar tensor with divisor
+        let divisor_tensor = self.full(&[], divisor)?; // Scalar tensor
+        
+        self.div(&sum_result, &divisor_tensor)
+    }
+
+    /// Sum along multiple axes (matches CPU tensor sum_axes functionality)
+    pub fn sum_axes<T>(
+        &self,
+        input: &CudaTensor<T>,
+        axes: &[usize],
+        keep_dims: bool
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        // Sort axes in descending order to maintain correct indexing
+        let mut sorted_axes = axes.to_vec();
+        sorted_axes.sort_by(|a, b| b.cmp(a));
+        
+        let mut current = input.clone();
+        
+        // Sum along each axis sequentially
+        for &axis in &sorted_axes {
+            current = self.sum_axis(&current, axis, keep_dims)?;
+        }
+        
+        Ok(current)
+    }
+
+    /// Create zeros tensor with given shape (utility function)
+    pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + Default,
+    {
+        CudaTensor::zeros(self.memory, shape.to_vec())
+    }
+
+    /// Create ones tensor with given shape (utility function)
+    pub fn ones<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + From<i32>,
+    {
+        let one = T::from(1);
+        self.full(shape, one)
+    }
 }

@@ -18,6 +18,9 @@ pub const SUB_PTX: &[u8] = include_bytes!("../../../kernels/sub.ptx");
 pub const CLAMP_PTX: &[u8] = include_bytes!("../../../kernels/clamp.ptx");
 pub const MAX_PTX: &[u8] = include_bytes!("../../../kernels/max.ptx");
 pub const SUM_AXIS_PTX: &[u8] = include_bytes!("../../../kernels/sum_axis.ptx");
+pub const NEGATE_PTX: &[u8] = include_bytes!("../../../kernels/negate.ptx");
+pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx");
+pub const MIN_PTX: &[u8] = include_bytes!("../../../kernels/min.ptx");
 
 /// CUDA kernel manager that handles loading and executing kernels
 pub struct CudaKernels {
@@ -143,7 +146,76 @@ impl CudaKernels {
                     .ok_or_else(|| "Failed to get power function".to_string())?;
                 self.functions.insert("power".to_string(), func);
             }
-
+            "sub" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "sub_module", &["elementwise_sub"])
+                    .map_err(|e| format!("Failed to load sub kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("sub_module", "elementwise_sub")
+                    .ok_or_else(|| "Failed to get sub function".to_string())?;
+                self.functions.insert("sub".to_string(), func);
+            }
+            "clamp" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "clamp_module", &["clamp_kernel"])
+                    .map_err(|e| format!("Failed to load clamp kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("clamp_module", "clamp_kernel")
+                    .ok_or_else(|| "Failed to get clamp function".to_string())?;
+                self.functions.insert("clamp".to_string(), func);
+            }
+            "max" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "max_module", &["max_reduce_kernel"])
+                    .map_err(|e| format!("Failed to load max kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("max_module", "max_reduce_kernel")
+                    .ok_or_else(|| "Failed to get max function".to_string())?;
+                self.functions.insert("max".to_string(), func);
+            }
+            "sum_axis" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "sum_axis_module", &["sum_axis_kernel"])
+                    .map_err(|e| format!("Failed to load sum_axis kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("sum_axis_module", "sum_axis_kernel")
+                    .ok_or_else(|| "Failed to get sum_axis function".to_string())?;
+                self.functions.insert("sum_axis".to_string(), func);
+            }
+            "negate" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "negate_module", &["negate_kernel"])
+                    .map_err(|e| format!("Failed to load negate kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("negate_module", "negate_kernel")
+                    .ok_or_else(|| "Failed to get negate function".to_string())?;
+                self.functions.insert("negate".to_string(), func);
+            }
+            "transpose" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "transpose_module", &["transpose_2d"])
+                    .map_err(|e| format!("Failed to load transpose kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("transpose_module", "transpose_2d")
+                    .ok_or_else(|| "Failed to get transpose function".to_string())?;
+                self.functions.insert("transpose".to_string(), func);
+            }
+            "min" => {
+                self.device
+                    .load_ptx(ptx_str.into(), "min_module", &["min_reduce_kernel"])
+                    .map_err(|e| format!("Failed to load min kernel: {}", e))?;
+                let func = self
+                    .device
+                    .get_func("min_module", "min_reduce_kernel")
+                    .ok_or_else(|| "Failed to get min function".to_string())?;
+                self.functions.insert("min".to_string(), func);
+            }
             _ => return Err(format!("Unknown kernel name: {}", name)),
         }
 
@@ -344,6 +416,176 @@ impl CudaKernels {
         }
     }
 
+    /// Launch element-wise subtraction kernel
+    pub fn launch_sub<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        c: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("sub")
+            .ok_or_else(|| "Sub kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch sub kernel: {}", e))
+        }
+    }
+
+    /// Launch clamp kernel (clamps values between min and max)
+    pub fn launch_clamp<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        min_val: T,
+        max_val: T,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("clamp")
+            .ok_or_else(|| "Clamp kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, min_val, max_val, size))
+                .map_err(|e| format!("Failed to launch clamp kernel: {}", e))
+        }
+    }
+
+    /// Launch max reduction kernel along an axis
+    pub fn launch_max_reduce<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        indices: Option<&mut CudaSlice<i32>>, // for argmax functionality
+        batch_size: i32,
+        dim_size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("max")
+            .ok_or_else(|| "Max kernel not found".to_string())?;
+
+        let indices_ptr = indices.map(|i| i as *mut _).unwrap_or(std::ptr::null_mut());
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, indices_ptr, batch_size, dim_size))
+                .map_err(|e| format!("Failed to launch max kernel: {}", e))
+        }
+    }
+
+    /// Launch sum along axis kernel
+    pub fn launch_sum_axis<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        outer_size: i32,
+        axis_size: i32,
+        inner_size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("sum_axis")
+            .ok_or_else(|| "Sum axis kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, outer_size, axis_size, inner_size))
+                .map_err(|e| format!("Failed to launch sum_axis kernel: {}", e))
+        }
+    }
+
+    /// Launch negate kernel (unary minus)
+    pub fn launch_negate<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("negate")
+            .ok_or_else(|| "Negate kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, size))
+                .map_err(|e| format!("Failed to launch negate kernel: {}", e))
+        }
+    }
+
+    /// Launch 2D transpose kernel
+    pub fn launch_transpose_2d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        rows: i32,
+        cols: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("transpose")
+            .ok_or_else(|| "Transpose kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, rows, cols))
+                .map_err(|e| format!("Failed to launch transpose kernel: {}", e))
+        }
+    }
+
+    /// Launch min reduction kernel
+    pub fn launch_min_reduce<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        indices: Option<&mut CudaSlice<i32>>,
+        batch_size: i32,
+        dim_size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("min")
+            .ok_or_else(|| "Min kernel not found".to_string())?;
+
+        let indices_ptr = indices.map(|i| i as *mut _).unwrap_or(std::ptr::null_mut());
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, indices_ptr, batch_size, dim_size))
+                .map_err(|e| format!("Failed to launch min kernel: {}", e))
+        }
+    }
+
+
+
     /// Returns reference to the CUDA device
     pub fn device(&self) -> &Arc<CudaDevice> {
         &self.device
@@ -368,6 +610,13 @@ pub fn load_all_kernels(kernels: &mut CudaKernels) -> Result<(), String> {
         ("sigmoid", SIGMOID_PTX),
         ("tanh", TANH_PTX),
         ("power", POWER_PTX),
+        ("sub", SUB_PTX),
+        ("clamp", CLAMP_PTX),
+        ("max", MAX_PTX),
+        ("sum_axis", SUM_AXIS_PTX),
+        ("negate", NEGATE_PTX),
+        ("transpose", TRANSPOSE_PTX),
+        ("min", MIN_PTX),
     ];
 
     for (name, ptx_bytes) in kernel_list.iter() {

@@ -1451,22 +1451,58 @@ where
         + Unpin
         + rand_distr::num_traits::Zero
         + rand_distr::num_traits::FromPrimitive,
-{
-    pub fn sum(&self, axis: Option<usize>) -> Self {
+{   
+
+
+    // Summation operations for GPUTensor
+    // These methods handle summation along specified axes or over the entire tensor.
+    fn sum_cpu(&self, axis: Option<usize>) -> GPUTensor<T> {
         match axis {
             Some(ax) => {
-                let result = self.data.sum_axis(Axis(ax));
-                Self::new_with_device(result, self.device.clone()) // Return Self, not CPUTensor
+                let result = self.data.sum_axis(ndarray::Axis(ax));
+                Self::new_with_device(result, self.device.clone())
             }
             None => {
+                // Sum all elements
                 let total_sum = self.data.sum();
-                Self::new_with_device(
-                    ArrayD::from_elem(IxDyn(&[]), total_sum),
-                    self.device.clone(),
-                )
+                let result_array = ArrayD::from_elem(IxDyn(&[]), total_sum);
+                Self::new_with_device(result_array, self.device.clone())
             }
         }
     }
+
+    // This uses a parallel reduction on CUDA to sum the tensor.
+    // It can sum along a specific axis or over the entire tensor.
+    fn sum_cuda(&self, axis: Option<usize>) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+
+        let result_cuda = match axis {
+            Some(ax) => cuda_ops.sum_axis(&cuda_tensor, ax, false)?,
+            None => cuda_ops.sum_all(&cuda_tensor)?,
+        };
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    /// Smart sum operation
+    pub fn sum(&self, axis: Option<usize>) -> GPUTensor<T> {
+        match &self.device {
+            Device::CPU => self.sum_cpu(axis),
+            Device::CUDA(_) => self.sum_cuda(axis).unwrap_or_else(|_| {
+                println!("CUDA sum failed, falling back to CPU");
+                self.sum_cpu(axis)
+            }),
+        }
+    }
+
+    // For mean operation, we can use the same logic as sum,
+    // but we need to divide by the number of elements along the specified axis.
 
     pub fn mean(&self, axis: Option<usize>) -> Self {
         match axis {
@@ -1556,6 +1592,29 @@ where
         }
     }
 
+    
+
+
+    // Efficient 2D transpose operation using CUDA
+    // This is a specialized operation for 2D tensors, leveraging CUDA capabilities
+    // It assumes the tensor is 2D and transposes it by swapping rows and columns, in parallel
+    fn transpose_2D_cuda(&self) -> Result<Self, String> {
+        if self.ndim() != 2 {
+            return Err("Transpose is only supported for 2D tensors".to_string());
+        }
+
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.transpose_2d(&cuda_tensor)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
     // Transpose operation - permute the axes of the tensor
     // This is tricky to implement from scratch but ndarray handles it for us
     pub fn transpose(&self, axes: Option<&[usize]>) -> Result<Self, String> {
@@ -1598,9 +1657,16 @@ where
                         Ok(self.clone())
                     }
                     2 => {
-                        // For 2D arrays, swap the two axes
-                        let transposed = self.data.clone().reversed_axes();
-                        Ok(Self::new_with_device(transposed, self.device.clone()))
+                        // For 2D tensors, we can use specialized methods
+                        // to perform the transpose efficiently.
+                        match &self.device {
+                            Device::CPU => {
+                                let transposed = self.data.clone().reversed_axes();
+                                Ok(Self::new_with_device(transposed, self.device.clone()))
+                            },
+                            Device::CUDA(_) => self.transpose_2D_cuda(),
+                        }
+                        
                     }
                     _ => {
                         // Till now it has been easy. Now we need to handle higher dimensional arrays.
@@ -1618,40 +1684,58 @@ where
         }
     }
 
-    // Sum over multiple axes - useful for gradient computation
-    pub fn sum_axes(&self, axes: Option<&[usize]>) -> Self {
-        match axes {
-            Some(axes_list) => {
-                // Validate axes are within bounds
-                for &ax in axes_list {
-                    if ax >= self.ndim() {
-                        panic!(
-                            "Axis {} is out of bounds for tensor with {} dimensions",
-                            ax,
-                            self.ndim()
-                        );
+        /// Sum along multiple axes (matches CPU tensor functionality)
+        fn sum_axes_cpu(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
+            match axes {
+                Some(axes_list) => {
+                    // Validate axes are within bounds
+                    for &ax in axes_list {
+                        if ax >= self.ndim() {
+                            panic!("Axis {} out of bounds for tensor with {} dimensions", ax, self.ndim());
+                        }
                     }
+    
+                    // Sort axes in reverse order to maintain correct indexing
+                    let mut sorted_axes = axes_list.to_vec();
+                    sorted_axes.sort_by(|a, b| b.cmp(a));
+    
+                    let mut current = self.clone();
+                    for &axis in &sorted_axes {
+                        current = current.sum(Some(axis));
+                    }
+                    current
                 }
-
-                let mut result = self.data.clone();
-
-                // Sort axes in descending order to avoid index shifting issues
-                let mut sorted_axes = axes_list.to_vec();
-                sorted_axes.sort_unstable();
-                sorted_axes.reverse();
-
-                // Remove duplicates to avoid summing the same axis twice
-                sorted_axes.dedup();
-
-                for &ax in &sorted_axes {
-                    result = result.sum_axis(Axis(ax));
-                }
-
-                Self::new_with_device(result, self.device.clone())
+                None => self.sum(None),
             }
-            None => self.sum(None),
         }
-    }
+    
+        fn sum_axes_cuda(&self, axes: Option<&[usize]>) -> Result<GPUTensor<T>, String> {
+            use crate::backend::manager::get_backend;
+    
+            let backend = get_backend();
+            let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+    
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
+    
+            let result_cuda = match axes {
+                Some(axes_list) => cuda_ops.sum_axes(&cuda_tensor, axes_list, false)?,
+                None => cuda_ops.sum_all(&cuda_tensor)?,
+            };
+    
+            self.create_tensor_from_cuda_result(result_cuda)
+        }
+    
+        /// Smart sum_axes operation
+        pub fn sum_axes(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
+            match &self.device {
+                Device::CPU => self.sum_axes_cpu(axes),
+                Device::CUDA(_) => self.sum_axes_cuda(axes).unwrap_or_else(|_| {
+                    println!("CUDA sum_axes failed, falling back to CPU");
+                    self.sum_axes_cpu(axes)
+                }),
+            }
+        }
 }
 
 // Zero initialization for GPU tensors
@@ -2225,13 +2309,36 @@ where
         &self.data
     }
 
-    // Negation operation
-    pub fn neg(&self) -> Self
-    where
-        T: std::ops::Neg<Output = T>,
-    {
-        Self::new_with_device(self.data.mapv(|x| -x), self.device.clone())
+
+    // Negate operation for GPUTensor
+    fn negate_cpu(&self) -> GPUTensor<T> {
+        Self::new_with_device(-&self.data, self.device.clone())
     }
+
+    fn negate_cuda(&self) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.negate(&cuda_tensor)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    /// Smart negate operation
+    pub fn negate(&self) -> GPUTensor<T> {
+        match &self.device {
+            Device::CPU => self.negate_cpu(),
+            Device::CUDA(_) => self.negate_cuda().unwrap_or_else(|_| {
+                println!("CUDA negate failed, falling back to CPU");
+                self.negate_cpu()
+            }),
+        }
+    }
+
 }
 
 // Add indexing support for GPUTensor
