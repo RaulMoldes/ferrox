@@ -593,7 +593,7 @@ impl CudaKernels {
                 dummy = self
                     .device
                     .alloc_zeros::<i32>(input.len())
-                    .ok_or_else(|| "Unable to allocate memory".to_string())?;
+                    .or_else(|| "Unable to allocate memory".to_string())?;
                 &mut dummy.clone()
             }
         };
