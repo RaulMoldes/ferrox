@@ -1299,7 +1299,7 @@ where
 {
     type Output = T;
 
-    fn index(&self, index: usize) -> &<GPUTensor<T> as BitOr>::Output {
+    fn index(&self, index: usize) -> &Self::Output {
         if index >= self.size() {
             panic!(
                 "Index {} out of bounds for tensor with {} elements",
