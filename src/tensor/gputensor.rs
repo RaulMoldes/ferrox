@@ -1008,6 +1008,156 @@ where
 
         self.create_tensor_from_cuda_result(result_cuda)
     }
+    /// ------------------------------------------------------------
+    /// CLAMP OPERATION
+    /// -------------------------------------------------------------
+    
+     /// Clamp values within range
+     pub fn clamp(&self, min_val: T, max_val: T) -> Result<Self, String> {
+        match &self.device {
+            Device::CPU => Ok(self.clamp_cpu(min_val, max_val)),
+            Device::CUDA(_) => self.clamp_cuda(min_val, max_val).or_else(|_| {
+                println!("CUDA clamp failed, falling back to CPU");
+                Ok(self.clamp_cpu(min_val, max_val))
+            }),
+        }
+    }
+
+    fn clamp_cpu(&self, min_val: T, max_val: T) -> Self {
+        let result_data = self.data.mapv(|x| {
+            if x < min_val {
+                min_val
+            } else if x > max_val {
+                max_val
+            } else {
+                x
+            }
+        });
+        Self::new_with_device(result_data, self.device.clone())
+    }
+
+    fn clamp_cuda(&self, min_val: T, max_val: T) -> Result<Self, String> {
+        use crate::backend::manager::get_backend;
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+
+        let result_cuda = cuda_ops.clamp(&cuda_tensor, min_val, max_val)?;
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    /// -------------------------------------------------------------
+    /// MAX ALONG DIMENSION
+    /// -------------------------------------------------------------
+
+     /// Find maximum values along a specific dimension
+    /// Supports both CPU and CUDA execution
+    pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
+        let shape = self.shape();
+
+        if dim >= shape.len() {
+            return Err(format!(
+                "Dimension {} out of bounds for tensor with {} dimensions",
+                dim,
+                shape.len()
+            ));
+        }
+
+        match &self.device {
+            Device::CPU => self.max_along_dim_cpu(dim),
+            Device::CUDA(_) => match self.max_along_dim_cuda(dim) {
+                Ok(result) => Ok(result),
+                Err(err) => {
+                    println!("CUDA max_along_dim failed ({}), falling back to CPU", err);
+                    self.max_along_dim_cpu(dim)
+                }
+            },
+        }
+    }
+
+
+    fn max_along_dim_cpu(&self, dim: usize) -> Result<Self, String> {
+        let shape = self.shape();
+
+        // Calculate the output shape (remove the specified dimension)
+        let mut output_shape = shape.to_vec();
+        output_shape.remove(dim);
+
+        // If we're reducing all dimensions, result is a scalar
+        if output_shape.is_empty() {
+            output_shape.push(1);
+        }
+
+        let output_size: usize = output_shape.iter().product();
+        let mut result_data = vec![<T as CPUNumber>::min_value(); output_size];
+
+        // Use the same helper methods as CPUTensor
+        let input_strides = Self::calculate_strides_for_shape(shape);
+        let output_strides = Self::calculate_strides_for_shape(&output_shape);
+
+        // Iterate through all elements and find maximum along the specified dimension
+        for input_idx in 0..self.data.len() {
+            let mut coords = Self::flat_to_coords(input_idx, &input_strides, shape);
+            coords.remove(dim);
+
+            let output_idx = Self::coords_to_flat(&coords, &output_strides);
+
+            let current_value = self.data.as_slice().unwrap()[input_idx];
+            if current_value > result_data[output_idx] {
+                result_data[output_idx] = current_value;
+            }
+        }
+
+        let result_array = ndarray::Array::from_shape_vec(output_shape, result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
+
+        Ok(Self::new_with_device(
+            result_array.into_dyn(),
+            self.device.clone(),
+        ))
+    }
+
+    fn max_along_dim_cuda(&self, dim: usize) -> Result<Self, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.max_along_dim(&cuda_tensor, dim)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    // Helper methods (similar to CPUTensor)
+    fn calculate_strides_for_shape(shape: &[usize]) -> Vec<usize> {
+        let mut strides = vec![1; shape.len()];
+        for i in (0..shape.len().saturating_sub(1)).rev() {
+            strides[i] = strides[i + 1] * shape[i + 1];
+        }
+        strides
+    }
+
+    fn flat_to_coords(mut flat_idx: usize, strides: &[usize], shape: &[usize]) -> Vec<usize> {
+        let mut coords = vec![0; strides.len()];
+        for i in 0..strides.len() {
+            coords[i] = flat_idx / strides[i];
+            flat_idx %= strides[i];
+        }
+        coords
+    }
+
+    fn coords_to_flat(coords: &[usize], strides: &[usize]) -> usize {
+        coords
+            .iter()
+            .zip(strides.iter())
+            .map(|(coord, stride)| coord * stride)
+            .sum()
+    }
+
 
     fn create_tensor_from_cuda_result(
         &self,
@@ -1378,42 +1528,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    /// Clamp values within range
-    pub fn clamp(&self, min_val: T, max_val: T) -> Result<Self, String> {
-        match &self.device {
-            Device::CPU => Ok(self.clamp_cpu(min_val, max_val)),
-            Device::CUDA(_) => self.clamp_cuda(min_val, max_val).or_else(|_| {
-                println!("CUDA clamp failed, falling back to CPU");
-                Ok(self.clamp_cpu(min_val, max_val))
-            }),
-        }
-    }
-
-    fn clamp_cpu(&self, min_val: T, max_val: T) -> Self {
-        let result_data = self.data.mapv(|x| {
-            if x < min_val {
-                min_val
-            } else if x > max_val {
-                max_val
-            } else {
-                x
-            }
-        });
-        Self::new_with_device(result_data, self.device.clone())
-    }
-
-    fn clamp_cuda(&self, min_val: T, max_val: T) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
-        let cuda_ops = cuda_backend.ops();
-
-        let result_cuda = cuda_ops.clamp(&cuda_tensor, min_val, max_val)?;
-        self.create_tensor_from_cuda_result(result_cuda)
-    }
-
+   
     // ------------------------------------------------------------
     // MAX ALONG DIMENSION & SQRT OPS
     // -------------------------------------------------------------
@@ -1434,30 +1549,7 @@ where
         }
     }
 
-    /// Find maximum values along a specific dimension
-    /// Supports both CPU and CUDA execution
-    pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
-        let shape = self.shape();
-
-        if dim >= shape.len() {
-            return Err(format!(
-                "Dimension {} out of bounds for tensor with {} dimensions",
-                dim,
-                shape.len()
-            ));
-        }
-
-        match &self.device {
-            Device::CPU => self.max_along_dim_cpu(dim),
-            Device::CUDA(_) => match self.max_along_dim_cuda(dim) {
-                Ok(result) => Ok(result),
-                Err(err) => {
-                    println!("CUDA max_along_dim failed ({}), falling back to CPU", err);
-                    self.max_along_dim_cpu(dim)
-                }
-            },
-        }
-    }
+   
 
     // CPU fallback implementations
     fn sqrt_cpu(&self) -> Result<Self, String> {
@@ -1475,47 +1567,6 @@ where
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
 
-    fn max_along_dim_cpu(&self, dim: usize) -> Result<Self, String> {
-        let shape = self.shape();
-
-        // Calculate the output shape (remove the specified dimension)
-        let mut output_shape = shape.to_vec();
-        output_shape.remove(dim);
-
-        // If we're reducing all dimensions, result is a scalar
-        if output_shape.is_empty() {
-            output_shape.push(1);
-        }
-
-        let output_size: usize = output_shape.iter().product();
-        let mut result_data = vec![<T as CPUNumber>::min_value(); output_size];
-
-        // Use the same helper methods as CPUTensor
-        let input_strides = Self::calculate_strides_for_shape(shape);
-        let output_strides = Self::calculate_strides_for_shape(&output_shape);
-
-        // Iterate through all elements and find maximum along the specified dimension
-        for input_idx in 0..self.data.len() {
-            let mut coords = Self::flat_to_coords(input_idx, &input_strides, shape);
-            coords.remove(dim);
-
-            let output_idx = Self::coords_to_flat(&coords, &output_strides);
-
-            let current_value = self.data.as_slice().unwrap()[input_idx];
-            if current_value > result_data[output_idx] {
-                result_data[output_idx] = current_value;
-            }
-        }
-
-        let result_array = ndarray::Array::from_shape_vec(output_shape, result_data)
-            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
-
-        Ok(Self::new_with_device(
-            result_array.into_dyn(),
-            self.device.clone(),
-        ))
-    }
-
     // CUDA implementations
     fn sqrt_cuda(&self) -> Result<Self, String> {
         use crate::backend::manager::get_backend;
@@ -1530,44 +1581,7 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    fn max_along_dim_cuda(&self, dim: usize) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
-        let cuda_ops = cuda_backend.ops();
-        let result_cuda = cuda_ops.max_along_dim(&cuda_tensor, dim)?;
-
-        self.create_tensor_from_cuda_result(result_cuda)
-    }
-
-    // Helper methods (similar to CPUTensor)
-    fn calculate_strides_for_shape(shape: &[usize]) -> Vec<usize> {
-        let mut strides = vec![1; shape.len()];
-        for i in (0..shape.len().saturating_sub(1)).rev() {
-            strides[i] = strides[i + 1] * shape[i + 1];
-        }
-        strides
-    }
-
-    fn flat_to_coords(mut flat_idx: usize, strides: &[usize], shape: &[usize]) -> Vec<usize> {
-        let mut coords = vec![0; strides.len()];
-        for i in 0..strides.len() {
-            coords[i] = flat_idx / strides[i];
-            flat_idx %= strides[i];
-        }
-        coords
-    }
-
-    fn coords_to_flat(coords: &[usize], strides: &[usize]) -> usize {
-        coords
-            .iter()
-            .zip(strides.iter())
-            .map(|(coord, stride)| coord * stride)
-            .sum()
-    }
+    
 }
 
 // Additional utility methods for better testing support
