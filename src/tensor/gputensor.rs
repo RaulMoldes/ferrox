@@ -1,5 +1,5 @@
 use crate::backend::manager::get_backend;
-use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber, CPUFloat};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{BitOr, Index};

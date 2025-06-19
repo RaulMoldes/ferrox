@@ -513,7 +513,7 @@ impl<'a> CudaOps<'a> {
     
         // Configure kernel launch
         let cfg = LaunchConfig {
-            grid_dim: ((outer_size * inner_size + 255) / 256, 1, 1),
+            grid_dim: (((outer_size * inner_size + 255) / 256).try_into().unwrap(), 1, 1),
             block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
