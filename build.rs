@@ -46,6 +46,8 @@ fn compile_cuda_kernels() {
         "transpose", // New kernel
         "min",
         "sub",
+        "sqrt",
+        "max_along_dim"
     ];
 
     println!("Compiling CUDA kernels...");

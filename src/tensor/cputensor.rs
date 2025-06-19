@@ -187,6 +187,172 @@ where
         ))
     }
 
+
+    /// Element-wise minimum between two tensors
+    /// Returns a new tensor with the minimum value at each position
+    pub fn min(&self, other: &Self) -> Result<Self, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch in min operation: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        // Use flat iteration for efficiency - works with any dimensional tensor
+        let result_data: Vec<T> = self.data.iter()
+            .zip(other.data.iter())
+            .map(|(&a, &b)| if a <= b { a } else { b })
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(
+            self.data.raw_dim(), 
+            result_data
+        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+
+        Ok(Self::new_with_device(result_array, self.device.clone()))
+    }
+
+    /// Element-wise maximum between two tensors  
+    /// Returns a new tensor with the maximum value at each position
+    pub fn max(&self, other: &Self) -> Result<Self, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch in max operation: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data: Vec<T> = self.data.iter()
+            .zip(other.data.iter())
+            .map(|(&a, &b)| if a >= b { a } else { b })
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(
+            self.data.raw_dim(), 
+            result_data
+        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+
+        Ok(Self::new_with_device(result_array, self.device.clone()))
+    }
+
+    /// Element-wise absolute value
+    /// Returns a new tensor with absolute values
+    pub fn abs(&self) -> Self {
+        let result_data: Vec<T> = self.data.iter()
+            .map(|&x| x.abs())
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(
+            self.data.raw_dim(), 
+            result_data
+        ).expect("Shape should match original tensor");
+
+        Self::new_with_device(result_array, self.device.clone())
+    }
+
+    // Clamping operation.Clamps the values of the tensor to be within the specified range.
+    pub fn clamp(&self, min_val: T, max_val: T) -> Self {
+        let result_data = self.data.mapv(|x| {
+            if x < min_val {
+                min_val
+            } else if x > max_val {
+                max_val
+            } else {
+                x
+            }
+        });
+        Self::new_with_device(result_data, self.device.clone())
+    }
+
+
+    /// Find maximum values along a specific dimension
+    /// Reduces the tensor by one dimension
+    pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
+        let shape = self.shape();
+        
+        if dim >= shape.len() {
+            return Err(format!(
+                "Dimension {} out of bounds for tensor with {} dimensions",
+                dim, shape.len()
+            ));
+        }
+
+        // Calculate the output shape (remove the specified dimension)
+        let mut output_shape = shape.to_vec();
+        output_shape.remove(dim);
+        
+        // If we're reducing all dimensions, result is a scalar
+        if output_shape.is_empty() {
+            output_shape.push(1);
+        }
+
+        let output_size: usize = output_shape.iter().product();
+        let mut result_data = vec![T::min_value(); output_size];
+
+        // Calculate strides for efficient indexing
+        let input_strides = self.calculate_strides();
+        let output_strides = Self::calculate_strides_for_shape(&output_shape);
+        
+        
+
+        // Iterate through all elements and find maximum along the specified dimension
+        for input_idx in 0..self.data.len() {
+            // Convert flat index to multi-dimensional coordinates
+            let coords = self.flat_to_coords(input_idx, &input_strides);
+
+            // Convert back to flat index in output tensor
+            let output_idx = Self::coords_to_flat(&coords, &output_strides);
+            
+            let current_value = self.data.as_slice().unwrap()[input_idx];
+            if current_value > result_data[output_idx] {
+                result_data[output_idx] = current_value;
+            }
+        }
+
+        let result_array = ndarray::Array::from_shape_vec(
+            output_shape, 
+            result_data
+        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+
+        Ok(Self::new_with_device(result_array.into_dyn(), self.device.clone()))
+    }
+
+    // Helper method to calculate strides for a given shape
+    fn calculate_strides_for_shape(shape: &[usize]) -> Vec<usize> {
+        let mut strides = vec![1; shape.len()];
+        for i in (0..shape.len().saturating_sub(1)).rev() {
+            strides[i] = strides[i + 1] * shape[i + 1];
+        }
+        strides
+    }
+
+    // Helper method to calculate strides for current tensor
+    fn calculate_strides(&self) -> Vec<usize> {
+        Self::calculate_strides_for_shape(self.shape())
+    }
+
+    // Helper method to convert flat index to coordinates
+    fn flat_to_coords(&self, mut flat_idx: usize, strides: &[usize]) -> Vec<usize> {
+        let mut coords = vec![0; strides.len()];
+        for i in 0..strides.len() {
+            coords[i] = flat_idx / strides[i];
+            flat_idx %= strides[i];
+        }
+        coords
+    }
+
+    // Helper method to convert coordinates to flat index
+    fn coords_to_flat(coords: &[usize], strides: &[usize]) -> usize {
+        coords.iter()
+            .zip(strides.iter())
+            .map(|(coord, stride)| coord * stride)
+            .sum()
+    }
+
+    
+
     // Detach operation - creates a new tensor that shares data but detaches from graph
     // Need to check if this is the right way to do it.
     // In Pytorch i think the detach operation sets the requires_grad flag to false, but we don't have that concept at the tensor level.
@@ -224,7 +390,7 @@ where
 
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone + ndarray::LinalgScalar,
+    T: GPUNumber ,
 {
     pub fn matmul(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String>
     where
@@ -263,7 +429,7 @@ where
 // Implementation for operations requiring ScalarOperand
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone + ndarray::ScalarOperand,
+    T: GPUNumber ,
 {
     // Scalar operations
     pub fn add_scalar(&self, scalar: T) -> CPUTensor<T> {
@@ -295,6 +461,29 @@ where
             self.device.clone(),
         )
     }
+
+    /// Element-wise square root
+    /// Returns a new tensor with square root values
+    /// Validates that all values are non-negative
+    pub fn sqrt(&self) -> Result<Self, String> {
+        // Check for negative values first
+        let has_negative = self.data.iter().any(|&x| x < <T as CPUNumber>::zero());
+        if has_negative {
+            return Err("Cannot compute square root of negative values".to_string());
+        }
+
+        let result_data: Vec<T> = self.data.iter()
+            .map(|&x| x.sqrt())
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(
+            self.data.raw_dim(), 
+            result_data
+        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+
+        Ok(Self::new_with_device(result_array, self.device.clone()))
+    }
+    
 
     // Activation functions
     pub fn relu(&self) -> CPUTensor<T> {

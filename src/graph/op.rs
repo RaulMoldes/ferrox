@@ -804,14 +804,7 @@ where
             ));
         }
 
-        let result_data = ndarray::Zip::from(inputs[0].data())
-            .and(inputs[1].data())
-            .map_collect(|&a, &b| if a <= b { a } else { b });
-
-        Ok(Tensor::new_with_device(
-            result_data,
-            inputs[0].device().clone(),
-        ))
+        inputs[0].min(&inputs[1])
     }
 
     fn gradient(
@@ -880,14 +873,7 @@ where
             ));
         }
 
-        let result_data = ndarray::Zip::from(inputs[0].data())
-            .and(inputs[1].data())
-            .map_collect(|&a, &b| if a >= b { a } else { b });
-
-        Ok(Tensor::new_with_device(
-            result_data,
-            inputs[0].device().clone(),
-        ))
+        inputs[0].max(&inputs[1])
     }
 
     fn gradient(
@@ -970,20 +956,8 @@ where
             return Err("ClampOp requires exactly 1 input".to_string());
         }
 
-        let result_data = inputs[0].data().mapv(|x| {
-            if x < self.min_val {
-                self.min_val
-            } else if x > self.max_val {
-                self.max_val
-            } else {
-                x
-            }
-        });
-
-        Ok(Tensor::new_with_device(
-            result_data,
-            inputs[0].device().clone(),
-        ))
+        
+        Ok(inputs[0].clamp(self.min_val, self.max_val))
     }
 
     fn gradient(
@@ -1045,22 +1019,9 @@ where
         if inputs.len() != 1 {
             return Err("SqrtOp requires exactly 1 input".to_string());
         }
-
-        // Check for negative values which would result in NaN
-        let has_negative = inputs[0]
-            .data()
-            .iter()
-            .any(|&x| x < <T as CPUNumber>::zero());
-        if has_negative {
-            return Err("SqrtOp: Cannot compute square root of negative values".to_string());
-        }
-
-        let result_data = inputs[0].data().mapv(|x| x.sqrt());
-
-        Ok(Tensor::new_with_device(
-            result_data,
-            inputs[0].device().clone(),
-        ))
+        // We do not check for negative values here, as this isdone inside the Tensor implementation
+        // and it will panic if negative values are present.
+        inputs[0].sqrt()
     }
 
     fn gradient(
@@ -1123,12 +1084,7 @@ where
             return Err("AbsOp requires exactly 1 input".to_string());
         }
 
-        let result_data = inputs[0].data().mapv(|x| x.abs());
-
-        Ok(Tensor::new_with_device(
-            result_data,
-            inputs[0].device().clone(),
-        ))
+        Ok(inputs[0].abs())
     }
 
     fn gradient(
@@ -1184,6 +1140,7 @@ where
 /// For elements that were not the maximum, the gradient is zero.
 /// When there are ties (multiple elements have the same maximum value),
 /// the gradient is distributed equally among them.
+/// 
 #[derive(Debug, Clone)]
 pub struct MaxAlongDimOp {
     /// Dimension along which to compute the maximum
@@ -1214,26 +1171,8 @@ where
             return Err("MaxAlongDimOp requires exactly 1 input".to_string());
         }
 
-        let input = &inputs[0];
-        let input_shape = input.shape();
-
-        // Validate dimension
-        if self.dim >= input_shape.len() {
-            return Err(format!(
-                "Dimension {} out of bounds for tensor with {} dimensions",
-                self.dim,
-                input_shape.len()
-            ));
-        }
-
-        // Use ndarray's fold_axis to find maximum along specified axis
-        let result_data = input.data().fold_axis(
-            ndarray::Axis(self.dim),
-            <T as CPUNumber>::min_value(), // Start with minimum value
-            |&acc, &x| if acc > x { acc } else { x },
-        );
-
-        Ok(Tensor::new_with_device(result_data, input.device().clone()))
+     
+        inputs[0].max_along_dim(self.dim)
     }
 
     fn gradient(

@@ -1,25 +1,37 @@
-// src/backend/cuda/max_kernel.cu
-extern "C" __global__ void max_reduce_kernel(
-    const float* input,
-    float* output,
-    int* indices,  // for argmax
-    int batch_size,
-    int dim_size
+// Helper function to get global thread index
+__device__ inline int get_global_idx() {
+    return blockIdx.x * blockDim.x + threadIdx.x;
+}
+
+
+// Element-wise maximum between two tensors: c[i] = max(a[i], b[i])
+extern "C" __global__ void element_max(
+    const float* a, 
+    const float* b, 
+    float* c, 
+    int size
 ) {
-    int batch_idx = blockIdx.x;
-    if (batch_idx >= batch_size) return;
+    __shared__ float shared_a[256];
+    __shared__ float shared_b[256];
     
-    float max_val = -INFINITY;
-    int max_idx = 0;
+    int tid = threadIdx.x;
+    int idx = get_global_idx();
+    int block_size = blockDim.x;
     
-    for (int i = 0; i < dim_size; i++) {
-        float val = input[batch_idx * dim_size + i];
-        if (val > max_val) {
-            max_val = val;
-            max_idx = i;
+    // Load data into shared memory in chunks
+    for (int offset = 0; offset < size; offset += gridDim.x * block_size) {
+        int global_idx = offset + idx;
+        
+        if (global_idx < size) {
+            shared_a[tid] = a[global_idx];
+            shared_b[tid] = b[global_idx];
+            
+            __syncthreads();
+            
+            // Compute and store result
+            c[global_idx] = fmaxf(shared_a[tid], shared_b[tid]);
         }
+        
+        __syncthreads();
     }
-    
-    output[batch_idx] = max_val;
-    if (indices) indices[batch_idx] = max_idx;
 }

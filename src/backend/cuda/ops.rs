@@ -396,62 +396,121 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-    /// Find maximum values along an axis
-    /// Returns (max_values, indices) - indices can be None if not needed
-    pub fn max_reduce<T>(
+
+    /// Launch element-wise minimum kernel
+    pub fn launch_min<T>(
         &self,
-        input: &CudaTensor<T>,
-        axis: usize,
-        keep_dims: bool,
-    ) -> Result<(CudaTensor<T>, Option<CudaTensor<i32>>), String>
+        cfg: LaunchConfig,
+        a: &cudarc::driver::CudaSlice<T>,
+        b: &cudarc::driver::CudaSlice<T>,
+        c: &mut cudarc::driver::CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
     {
-        let input_shape = &input.shape;
+        let kernel = self
+            .get_function_cloned("min")
+            .ok_or_else(|| "Min kernel not found".to_string())?;
 
-        // Validate axis
-        if axis >= input_shape.len() {
-            return Err(format!(
-                "Axis {} out of bounds for tensor with {} dimensions",
-                axis,
-                input_shape.len()
-            ));
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch min kernel: {}", e))
         }
+    }
 
-        // Calculate output shape
-        let mut output_shape = input_shape.clone();
-        if keep_dims {
-            output_shape[axis] = 1;
-        } else {
-            output_shape.remove(axis);
+    /// Launch element-wise maximum kernel
+    pub fn launch_max<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &cudarc::driver::CudaSlice<T>,
+        b: &cudarc::driver::CudaSlice<T>,
+        c: &mut cudarc::driver::CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("max")
+            .ok_or_else(|| "Max kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch max kernel: {}", e))
         }
+    }
 
-        // Calculate dimensions for kernel
-        let batch_size = input_shape[..axis].iter().product::<usize>() as i32;
-        let dim_size = input_shape[axis] as i32;
-        let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
+    /// Launch element-wise absolute value kernel
+    pub fn launch_abs<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &cudarc::driver::CudaSlice<T>,
+        output: &mut cudarc::driver::CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("abs")
+            .ok_or_else(|| "Abs kernel not found".to_string())?;
 
-        // Create output tensors
-        let mut max_values = CudaTensor::zeros(self.memory, output_shape.clone())?;
-        let mut indices = CudaTensor::zeros(self.memory, output_shape)?;
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, size))
+                .map_err(|e| format!("Failed to launch abs kernel: {}", e))
+        }
+    }
 
-        // Configure kernel launch
-        let cfg = LaunchConfig {
-            grid_dim: (batch_size as u32, 1, 1),
-            block_dim: (1, 1, 1), // This kernel processes one batch element per block
-            shared_mem_bytes: 0,
-        };
+    /// Launch maximum reduction along dimension kernel
+    /// This is more complex than element-wise operations as it involves reduction
+    pub fn launch_max_along_dim<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &cudarc::driver::CudaSlice<T>,
+        output: &mut cudarc::driver::CudaSlice<T>,
+        input_shape: &[usize],
+        dim: usize,
+        input_size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("max_along_dim")
+            .ok_or_else(|| "MaxAlongDim kernel not found".to_string())?;
 
-        self.kernels.launch_max_reduce(
-            cfg,
-            &input.data,
-            &mut max_values.data,
-            Some(&mut indices.data),
-            batch_size * inner_size,
-            dim_size,
-        )?;
-
-        Ok((max_values, Some(indices)))
+        // Convert shape to device-compatible format
+        let shape_len = input_shape.len() as i32;
+        
+        // For this kernel, we need to pass more parameters than simple element-wise ops
+        // The kernel will need: input, output, shape info, dimension, and sizes
+        unsafe {
+            kernel
+                .launch(cfg, (
+                    input,           // input tensor data
+                    output,          // output tensor data  
+                    dim as i32,      // dimension to reduce along
+                    shape_len,       // number of dimensions
+                    input_size,      // total input elements
+                ))
+                .map_err(|e| format!("Failed to launch max_along_dim kernel: {}", e))
+        }
     }
 
     /// Sum tensor along specified axis
@@ -587,62 +646,6 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-    /// Find minimum values along an axis (complement to max_reduce)
-    pub fn min_reduce<T>(
-        &self,
-        input: &CudaTensor<T>,
-        axis: usize,
-        keep_dims: bool,
-    ) -> Result<(CudaTensor<T>, Option<CudaTensor<i32>>), String>
-    where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-    {
-        let input_shape = &input.shape;
-
-        // Validate axis
-        if axis >= input_shape.len() {
-            return Err(format!(
-                "Axis {} out of bounds for tensor with {} dimensions",
-                axis,
-                input_shape.len()
-            ));
-        }
-
-        // Calculate output shape
-        let mut output_shape = input_shape.clone();
-        if keep_dims {
-            output_shape[axis] = 1;
-        } else {
-            output_shape.remove(axis);
-        }
-
-        // Calculate dimensions for kernel
-        let batch_size = input_shape[..axis].iter().product::<usize>() as i32;
-        let dim_size = input_shape[axis] as i32;
-        let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
-
-        // Create output tensors
-        let mut min_values = CudaTensor::zeros(self.memory, output_shape.clone())?;
-        let mut indices = CudaTensor::zeros(self.memory, output_shape)?;
-
-        // Configure kernel launch
-        let cfg = LaunchConfig {
-            grid_dim: (batch_size as u32, 1, 1),
-            block_dim: (1, 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        self.kernels.launch_min_reduce(
-            cfg,
-            &input.data,
-            &mut min_values.data,
-            Some(&mut indices.data),
-            batch_size * inner_size,
-            dim_size,
-        )?;
-
-        Ok((min_values, Some(indices)))
-    }
 
     /// Mean along axis (uses sum_axis + division)
     /// This reuses existing kernels rather than creating a new one
