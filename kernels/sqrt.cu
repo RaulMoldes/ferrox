@@ -1,3 +1,7 @@
+__device__ inline int get_global_idx() {
+    return blockIdx.x * blockDim.x + threadIdx.x;
+}
+
 // Element-wise square root: output[i] = sqrt(input[i])
 extern "C" __global__ void element_sqrt(
     const float* input, 

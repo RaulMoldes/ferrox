@@ -879,10 +879,13 @@ where
 
         match &self.device {
             Device::CPU => self.min_cpu(other),
-            Device::CUDA(_) => self.min_cuda(other).unwrap_or_else(|_| {
-                println!("CUDA min failed, falling back to CPU");
-                self.min_cpu(other).unwrap()
-            }),
+            Device::CUDA(_) => match self.min_cuda(other) {
+                Ok(result) => Ok(result),
+                Err(_) => {
+                    println!("CUDA min failed, falling back to CPU");
+                    self.min_cpu(other)
+                }
+            },
         }
     }
 
@@ -899,10 +902,13 @@ where
 
         match &self.device {
             Device::CPU => self.max_cpu(other),
-            Device::CUDA(_) => self.max_cuda(other).unwrap_or_else(|_| {
-                println!("CUDA max failed, falling back to CPU");
-                self.max_cpu(other).unwrap()
-            }),
+            Device::CUDA(_) => match self.max_cuda(other) {
+                Ok(result) => Ok(result),
+                Err(_) => {
+                    println!("CUDA max failed, falling back to CPU");
+                    self.max_cpu(other)
+                }
+            },
         }
     }
 
@@ -911,10 +917,13 @@ where
     pub fn abs(&self) -> Self {
         match &self.device {
             Device::CPU => self.abs_cpu(),
-            Device::CUDA(_) => self.abs_cuda().unwrap_or_else(|_| {
-                println!("CUDA abs failed, falling back to CPU");
-                self.abs_cpu()
-            }),
+            Device::CUDA(_) => match self.abs_cuda() {
+                Ok(result) => result,
+                Err(_) => {
+                    println!("CUDA abs failed, falling back to CPU");
+                    self.abs_cpu()
+                }
+            },
         }
     }
 
@@ -1415,10 +1424,13 @@ where
     pub fn sqrt(&self) -> Result<Self, String> {
         match &self.device {
             Device::CPU => self.sqrt_cpu(),
-            Device::CUDA(_) => self.sqrt_cuda().unwrap_or_else(|err| {
-                println!("CUDA sqrt failed ({}), falling back to CPU", err);
-                self.sqrt_cpu().unwrap()
-            }),
+            Device::CUDA(_) => match self.sqrt_cuda() {
+                Ok(result) => Ok(result),
+                Err(err) => {
+                    println!("CUDA sqrt failed ({}), falling back to CPU", err);
+                    self.sqrt_cpu()
+                }
+            },
         }
     }
 
