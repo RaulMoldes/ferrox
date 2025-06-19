@@ -486,39 +486,48 @@ impl<'a> CudaOps<'a> {
     /// This is more complex than element-wise operations as it involves reduction
     pub fn max_along_dim<T>(
         &self,
-        cfg: LaunchConfig,
-        input: &cudarc::driver::CudaSlice<T>,
-        output: &mut cudarc::driver::CudaSlice<T>,
-        input_shape: &[usize],
+        input: &CudaTensor<T>,
         dim: usize,
-        input_size: i32,
-    ) -> Result<(), String>
+    ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr
-            + Clone
-            + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
-        let kernel = self.kernels
-            .get_function_cloned("max_along_dim")
-            .ok_or_else(|| "MaxAlongDim kernel not found".to_string())?;
-
-        // Convert shape to device-compatible format
-        let shape_len = input_shape.len() as i32;
-        
-        // For this kernel, we need to pass more parameters than simple element-wise ops
-        // The kernel will need: input, output, shape info, dimension, and sizes
-        self.kernels
-            .launch_max_along_dim(
-                cfg,
-                input,
-                output,
-                input_shape,
-                dim as i32,
-                shape_len,
-                input_size,
-            )
-            .map_err(|e| format!("Failed to launch max along dim kernel: {}", e))
+        let input_shape = &input.shape;
+    
+        // Validate dimension
+        if dim >= input_shape.len() {
+            return Err(format!("Dimension {} out of bounds for tensor with {} dimensions", dim, input_shape.len()));
+        }
+    
+        // Calculate output shape
+        let mut output_shape = input_shape.clone();
+        output_shape.remove(dim);
+    
+        // Calculate dimensions for simpler kernel
+        let outer_size = input_shape[..dim].iter().product::<usize>() as i32;
+        let axis_size = input_shape[dim] as i32;
+        let inner_size = input_shape[dim + 1..].iter().product::<usize>() as i32;
+    
+        // Create output tensor
+        let mut result = CudaTensor::zeros(self.memory, output_shape)?;
+    
+        // Configure kernel launch
+        let cfg = LaunchConfig {
+            grid_dim: ((outer_size * inner_size + 255) / 256, 1, 1),
+            block_dim: (256, 1, 1),
+            shared_mem_bytes: 0,
+        };
+    
+        self.kernels.launch_max_along_dim(
+            cfg,
+            &input.data,
+            &mut result.data,
+            outer_size,
+            axis_size,
+            inner_size,
+        )?;
+    
+        Ok(result)
     }
 
     /// Sum tensor along specified axis

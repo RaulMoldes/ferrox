@@ -1449,17 +1449,20 @@ where
 
         match &self.device {
             Device::CPU => self.max_along_dim_cpu(dim),
-            Device::CUDA(_) => self.max_along_dim_cuda(dim).unwrap_or_else(|err| {
-                println!("CUDA max_along_dim failed ({}), falling back to CPU", err);
-                self.max_along_dim_cpu(dim).unwrap()
-            }),
+            Device::CUDA(_) => match self.max_along_dim_cuda(dim) {
+                Ok(result) => Ok(result),
+                Err(err) => {
+                    println!("CUDA max_along_dim failed ({}), falling back to CPU", err);
+                    self.max_along_dim_cpu(dim)
+                }
+            },
         }
     }
 
     // CPU fallback implementations
     fn sqrt_cpu(&self) -> Result<Self, String> {
         // Check for negative values first
-        let has_negative = self.data.iter().any(|&x| x < T::zero());
+        let has_negative = self.data.iter().any(|&x| x < <T as CPUFloat>::zero());
         if has_negative {
             return Err("Cannot compute square root of negative values".to_string());
         }
