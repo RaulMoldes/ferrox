@@ -1401,7 +1401,7 @@ where
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
 
-        let result_cuda = cuda_ops.clamp(&cuda_tensor, min_val, MAX_VAL)?;
+        let result_cuda = cuda_ops.clamp(&cuda_tensor, min_val, max_val)?;
         self.create_tensor_from_cuda_result(result_cuda)
     }
 

@@ -412,14 +412,13 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self.kernels.get_function_cloned("min")
-            .ok_or_else(|| "Min kernel not found".to_string())?;
-
-        unsafe {
-            kernel
-                .launch(cfg, (a, b, c, size))
-                .map_err(|e| format!("Failed to launch min kernel: {}", e))
-        }
+        self.kernels.launch_min_elementwise(
+            cfg,
+            a,
+            b,
+            c,
+            size,
+        ).map_err(|e| format!("Failed to launch min kernel: {}", e))
     }
 
     /// Launch element-wise maximum kernel
@@ -437,15 +436,13 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self.kernels
-            .get_function_cloned("max")
-            .ok_or_else(|| "Max kernel not found".to_string())?;
-
-        unsafe {
-            kernel
-                .launch(cfg, (a, b, c, size))
-                .map_err(|e| format!("Failed to launch max kernel: {}", e))
-        }
+       self.kernels.launch_max_elementwise(
+            cfg,
+            a,
+            b,
+            c,
+            size,
+        ).map_err(|e| format!("Failed to launch max kernel: {}", e))
     }
 
     /// Launch element-wise absolute value kernel
@@ -462,15 +459,9 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self.kernels
-            .get_function_cloned("abs")
-            .ok_or_else(|| "Abs kernel not found".to_string())?;
-
-        unsafe {
-            kernel
-                .launch(cfg, (input, output, size))
-                .map_err(|e| format!("Failed to launch abs kernel: {}", e))
-        }
+        self.kernels
+            .launch_abs(cfg, input, output, size)
+            .map_err(|e| format!("Failed to launch abs kernel: {}", e))
     }
 
     /// Launch maximum reduction along dimension kernel
@@ -499,17 +490,17 @@ impl<'a> CudaOps<'a> {
         
         // For this kernel, we need to pass more parameters than simple element-wise ops
         // The kernel will need: input, output, shape info, dimension, and sizes
-        unsafe {
-            kernel
-                .launch(cfg, (
-                    input,           // input tensor data
-                    output,          // output tensor data  
-                    dim as i32,      // dimension to reduce along
-                    shape_len,       // number of dimensions
-                    input_size,      // total input elements
-                ))
-                .map_err(|e| format!("Failed to launch max_along_dim kernel: {}", e))
-        }
+        self.kernels
+            .launch_max_along_dim(
+                cfg,
+                input,
+                output,
+                input_shape,
+                dim as i32,
+                shape_len,
+                input_size,
+            )
+            .map_err(|e| format!("Failed to launch max along dim kernel: {}", e))
     }
 
     /// Sum tensor along specified axis
