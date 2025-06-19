@@ -1013,12 +1013,12 @@ where
     /// -------------------------------------------------------------
     
      /// Clamp values within range
-     pub fn clamp(&self, min_val: T, max_val: T) -> Result<Self, String> {
+     pub fn clamp(&self, min_val: T, max_val: T) -> Self {
         match &self.device {
-            Device::CPU => Ok(self.clamp_cpu(min_val, max_val)),
-            Device::CUDA(_) => self.clamp_cuda(min_val, max_val).or_else(|_| {
+            Device::CPU => self.clamp_cpu(min_val, max_val),
+            Device::CUDA(_) => self.clamp_cuda(min_val, max_val).unwrap_or_else(|_| {
                 println!("CUDA clamp failed, falling back to CPU");
-                Ok(self.clamp_cpu(min_val, max_val))
+                self.clamp_cpu(min_val, max_val)
             }),
         }
     }
