@@ -926,7 +926,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ClampOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     min_val: T,
     max_val: T,
@@ -1159,7 +1159,7 @@ impl MaxAlongDimOp {
 
 impl<T> Operator<T> for MaxAlongDimOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
