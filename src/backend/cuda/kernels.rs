@@ -563,6 +563,92 @@ impl CudaKernels {
         }
     }
 
+    pub fn launch_min_elementwise<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        c: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("min")
+            .ok_or_else(|| "Min kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch min kernel: {}", e))
+        }
+    }
+
+    pub fn launch_max_elementwise<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        c: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("max")
+            .ok_or_else(|| "Max kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (a, b, c, size))
+                .map_err(|e| format!("Failed to launch max kernel: {}", e))
+        }
+    }
+
+    pub fn launch_abs<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("abs")
+            .ok_or_else(|| "Abs kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, size))
+                .map_err(|e| format!("Failed to launch abs kernel: {}", e))
+        }
+    }
+
+    pub fn launch_sqrt<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("sqrt")
+            .ok_or_else(|| "Sqrt kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, size))
+                .map_err(|e| format!("Failed to launch sqrt kernel: {}", e))
+        }
+    }
+
 
     /// Returns reference to the CUDA device
     pub fn device(&self) -> &Arc<CudaDevice> {
