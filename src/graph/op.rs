@@ -1347,37 +1347,42 @@ where
         }
 
         let input = &inputs[0];
+        let input_shape = input.shape();
 
-        // Recompute softmax output (we need it for gradient computation)
-        let softmax_output = self.compute(&[input.clone()])?;
+        // Validate dimension
+        if self.dim >= input_shape.len() {
+            return Err(format!(
+                "Dimension {} out of bounds for tensor with {} dimensions",
+                self.dim,
+                input_shape.len()
+            ));
+        }
 
-        // For softmax gradient: grad_input = softmax * (grad_output - sum(softmax * grad_output, dim))
-        let axis = ndarray::Axis(self.dim);
+        // Step 1: Find maximum along the specified dimension for numerical stability
+        let max_vals = input.max_along_dim(self.dim)?;
 
-        // Compute element-wise product: softmax * grad_output
-        let elementwise_product = ndarray::Zip::from(softmax_output.data())
-            .and(grad_output.data())
-            .map_collect(|&s, &g| s * g);
+        // Step 2: Expand max_vals back to original shape for broadcasting  
+        let expanded_max = max_vals.unsqueeze(self.dim);
+        let broadcasted_max = expanded_max.broadcast_to(input_shape)?;
 
-        // Sum along the softmax dimension: sum(softmax * grad_output, dim)
-        let sum_product = elementwise_product.sum_axis(axis);
+        // Step 3: Subtract max and compute exponentials: exp(x - max)
+        // This should be fused into a sub operation for efficiency. However curently it is not implemented.
+        let negated = broadcasted_max.negate();
+        let shifted_input = input.add(&negated)?;
 
-        // Expand sum back to original shape for broadcasting
-        let expanded_sum = sum_product.insert_axis(axis);
-        let broadcasted_sum = expanded_sum
-            .broadcast(input.shape())
-            .ok_or("Failed to broadcast sum in gradient computation")?;
+        let exp_vals = shifted_input.exp();
 
-        // Compute final gradient: softmax * (grad_output - broadcasted_sum)
-        let grad_input = ndarray::Zip::from(softmax_output.data())
-            .and(grad_output.data())
-            .and(&broadcasted_sum)
-            .map_collect(|&s, &g, &sum_val| s * (g - sum_val));
+        // Step 4: Sum exponentials along the dimension
+        let sum_exp = exp_vals.sum(Some(self.dim));
 
-        Ok(vec![Tensor::new_with_device(
-            grad_input,
-            input.device().clone(),
-        )])
+        // Step 5: Expand sum back to original shape for broadcasting
+        let expanded_sum = sum_exp.unsqueeze(self.dim);
+        let broadcasted_sum = expanded_sum.broadcast_to(input_shape)?;
+
+        // Step 6: Divide by sum to get probabilities
+        let result = exp_vals.div(&broadcasted_sum)?;
+
+        Ok(result)
     }
 
     fn num_inputs(&self) -> usize {
