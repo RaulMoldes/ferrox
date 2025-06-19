@@ -1,3 +1,7 @@
+__device__ inline int get_global_idx() {
+    return blockIdx.x * blockDim.x + threadIdx.x;
+}
+
 // Helper function to calculate flat index from multi-dimensional coordinates
 __device__ inline int coords_to_flat_idx(
     const int* coords,

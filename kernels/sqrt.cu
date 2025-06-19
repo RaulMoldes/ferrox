@@ -1,5 +1,5 @@
 // Element-wise square root: output[i] = sqrt(input[i])
-extern "C" __global__ void sqrt(
+extern "C" __global__ void element_sqrt(
     const float* input, 
     float* output, 
     int size

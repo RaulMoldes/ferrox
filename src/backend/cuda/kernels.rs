@@ -229,11 +229,11 @@ impl CudaKernels {
             "sqrt" => {
                 // sqrt can use the existing activation kernel loading pattern
                 self.device
-                    .load_ptx(ptx_str.into(), "sqrt_module", &["sqrt"])
+                    .load_ptx(ptx_str.into(), "sqrt_module", &["element_sqrt"])
                     .map_err(|e| format!("Failed to load sqrt kernel: {}", e))?;
                 let func = self
                     .device
-                    .get_func("sqrt_module", "sqrt")
+                    .get_func("sqrt_module", "element_sqrt")
                     .ok_or_else(|| "Failed to get sqrt function".to_string())?;
                 self.functions.insert("sqrt".to_string(), func);
             }

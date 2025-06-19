@@ -396,72 +396,90 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-
-    /// Launch element-wise minimum kernel
-    pub fn min_elementwise<T>(
-        &self,
-        cfg: LaunchConfig,
-        a: &cudarc::driver::CudaSlice<T>,
-        b: &cudarc::driver::CudaSlice<T>,
-        c: &mut cudarc::driver::CudaSlice<T>,
-        size: i32,
-    ) -> Result<(), String>
+    /// Element-wise minimum operation
+    pub fn min_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr
-            + Clone
-            + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for min operation".to_string());
+        }
+
+        let size = a.size();
+        let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
         self.kernels.launch_min_elementwise(
             cfg,
-            a,
-            b,
-            c,
-            size,
-        ).map_err(|e| format!("Failed to launch min kernel: {}", e))
+            &a.data,
+            &b.data,
+            &mut result.data,
+            size as i32,
+        )?;
+        
+        Ok(result)
     }
 
-    /// Launch element-wise maximum kernel
-    pub fn max_elementwise<T>(
-        &self,
-        cfg: LaunchConfig,
-        a: &cudarc::driver::CudaSlice<T>,
-        b: &cudarc::driver::CudaSlice<T>,
-        c: &mut cudarc::driver::CudaSlice<T>,
-        size: i32,
-    ) -> Result<(), String>
+    /// Element-wise maximum operation
+    pub fn max_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr
-            + Clone
-            + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
-       self.kernels.launch_max_elementwise(
+        if a.shape != b.shape {
+            return Err("Shape mismatch for max operation".to_string());
+        }
+
+        let size = a.size();
+        let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_max_elementwise(
             cfg,
-            a,
-            b,
-            c,
-            size,
-        ).map_err(|e| format!("Failed to launch max kernel: {}", e))
+            &a.data,
+            &b.data,
+            &mut result.data,
+            size as i32,
+        )?;
+        
+        Ok(result)
     }
 
-    /// Launch element-wise absolute value kernel
-    pub fn abs<T>(
-        &self,
-        cfg: LaunchConfig,
-        input: &cudarc::driver::CudaSlice<T>,
-        output: &mut cudarc::driver::CudaSlice<T>,
-        size: i32,
-    ) -> Result<(), String>
+    /// Element-wise absolute value
+    pub fn abs<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr
-            + Clone
-            + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
-        self.kernels
-            .launch_abs(cfg, input, output, size)
-            .map_err(|e| format!("Failed to launch abs kernel: {}", e))
+        let size = input.size();
+        let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_abs(
+            cfg,
+            &input.data,
+            &mut result.data,
+            size as i32,
+        )?;
+        
+        Ok(result)
+    }
+
+    /// Element-wise square root
+    pub fn sqrt<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let size = input.size();
+        let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_sqrt(
+            cfg,
+            &input.data,
+            &mut result.data,
+            size as i32,
+        )?;
+        
+        Ok(result)
     }
 
     /// Launch maximum reduction along dimension kernel
