@@ -649,6 +649,29 @@ impl CudaKernels {
         }
     }
 
+    pub fn launch_max_along_dim<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        outer_size: i32,
+        axis_size: i32,
+        inner_size: i32,
+    ) -> Result<(), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let kernel = self
+            .get_function_cloned("max_along_dim")
+            .ok_or_else(|| "Max along dim kernel not found".to_string())?;
+
+        unsafe {
+            kernel
+                .launch(cfg, (input, output, outer_size, axis_size, inner_size))
+                .map_err(|e| format!("Failed to launch max_along_dim kernel: {}", e))
+        }
+    }
+
 
     /// Returns reference to the CUDA device
     pub fn device(&self) -> &Arc<CudaDevice> {
