@@ -28,7 +28,7 @@ pub trait CPUNumber:
     // Comparisons
     PartialOrd + PartialEq +
     // Essential traits
-    Clone + Copy + Debug + Display +
+    Clone + Copy + Debug + Display + PartialOrd + PartialEq +
     // Only conversions that always work without loss
     From<i8> +
     Sized 

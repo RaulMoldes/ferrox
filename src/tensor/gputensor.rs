@@ -2,7 +2,7 @@ use crate::backend::manager::get_backend;
 use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
-use std::ops::{Index,BitOr};
+use std::ops::{BitOr, Index};
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -862,7 +862,6 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-
     // ------------------------------------------------------------
     // MAX-MIN-ABS OPERATIONS
     // -------------------------------------------------------------
@@ -880,12 +879,10 @@ where
 
         match &self.device {
             Device::CPU => self.min_cpu(other),
-            Device::CUDA(_) => {
-                self.min_cuda(other).unwrap_or_else(|_| {
-                    println!("CUDA min failed, falling back to CPU");
-                    self.min_cpu(other).unwrap()
-                })
-            }
+            Device::CUDA(_) => self.min_cuda(other).unwrap_or_else(|_| {
+                println!("CUDA min failed, falling back to CPU");
+                self.min_cpu(other).unwrap()
+            }),
         }
     }
 
@@ -902,12 +899,10 @@ where
 
         match &self.device {
             Device::CPU => self.max_cpu(other),
-            Device::CUDA(_) => {
-                self.max_cuda(other).unwrap_or_else(|_| {
-                    println!("CUDA max failed, falling back to CPU");
-                    self.max_cpu(other).unwrap()
-                })
-            }
+            Device::CUDA(_) => self.max_cuda(other).unwrap_or_else(|_| {
+                println!("CUDA max failed, falling back to CPU");
+                self.max_cpu(other).unwrap()
+            }),
         }
     }
 
@@ -916,53 +911,47 @@ where
     pub fn abs(&self) -> Self {
         match &self.device {
             Device::CPU => self.abs_cpu(),
-            Device::CUDA(_) => {
-                self.abs_cuda().unwrap_or_else(|_| {
-                    println!("CUDA abs failed, falling back to CPU");
-                    self.abs_cpu()
-                })
-            }
+            Device::CUDA(_) => self.abs_cuda().unwrap_or_else(|_| {
+                println!("CUDA abs failed, falling back to CPU");
+                self.abs_cpu()
+            }),
         }
     }
 
     // CPU fallback implementations
     fn min_cpu(&self, other: &Self) -> Result<Self, String> {
-        let result_data: Vec<T> = self.data.iter()
+        let result_data: Vec<T> = self
+            .data
+            .iter()
             .zip(other.data.iter())
             .map(|(&a, &b)| if a <= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
 
     fn max_cpu(&self, other: &Self) -> Result<Self, String> {
-        let result_data: Vec<T> = self.data.iter()
+        let result_data: Vec<T> = self
+            .data
+            .iter()
             .zip(other.data.iter())
             .map(|(&a, &b)| if a >= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
 
     fn abs_cpu(&self) -> Self {
-        let result_data: Vec<T> = self.data.iter()
-            .map(|&x| x.abs())
-            .collect();
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).expect("Shape should match original tensor");
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .expect("Shape should match original tensor");
 
         Self::new_with_device(result_array, self.device.clone())
     }
@@ -976,9 +965,9 @@ where
 
         let self_cuda = self.get_or_create_cuda_tensor(cuda_backend)?;
         let other_cuda = other.get_or_create_cuda_tensor(cuda_backend)?;
-        
+
         let cuda_ops = cuda_backend.ops();
-        let result_cuda = cuda_ops.min(&self_cuda, &other_cuda)?;
+        let result_cuda = cuda_ops.min_elementwise(&self_cuda, &other_cuda)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
     }
@@ -991,9 +980,9 @@ where
 
         let self_cuda = self.get_or_create_cuda_tensor(cuda_backend)?;
         let other_cuda = other.get_or_create_cuda_tensor(cuda_backend)?;
-        
+
         let cuda_ops = cuda_backend.ops();
-        let result_cuda = cuda_ops.max(&self_cuda, &other_cuda)?;
+        let result_cuda = cuda_ops.max_elementwise(&self_cuda, &other_cuda)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
     }
@@ -1380,70 +1369,6 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-    /// Element-wise minimum between two tensors
-    /// Returns a new tensor with the minimum value at each position
-    pub fn min(&self, other: &Self) -> Result<Self, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch in min operation: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-
-        // Use flat iteration for efficiency - works with any dimensional tensor
-        let result_data: Vec<T> = self.data.iter()
-            .zip(other.data.iter())
-            .map(|(&a, &b)| if a <= b { a } else { b })
-            .collect();
-
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
-
-        Ok(Self::new_with_device(result_array, self.device.clone()))
-    }
-
-    /// Element-wise maximum between two tensors  
-    /// Returns a new tensor with the maximum value at each position
-    pub fn max(&self, other: &Self) -> Result<Self, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch in max operation: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-
-        let result_data: Vec<T> = self.data.iter()
-            .zip(other.data.iter())
-            .map(|(&a, &b)| if a >= b { a } else { b })
-            .collect();
-
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
-
-        Ok(Self::new_with_device(result_array, self.device.clone()))
-    }
-
-    /// Element-wise absolute value
-    /// Returns a new tensor with absolute values
-    pub fn abs(&self) -> Self {
-        let result_data: Vec<T> = self.data.iter()
-            .map(|&x| x.abs())
-            .collect();
-
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).expect("Shape should match original tensor");
-
-        Self::new_with_device(result_array, self.device.clone())
-    }
-
     /// Clamp values within range
     pub fn clamp(&self, min_val: T, max_val: T) -> Result<Self, String> {
         match &self.device {
@@ -1476,7 +1401,7 @@ where
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
 
-        let result_cuda = cuda_ops.max_axis(&cuda_tensor, axis, keep_dims)?;
+        let result_cuda = cuda_ops.clamp(&cuda_tensor, min_val, MAX_VAL)?;
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
@@ -1484,19 +1409,16 @@ where
     // MAX ALONG DIMENSION & SQRT OPS
     // -------------------------------------------------------------
 
-
     /// Element-wise square root
     /// Supports both CPU and CUDA execution
     /// Validates that all values are non-negative
     pub fn sqrt(&self) -> Result<Self, String> {
         match &self.device {
             Device::CPU => self.sqrt_cpu(),
-            Device::CUDA(_) => {
-                self.sqrt_cuda().unwrap_or_else(|err| {
-                    println!("CUDA sqrt failed ({}), falling back to CPU", err);
-                    self.sqrt_cpu().unwrap()
-                })
-            }
+            Device::CUDA(_) => self.sqrt_cuda().unwrap_or_else(|err| {
+                println!("CUDA sqrt failed ({}), falling back to CPU", err);
+                self.sqrt_cpu().unwrap()
+            }),
         }
     }
 
@@ -1504,22 +1426,21 @@ where
     /// Supports both CPU and CUDA execution
     pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
         let shape = self.shape();
-        
+
         if dim >= shape.len() {
             return Err(format!(
                 "Dimension {} out of bounds for tensor with {} dimensions",
-                dim, shape.len()
+                dim,
+                shape.len()
             ));
         }
 
         match &self.device {
             Device::CPU => self.max_along_dim_cpu(dim),
-            Device::CUDA(_) => {
-                self.max_along_dim_cuda(dim).unwrap_or_else(|err| {
-                    println!("CUDA max_along_dim failed ({}), falling back to CPU", err);
-                    self.max_along_dim_cpu(dim).unwrap()
-                })
-            }
+            Device::CUDA(_) => self.max_along_dim_cuda(dim).unwrap_or_else(|err| {
+                println!("CUDA max_along_dim failed ({}), falling back to CPU", err);
+                self.max_along_dim_cpu(dim).unwrap()
+            }),
         }
     }
 
@@ -1531,25 +1452,21 @@ where
             return Err("Cannot compute square root of negative values".to_string());
         }
 
-        let result_data: Vec<T> = self.data.iter()
-            .map(|&x| x.sqrt())
-            .collect();
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.sqrt()).collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
 
     fn max_along_dim_cpu(&self, dim: usize) -> Result<Self, String> {
         let shape = self.shape();
-        
+
         // Calculate the output shape (remove the specified dimension)
         let mut output_shape = shape.to_vec();
         output_shape.remove(dim);
-        
+
         // If we're reducing all dimensions, result is a scalar
         if output_shape.is_empty() {
             output_shape.push(1);
@@ -1561,26 +1478,27 @@ where
         // Use the same helper methods as CPUTensor
         let input_strides = Self::calculate_strides_for_shape(shape);
         let output_strides = Self::calculate_strides_for_shape(&output_shape);
-        
+
         // Iterate through all elements and find maximum along the specified dimension
         for input_idx in 0..self.data.len() {
             let mut coords = Self::flat_to_coords(input_idx, &input_strides, shape);
             coords.remove(dim);
-            
+
             let output_idx = Self::coords_to_flat(&coords, &output_strides);
-            
+
             let current_value = self.data.as_slice().unwrap()[input_idx];
             if current_value > result_data[output_idx] {
                 result_data[output_idx] = current_value;
             }
         }
 
-        let result_array = ndarray::Array::from_shape_vec(
-            output_shape, 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(output_shape, result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
-        Ok(Self::new_with_device(result_array.into_dyn(), self.device.clone()))
+        Ok(Self::new_with_device(
+            result_array.into_dyn(),
+            self.device.clone(),
+        ))
     }
 
     // CUDA implementations
@@ -1629,13 +1547,12 @@ where
     }
 
     fn coords_to_flat(coords: &[usize], strides: &[usize]) -> usize {
-        coords.iter()
+        coords
+            .iter()
             .zip(strides.iter())
             .map(|(coord, stride)| coord * stride)
             .sum()
     }
-    
-
 }
 
 // Additional utility methods for better testing support

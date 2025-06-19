@@ -398,7 +398,7 @@ impl<'a> CudaOps<'a> {
 
 
     /// Launch element-wise minimum kernel
-    pub fn launch_min<T>(
+    pub fn min_elementwise<T>(
         &self,
         cfg: LaunchConfig,
         a: &cudarc::driver::CudaSlice<T>,
@@ -412,8 +412,7 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self
-            .get_function_cloned("min")
+        let kernel = self.kernels.get_function_cloned("min")
             .ok_or_else(|| "Min kernel not found".to_string())?;
 
         unsafe {
@@ -424,7 +423,7 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Launch element-wise maximum kernel
-    pub fn launch_max<T>(
+    pub fn max_elementwise<T>(
         &self,
         cfg: LaunchConfig,
         a: &cudarc::driver::CudaSlice<T>,
@@ -438,7 +437,7 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self
+        let kernel = self.kernels
             .get_function_cloned("max")
             .ok_or_else(|| "Max kernel not found".to_string())?;
 
@@ -450,7 +449,7 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Launch element-wise absolute value kernel
-    pub fn launch_abs<T>(
+    pub fn abs<T>(
         &self,
         cfg: LaunchConfig,
         input: &cudarc::driver::CudaSlice<T>,
@@ -463,7 +462,7 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self
+        let kernel = self.kernels
             .get_function_cloned("abs")
             .ok_or_else(|| "Abs kernel not found".to_string())?;
 
@@ -476,7 +475,7 @@ impl<'a> CudaOps<'a> {
 
     /// Launch maximum reduction along dimension kernel
     /// This is more complex than element-wise operations as it involves reduction
-    pub fn launch_max_along_dim<T>(
+    pub fn max_along_dim<T>(
         &self,
         cfg: LaunchConfig,
         input: &cudarc::driver::CudaSlice<T>,
@@ -491,7 +490,7 @@ impl<'a> CudaOps<'a> {
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,
     {
-        let kernel = self
+        let kernel = self.kernels
             .get_function_cloned("max_along_dim")
             .ok_or_else(|| "MaxAlongDim kernel not found".to_string())?;
 

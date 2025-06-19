@@ -1159,12 +1159,7 @@ impl MaxAlongDimOp {
 
 impl<T> Operator<T> for MaxAlongDimOp
 where
-    T: GPUNumber
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
