@@ -1300,64 +1300,6 @@ where
             ));
         }
 
-        let axis = ndarray::Axis(self.dim);
-
-        // Step 1: Find maximum along the specified dimension for numerical stability
-        let max_vals = input
-            .data()
-            .fold_axis(axis, <T as CPUNumber>::min_value(), |&acc, &x| {
-                if acc > x { acc } else { x }
-            });
-
-        // Step 2: Expand max_vals back to original shape for broadcasting
-        let expanded_max = max_vals.insert_axis(axis);
-        let broadcasted_max = expanded_max
-            .broadcast(input_shape)
-            .ok_or("Failed to broadcast max values")?;
-
-        // Step 3: Subtract max and compute exponentials: exp(x - max)
-        let shifted_and_exp = ndarray::Zip::from(input.data())
-            .and(&broadcasted_max)
-            .map_collect(|&x, &max_val| (x - max_val).exp());
-
-        // Step 4: Sum exponentials along the dimension
-        let sum_exp = shifted_and_exp.sum_axis(axis);
-
-        // Step 5: Expand sum back to original shape for broadcasting
-        let expanded_sum = sum_exp.insert_axis(axis);
-        let broadcasted_sum = expanded_sum
-            .broadcast(input_shape)
-            .ok_or("Failed to broadcast sum values")?;
-
-        // Step 6: Divide by sum to get probabilities
-        let result = ndarray::Zip::from(&shifted_and_exp)
-            .and(&broadcasted_sum)
-            .map_collect(|&exp_val, &sum_val| exp_val / sum_val);
-
-        Ok(Tensor::new_with_device(result, input.device().clone()))
-    }
-
-    fn gradient(
-        &self,
-        grad_output: &Tensor<T>,
-        inputs: &[Tensor<T>],
-    ) -> Result<Vec<Tensor<T>>, String> {
-        if inputs.len() != 1 {
-            return Err("SoftmaxOp requires exactly 1 input".to_string());
-        }
-
-        let input = &inputs[0];
-        let input_shape = input.shape();
-
-        // Validate dimension
-        if self.dim >= input_shape.len() {
-            return Err(format!(
-                "Dimension {} out of bounds for tensor with {} dimensions",
-                self.dim,
-                input_shape.len()
-            ));
-        }
-
         // Step 1: Find maximum along the specified dimension for numerical stability
         let max_vals = input.max_along_dim(self.dim)?;
 
@@ -1383,6 +1325,41 @@ where
         let result = exp_vals.div(&broadcasted_sum)?;
 
         Ok(result)
+    }
+
+    fn gradient(
+        &self,
+        grad_output: &Tensor<T>,
+        inputs: &[Tensor<T>],
+    ) -> Result<Vec<Tensor<T>>, String> {
+        if inputs.len() != 1 {
+            return Err("SoftmaxOp requires exactly 1 input".to_string());
+        }
+    
+        let input = &inputs[0];
+    
+        // Recompute softmax output (we need it for gradient computation)
+        let softmax_output = self.compute(&[input.clone()])?;
+    
+        // For softmax gradient: grad_input = softmax * (grad_output - sum(softmax * grad_output, dim))
+        
+        // Compute element-wise product: softmax * grad_output
+        let elementwise_product = softmax_output.mul(grad_output)?;
+    
+        // Sum along the softmax dimension: sum(softmax * grad_output, dim)
+        let sum_product = elementwise_product.sum(Some(self.dim));
+    
+        // Expand sum back to original shape for broadcasting
+        let expanded_sum = sum_product.unsqueeze(self.dim);
+        let broadcasted_sum = expanded_sum.broadcast_to(input.shape())?;
+    
+        // Compute final gradient: softmax * (grad_output - broadcasted_sum)
+        let negated_sum = broadcasted_sum.negate();
+        // This is equivalent to grad_output - sum(softmax * grad_output, dim)
+        let grad_diff = grad_output.add(&negated_sum)?;
+        let grad_input = softmax_output.mul(&grad_diff)?;
+    
+        Ok(vec![grad_input])
     }
 
     fn num_inputs(&self) -> usize {
