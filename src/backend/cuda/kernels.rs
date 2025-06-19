@@ -649,14 +649,18 @@ impl CudaKernels {
         }
     }
 
+
     pub fn launch_max_along_dim<T>(
         &self,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
-        outer_size: i32,
-        axis_size: i32,
-        inner_size: i32,
+        input_shape: &[i32], // Changed to pass shape array
+        output_shape: &[i32], // Need output shape too
+        reduce_dim: i32,
+        input_ndim: i32,
+        output_ndim: i32,
+        output_size: i32,
     ) -> Result<(), String>
     where
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
@@ -664,10 +668,22 @@ impl CudaKernels {
         let kernel = self
             .get_function_cloned("max_along_dim")
             .ok_or_else(|| "Max along dim kernel not found".to_string())?;
-
+    
         unsafe {
+            // Match the kernel signature exactly:
+            // max_reduce_along_dim(input, output, input_shape, output_shape, 
+            //                      reduce_dim, input_ndim, output_ndim, output_size)
             kernel
-                .launch(cfg, (input, output, outer_size, axis_size, inner_size))
+                .launch(cfg, (
+                    input,
+                    output,
+                    input_shape.as_ptr(),   // const int* input_shape
+                    output_shape.as_ptr(),  // const int* output_shape
+                    reduce_dim,             // int reduce_dim
+                    input_ndim,             // int input_ndim
+                    output_ndim,            // int output_ndim
+                    output_size,            // int output_size
+                ))
                 .map_err(|e| format!("Failed to launch max_along_dim kernel: {}", e))
         }
     }
