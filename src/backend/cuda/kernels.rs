@@ -399,13 +399,13 @@ impl CudaKernels {
     /// Gets a cloned kernel function by name for launching
     /// This is the preferred method since launch() consumes the function
     pub fn get_function_cloned(&self, name: &str) -> Option<CudaFunction> {
-        self.get_function_cloned(name).cloned()
+        self.functions.get(name).cloned() 
     }
 
     /// Gets a reference to a loaded kernel function by name (Not cloned)
     /// Should only be used if you don't need to launch immediately
     pub fn get_function(&self, name: &str) -> Option<&CudaFunction> {
-        self.get_function_cloned(name)
+        self.functions.get(name)
     }
 
     /// Convenience method to launch add kernel

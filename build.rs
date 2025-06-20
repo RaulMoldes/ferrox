@@ -50,6 +50,7 @@ fn compile_cuda_kernels() {
         "max_along_dim",
         "comparison", // New kernel
         "sign",
+        "abs",
     ];
 
     println!("Compiling CUDA kernels...");
