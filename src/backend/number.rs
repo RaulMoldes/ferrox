@@ -35,7 +35,7 @@ pub trait CPUNumber:
     + Zero 
     + One
     + FromPrimitive
-    + LinalgScalar + ScalarOperand
+    + LinalgScalar + ScalarOperand + 'static
 {
     /// Neutral element for addition (zero)
     fn zero() -> Self;

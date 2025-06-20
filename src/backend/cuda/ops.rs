@@ -837,7 +837,7 @@ impl<'a> CudaOps<'a> {
                 cfg,
                 &a_f32,
                 &b_f32,
-                &mut result_f32,
+                result_f32,
                 total_elements as i32,
             )?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
