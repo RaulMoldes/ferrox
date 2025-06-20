@@ -831,7 +831,7 @@ impl CudaKernels {
             .ok_or("Greater equal kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (a, b, result, size))
+            func.launch_async(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch greater_equal kernel: {}", e))?;
         }
         Ok(())
@@ -851,7 +851,7 @@ impl CudaKernels {
             .ok_or("Greater equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (a, b, result, size))
+            func.launch_async(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch greater_equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -871,7 +871,7 @@ impl CudaKernels {
             .ok_or("Less equal kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (a, b, result, size))
+            func.launch_async(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch less_equal kernel: {}", e))?;
         }
         Ok(())
@@ -891,7 +891,7 @@ impl CudaKernels {
             .ok_or("Less equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (a, b, result, size))
+            func.launch_async(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch less_equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -911,7 +911,7 @@ impl CudaKernels {
             .ok_or("Equal kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (a, b, result, size))
+            func.launch_async(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch equal kernel: {}", e))?;
         }
         Ok(())
@@ -931,7 +931,7 @@ impl CudaKernels {
             .ok_or("Equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (a, b, result, size))
+            func.launch_async(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -950,7 +950,7 @@ impl CudaKernels {
             .ok_or("Logical not kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (input, result, size))
+            func.launch_async(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch logical_not kernel: {}", e))?;
         }
         Ok(())
@@ -969,7 +969,7 @@ impl CudaKernels {
             .ok_or("Logical not f64 kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (input, result, size))
+            func.launch_async(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch logical_not_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -990,7 +990,7 @@ impl CudaKernels {
             .ok_or("In range kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (input, min_val, max_val, result, size))
+            func.launch_async(cfg, (input, min_val, max_val, result, size))
                 .map_err(|e| format!("Failed to launch in_range kernel: {}", e))?;
         }
         Ok(())
@@ -1011,7 +1011,7 @@ impl CudaKernels {
             .ok_or("In range f64 kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (input, min_val, max_val, result, size))
+            func.launch_async(cfg, (input, min_val, max_val, result, size))
                 .map_err(|e| format!("Failed to launch in_range_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -1029,7 +1029,7 @@ impl CudaKernels {
         let func = self.functions.get("sign").ok_or("Sign kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (input, result, size))
+            func.launch_async(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch sign kernel: {}", e))?;
         }
         Ok(())
@@ -1048,7 +1048,7 @@ impl CudaKernels {
             .ok_or("Sign f64 kernel not loaded")?;
 
         unsafe {
-            func.launch(cfg, (input, result, size))
+            func.launch_async(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch sign_f64 kernel: {}", e))?;
         }
         Ok(())
