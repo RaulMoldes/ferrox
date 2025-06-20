@@ -1022,7 +1022,7 @@ impl<'a> CudaOps<'a> {
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         let total_elements = input.shape.iter().product::<usize>();
-        let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
+        let mut result = CudaTensor::zeros(&self.memory, input.shape.clone())?;
 
         let block_size = 256;
         let grid_size = (total_elements + block_size - 1) / block_size;
