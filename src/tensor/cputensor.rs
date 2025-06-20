@@ -506,6 +506,32 @@ where
     pub fn to_vec(&self) -> Result<Vec<T>, String> {
         Ok(self.data.iter().copied().collect())
     }
+
+    /// Conditional selection: where condition is true, use true_vals, else false_vals
+    pub fn where_condition(
+        condition: &CPUTensor<T>,
+        true_vals: &CPUTensor<T>,
+        false_vals: &CPUTensor<T>,
+    ) -> Result<CPUTensor<T>, String> {
+        let condition_vec = condition.to_vec()?;
+        let true_vec = true_vals.to_vec()?;
+        let false_vec = false_vals.to_vec()?;
+
+        let result_vec: Vec<T> = condition_vec
+            .iter()
+            .zip(true_vec.iter())
+            .zip(false_vec.iter())
+            .map(|((&cond, &true_val), &false_val)| {
+                if cond > <T as CPUNumber>::zero() {
+                    true_val
+                } else {
+                    false_val
+                }
+            })
+            .collect();
+
+        CPUTensor::from_vec(result_vec, condition.shape())
+    }
 }
 
 impl<T> CPUTensor<T>

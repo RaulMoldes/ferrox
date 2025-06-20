@@ -3,7 +3,7 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
-use crate::backend::{CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::{CPUNumber, GPUFloat, GPUNumber, CPUFloat};
 use crate::tensor::Tensor;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
@@ -956,13 +956,25 @@ where
         // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
         // Special case: at x = 0, we return 0 instead of infinity
 
-        let two = Tensor::<T>::ones(inputs[0].shape())
+        let eps = <T as CPUFloat>::from_f64(1e-12).unwrap_or(<T as CPUFloat>::epsilon());
+        let two_tensor = Tensor::<T>::ones(inputs[0].shape())
             .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap());
 
-        let sqrt_input = inputs[0].sqrt()?;
+        // Create mask for values close to zero
+        let eps_tensor = Tensor::<T>::ones(inputs[0].shape()).mul_scalar(eps);
+        let input_abs = inputs[0].abs();
+        let is_near_zero = input_abs.less_equal(&eps_tensor)?;
 
-        let denominator = two.mul(&sqrt_input)?;
-        let grad = grad_output.div(&denominator)?;
+        // Compute sqrt for non-zero values
+        let sqrt_input = inputs[0].sqrt()?;
+        let denominator = two_tensor.mul(&sqrt_input)?;
+
+        // Compute raw gradient
+        let raw_grad = grad_output.div(&denominator)?;
+
+        // Apply mask to set gradient to zero where input is near zero
+        let zero_tensor = Tensor::<T>::zeros(inputs[0].shape());
+        let grad = Tensor::where_condition(&is_near_zero, &zero_tensor, &raw_grad)?;
 
         Ok(vec![grad])
     }
@@ -1100,14 +1112,20 @@ where
 
         // Expand max_values to match input shape for comparison
         let expanded_max = max_values.expand_dims(self.dim)?;
-        let mask = input.equal(&expanded_max)?;
+        let broadcasted_max = expanded_max.broadcast_to(input.shape())?;
+
+        let mask = input.equal(&broadcasted_max)?;
+
         let count_maxima = mask.sum(Some(self.dim));
+
         let expanded_count = count_maxima.expand_dims(self.dim)?;
         let expanded_grad = grad_output.expand_dims(self.dim)?;
+        let broadcasted_count = expanded_count.broadcast_to(input.shape())?;
+        let broadcasted_grad = expanded_grad.broadcast_to(input.shape())?;
 
         // Gradient is (mask / count) * grad_output
         // This ensures gradient is distributed equally among tied maxima
-        let grad = expanded_grad.mul(&mask)?.div(&expanded_count)?;
+        let grad = broadcasted_grad.mul(&mask)?.div(&broadcasted_count)?;
 
         Ok(vec![grad])
     }

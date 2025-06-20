@@ -765,12 +765,13 @@ impl<'a> CudaOps<'a> {
         // Choose kernel based on type
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
             // Safe transmutation: we know T is f32 at runtime
-            
-                let a_f32 = unsafe{std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data)};
-                let b_f32 = unsafe{std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data)};
-                let result_f32 =
-                    unsafe{std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)};
-            
+
+            let a_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data) };
+            let b_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data) };
+            let result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+
             self.kernels.launch_greater_equal_f32(
                 cfg,
                 a_f32,
