@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::number::{GPUFloat, GPUNumber, CPUNumber};
+use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships
@@ -723,8 +723,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat
-    
+    T: GPUFloat,
 {
     /// Convenience method to clamp probabilities for numerical stability.
     ///

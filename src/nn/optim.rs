@@ -1,6 +1,6 @@
 use super::module::Module;
 use crate::NodeId;
-use crate::backend::{GPUFloat, GPUNumber, CPUNumber};
+use crate::backend::{CPUNumber, GPUFloat, GPUNumber};
 use crate::graph::Engine;
 use crate::tensor::Tensor;
 use core::panic;
@@ -113,7 +113,7 @@ where
 
 impl<T> SGD<T>
 where
-    T: GPUFloat  + From<f64>,
+    T: GPUFloat + From<f64>,
 {
     /// Creates a new SGD optimizer
     ///

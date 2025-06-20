@@ -47,7 +47,9 @@ fn compile_cuda_kernels() {
         "min",
         "sub",
         "sqrt",
-        "max_along_dim"
+        "max_along_dim",
+        "comparison", // New kernel
+        "sign"
     ];
 
     println!("Compiling CUDA kernels...");

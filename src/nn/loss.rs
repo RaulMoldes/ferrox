@@ -1,4 +1,4 @@
-use crate::backend::number::{CPUNumber,GPUNumber, GPUFloat};
+use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;

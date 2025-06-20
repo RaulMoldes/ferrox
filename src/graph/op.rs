@@ -112,29 +112,16 @@ where
         // dC/dA = grad_output @ B^T
         // dC/dB = A^T @ grad_output
 
-        let a_data = inputs[0]
-            .data()
-            .view()
-            .into_dimensionality::<ndarray::Ix2>()
-            .unwrap();
-        let b_data = inputs[1]
-            .data()
-            .view()
-            .into_dimensionality::<ndarray::Ix2>()
-            .unwrap();
-        let grad_2d = grad_output
-            .data()
-            .view()
-            .into_dimensionality::<ndarray::Ix2>()
-            .unwrap();
-
-        let grad_a = grad_2d.dot(&b_data.t());
-        let grad_b = a_data.t().dot(&grad_2d);
-
-        Ok(vec![
-            Tensor::new_with_device(grad_a.into_dyn(), inputs[0].device().clone()),
-            Tensor::new_with_device(grad_b.into_dyn(), inputs[1].device().clone()),
-        ])
+        let a = &inputs[0];
+        let b = &inputs[1];
+        
+        let b_transposed = b.transpose(None)?;
+        let grad_a = grad_output.matmul(&b_transposed)?;
+        
+        let a_transposed = a.transpose(None)?;
+        let grad_b = a_transposed.matmul(grad_output)?;
+        
+        Ok(vec![grad_a, grad_b])
     }
 
     fn num_inputs(&self) -> usize {
@@ -165,12 +152,7 @@ where
         let zero = <T as CPUNumber>::zero();
         let one = <T as CPUNumber>::one();
 
-        let mask = Tensor::new_with_device(
-            inputs[0].data().mapv(|x| if x > zero { one } else { zero }),
-            inputs[0].device().clone(),
-        );
-
-        let grad = grad_output.mul(&mask)?;
+        let grad = inputs[0].clamp(zero, one).mul(grad_output)?;
         Ok(vec![grad])
     }
 
@@ -551,11 +533,7 @@ impl TransposeOp {
 impl<T> Operator<T> for TransposeOp
 where
     T: GPUNumber
-        + Clone
-        + std::fmt::Debug
-        + rand_distr::num_traits::FromPrimitive
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
+        
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -611,11 +589,6 @@ impl ReshapeOp {
 impl<T> Operator<T> for ReshapeOp
 where
     T: GPUNumber
-        + Clone
-        + std::fmt::Debug
-        + rand_distr::num_traits::FromPrimitive
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -656,11 +629,6 @@ impl BroadcastToOp {
 impl<T> Operator<T> for BroadcastToOp
 where
     T: GPUNumber
-        + Clone
-        + rand_distr::num_traits::FromPrimitive
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -722,11 +690,6 @@ impl SummationOp {
 impl<T> Operator<T> for SummationOp
 where
     T: GPUNumber
-        + rand_distr::num_traits::FromPrimitive
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -817,23 +780,11 @@ where
         // ∂min(a,b)/∂b = 0 if a <= b else 1
         // When a == b, we assign gradient to the first input (arbitrary choice)
 
-        let zero = <T as CPUNumber>::zero();
-
-        let grad_a = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(inputs[1].data())
-                .and(grad_output.data())
-                .map_collect(|&a, &b, &grad| if a <= b { grad } else { zero }),
-            inputs[0].device().clone(),
-        );
-
-        let grad_b = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(inputs[1].data())
-                .and(grad_output.data())
-                .map_collect(|&a, &b, &grad| if a > b { grad } else { zero }),
-            inputs[1].device().clone(),
-        );
+        let mask_a = inputs[0].less_equal(&inputs[1])?;
+        let mask_b = mask_a.logical_not()?;
+        
+        let grad_a = grad_output.mul(&mask_a)?;
+        let grad_b = grad_output.mul(&mask_b)?;
 
         Ok(vec![grad_a, grad_b])
     }
@@ -885,24 +836,11 @@ where
         // ∂max(a,b)/∂a = 1 if a >= b else 0
         // ∂max(a,b)/∂b = 0 if a >= b else 1
         // When a == b, we assign gradient to the first input (arbitrary choice)
-
-        let zero = <T as CPUNumber>::zero();
-
-        let grad_a = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(inputs[1].data())
-                .and(grad_output.data())
-                .map_collect(|&a, &b, &grad| if a >= b { grad } else { zero }),
-            inputs[0].device().clone(),
-        );
-
-        let grad_b = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(inputs[1].data())
-                .and(grad_output.data())
-                .map_collect(|&a, &b, &grad| if a < b { grad } else { zero }),
-            inputs[1].device().clone(),
-        );
+        let mask_a = inputs[0].greater_equal(&inputs[1])?;
+        let mask_b = mask_a.logical_not()?;
+        
+        let grad_a = grad_output.mul(&mask_a)?;
+        let grad_b = grad_output.mul(&mask_b)?;
 
         Ok(vec![grad_a, grad_b])
     }
@@ -968,20 +906,8 @@ where
         // Gradient of clamp(x, min_val, max_val):
         // ∂clamp(x)/∂x = 1 if min_val <= x <= max_val else 0
 
-        let zero = <T as CPUNumber>::zero();
-
-        let grad = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(grad_output.data())
-                .map_collect(|&x, &grad| {
-                    if x >= self.min_val && x <= self.max_val {
-                        grad
-                    } else {
-                        zero
-                    }
-                }),
-            inputs[0].device().clone(),
-        );
+        let mask = inputs[0].in_range(self.min_val, self.max_val)?;
+        let grad = grad_output.mul(&mask)?;
 
         Ok(vec![grad])
     }
@@ -1032,22 +958,15 @@ where
         // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
         // Special case: at x = 0, we return 0 instead of infinity
 
-        let zero = <T as CPUNumber>::zero();
-        let two = <T as CPUNumber>::from_f64(2.0).unwrap();
-
-        let grad = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(grad_output.data())
-                .map_collect(|&x, &grad_out| {
-                    if x == zero {
-                        zero // Avoid division by zero
-                    } else {
-                        let sqrt_x = x.sqrt();
-                        grad_out / (two * sqrt_x)
-                    }
-                }),
-            inputs[0].device().clone(),
-        );
+        
+        let two = Tensor::<T>::ones(inputs[0].shape())
+            .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap());
+       
+        
+        let sqrt_input = inputs[0].sqrt()?;
+    
+        let denominator = two.mul(&sqrt_input)?;
+        let grad = grad_output.div(&denominator)?;
 
         Ok(vec![grad])
     }
@@ -1180,64 +1099,25 @@ where
         }
 
         let input = &inputs[0];
-        let input_shape = input.shape();
+       
 
         // First, compute the maximum values again to determine which elements were maximal
-        let max_values = input.data().fold_axis(
-            ndarray::Axis(self.dim),
-            <T as CPUNumber>::min_value(),
-            |&acc, &x| if acc > x { acc } else { x },
-        );
+        let max_values = input.max_along_dim(self.dim)?;
 
         // Expand max_values to match input shape for comparison
-        let expanded_max = max_values.insert_axis(ndarray::Axis(self.dim));
-        let expanded_max_broadcasted = expanded_max
-            .broadcast(input_shape)
-            .ok_or("Failed to broadcast max values")?;
+        let expanded_max = max_values.expand_dims(self.dim)?;
+        let mask = input.equal(&expanded_max)?;
+        let count_maxima = mask.sum(Some(self.dim));
+        let expanded_count = count_maxima.expand_dims(self.dim)?;
+        let expanded_grad = grad_output.expand_dims(self.dim)?;
+        
 
-        // Create mask where input equals max (these get gradients)
-        let zero = <T as CPUNumber>::zero();
-        let one = <T as CPUNumber>::one();
-
-        let mask = ndarray::Zip::from(input.data())
-            .and(&expanded_max_broadcasted)
-            .map_collect(|&inp, &max_val| if inp == max_val { one } else { zero });
-
-        // Count how many elements achieved the maximum along each slice
-        let count_maxima = mask.sum_axis(ndarray::Axis(self.dim));
-
-        // Expand count to match input shape
-        let expanded_count = count_maxima.insert_axis(ndarray::Axis(self.dim));
-        let expanded_count_broadcasted = expanded_count
-            .broadcast(input_shape)
-            .ok_or("Failed to broadcast count")?;
-
-        // Expand grad_output to match input shape
-        let expanded_grad = grad_output
-            .data()
-            .clone()
-            .insert_axis(ndarray::Axis(self.dim));
-        let expanded_grad_broadcasted = expanded_grad
-            .broadcast(input_shape)
-            .ok_or("Failed to broadcast gradient")?;
 
         // Gradient is (mask / count) * grad_output
         // This ensures gradient is distributed equally among tied maxima
-        let input_grad = ndarray::Zip::from(&mask)
-            .and(&expanded_count_broadcasted)
-            .and(&expanded_grad_broadcasted)
-            .map_collect(|&mask_val, &count, &grad| {
-                if count > zero {
-                    mask_val * grad / count
-                } else {
-                    zero
-                }
-            });
+        let grad = expanded_grad.mul(&mask)?.div(&expanded_count)?;
 
-        Ok(vec![Tensor::new_with_device(
-            input_grad,
-            input.device().clone(),
-        )])
+        Ok(vec![grad])
     }
 
     fn num_inputs(&self) -> usize {

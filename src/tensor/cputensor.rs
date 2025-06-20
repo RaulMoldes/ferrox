@@ -1,4 +1,4 @@
-use crate::backend::number::{GPUNumber, GPUFloat, CPUNumber};
+use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
@@ -187,7 +187,6 @@ where
         ))
     }
 
-
     /// Element-wise minimum between two tensors
     /// Returns a new tensor with the minimum value at each position
     pub fn min(&self, other: &Self) -> Result<Self, String> {
@@ -200,15 +199,15 @@ where
         }
 
         // Use flat iteration for efficiency - works with any dimensional tensor
-        let result_data: Vec<T> = self.data.iter()
+        let result_data: Vec<T> = self
+            .data
+            .iter()
             .zip(other.data.iter())
             .map(|(&a, &b)| if a <= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
@@ -224,15 +223,15 @@ where
             ));
         }
 
-        let result_data: Vec<T> = self.data.iter()
+        let result_data: Vec<T> = self
+            .data
+            .iter()
             .zip(other.data.iter())
             .map(|(&a, &b)| if a >= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
@@ -240,14 +239,10 @@ where
     /// Element-wise absolute value
     /// Returns a new tensor with absolute values
     pub fn abs(&self) -> Self {
-        let result_data: Vec<T> = self.data.iter()
-            .map(|&x| x.abs())
-            .collect();
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).expect("Shape should match original tensor");
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .expect("Shape should match original tensor");
 
         Self::new_with_device(result_array, self.device.clone())
     }
@@ -266,23 +261,23 @@ where
         Self::new_with_device(result_data, self.device.clone())
     }
 
-
     /// Find maximum values along a specific dimension
     /// Reduces the tensor by one dimension
     pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
         let shape = self.shape();
-        
+
         if dim >= shape.len() {
             return Err(format!(
                 "Dimension {} out of bounds for tensor with {} dimensions",
-                dim, shape.len()
+                dim,
+                shape.len()
             ));
         }
 
         // Calculate the output shape (remove the specified dimension)
         let mut output_shape = shape.to_vec();
         output_shape.remove(dim);
-        
+
         // If we're reducing all dimensions, result is a scalar
         if output_shape.is_empty() {
             output_shape.push(1);
@@ -294,8 +289,6 @@ where
         // Calculate strides for efficient indexing
         let input_strides = self.calculate_strides();
         let output_strides = Self::calculate_strides_for_shape(&output_shape);
-        
-        
 
         // Iterate through all elements and find maximum along the specified dimension
         for input_idx in 0..self.data.len() {
@@ -304,19 +297,20 @@ where
 
             // Convert back to flat index in output tensor
             let output_idx = Self::coords_to_flat(&coords, &output_strides);
-            
+
             let current_value = self.data.as_slice().unwrap()[input_idx];
             if current_value > result_data[output_idx] {
                 result_data[output_idx] = current_value;
             }
         }
 
-        let result_array = ndarray::Array::from_shape_vec(
-            output_shape, 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(output_shape, result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
-        Ok(Self::new_with_device(result_array.into_dyn(), self.device.clone()))
+        Ok(Self::new_with_device(
+            result_array.into_dyn(),
+            self.device.clone(),
+        ))
     }
 
     // Helper method to calculate strides for a given shape
@@ -345,13 +339,139 @@ where
 
     // Helper method to convert coordinates to flat index
     fn coords_to_flat(coords: &[usize], strides: &[usize]) -> usize {
-        coords.iter()
+        coords
+            .iter()
             .zip(strides.iter())
             .map(|(coord, stride)| coord * stride)
             .sum()
     }
 
-    
+    // -------------------------------------------------------------------
+    //  Other utility common tensor operations
+    // -------------------------------------------------------------------
+    // Element-wise greater than or equal comparison
+    pub fn greater_equal(&self, other: &Self) -> Result<CPUTensor<T>, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for greater_equal: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(&other.data)
+            .map_collect(|&a, &b| {
+                if a >= b {
+                    <T as CPUNumber>::one()
+                } else {
+                    <T as CPUNumber>::zero()
+                }
+            });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    // Element-wise less than or equal comparison
+    pub fn less_equal(&self, other: &Self) -> Result<CPUTensor<T>, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for less_equal: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(&other.data)
+            .map_collect(|&a, &b| {
+                if a <= b {
+                    <T as CPUNumber>::one()
+                } else {
+                    <T as CPUNumber>::zero()
+                }
+            });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    // Element-wise equality comparison
+    pub fn equal(&self, other: &Self) -> Result<CPUTensor<T>, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for equal: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(&other.data)
+            .map_collect(|&a, &b| {
+                if a == b {
+                    <T as CPUNumber>::one()
+                } else {
+                    <T as CPUNumber>::zero()
+                }
+            });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    // Logical NOT operation (flips 0s and 1s)
+    pub fn logical_not(&self) -> Result<CPUTensor<T>, String> {
+        let result_data = self.data.mapv(|x| {
+            if x == <T as CPUNumber>::zero() {
+                <T as CPUNumber>::one()
+            } else {
+                <T as CPUNumber>::zero()
+            }
+        });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    // Check if values are in range [min_val, max_val]
+    pub fn in_range(&self, min_val: T, max_val: T) -> Result<CPUTensor<T>, String> {
+        let result_data = self.data.mapv(|x| {
+            if x >= min_val && x <= max_val {
+                <T as CPUNumber>::one()
+            } else {
+                <T as CPUNumber>::zero()
+            }
+        });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    // Expand dimensions by adding a new axis at the specified position
+    pub fn expand_dims(&self, axis: usize) -> Result<CPUTensor<T>, String> {
+        if axis > self.ndim() {
+            return Err(format!(
+                "Cannot insert axis {} for tensor with {} dimensions",
+                axis,
+                self.ndim()
+            ));
+        }
+
+        let expanded = self.data.clone().insert_axis(ndarray::Axis(axis));
+        Ok(Self::new_with_device(expanded, self.device.clone()))
+    }
+
+    // Returns 1 if the value is positive, 0 if it is zero, and -1 if it is negative.
+    pub fn sign(&self) -> CPUTensor<T> {
+        let result_data = self.data.mapv(|x| {
+            if x > <T as CPUNumber>::zero() {
+                <T as CPUNumber>::one()
+            } else if x < <T as CPUNumber>::zero() {
+                -<T as CPUNumber>::one()
+            } else {
+                <T as CPUNumber>::zero()
+            }
+        });
+
+        Self::new_with_device(result_data, self.device.clone())
+    }
 
     // Detach operation - creates a new tensor that shares data but detaches from graph
     // Need to check if this is the right way to do it.
@@ -390,7 +510,7 @@ where
 
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber ,
+    T: GPUNumber,
 {
     pub fn matmul(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String>
     where
@@ -429,7 +549,7 @@ where
 // Implementation for operations requiring ScalarOperand
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber ,
+    T: GPUNumber,
 {
     // Scalar operations
     pub fn add_scalar(&self, scalar: T) -> CPUTensor<T> {
@@ -454,7 +574,7 @@ where
         // Euler's sigmoid function: 1 / (1 + exp(-x))
         CPUTensor::new_with_device(
             self.data.mapv(|x| {
-                let one =<T as CPUNumber>::one();
+                let one = <T as CPUNumber>::one();
                 let neg_x = -x;
                 one / (one + neg_x.exp())
             }),
@@ -472,25 +592,20 @@ where
             return Err("Cannot compute square root of negative values".to_string());
         }
 
-        let result_data: Vec<T> = self.data.iter()
-            .map(|&x| x.sqrt())
-            .collect();
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.sqrt()).collect();
 
-        let result_array = ndarray::Array::from_shape_vec(
-            self.data.raw_dim(), 
-            result_data
-        ).map_err(|e| format!("Failed to create result tensor: {}", e))?;
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
         Ok(Self::new_with_device(result_array, self.device.clone()))
     }
-    
 
     // Activation functions
     pub fn relu(&self) -> CPUTensor<T> {
         // ReLU activation function: max(0, x)
         CPUTensor::new_with_device(
             self.data.mapv(|x| {
-                let zero =<T as CPUNumber>::zero();
+                let zero = <T as CPUNumber>::zero();
                 if x > zero { x } else { zero }
             }),
             self.device.clone(),
@@ -811,7 +926,7 @@ where
 // Implementation for tensor creation with One trait
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone + rand_distr::num_traits::One,
+    T: GPUNumber,
 {
     // Ones
     pub fn ones(shape: &[usize]) -> Self {

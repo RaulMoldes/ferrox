@@ -728,6 +728,262 @@ impl<'a> CudaOps<'a> {
         Ok(current)
     }
 
+    /// COMPARISON OPERATIONS
+     // Comparison operations using CUDA kernels
+     pub fn greater_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+     where
+         T: GPUNumber,
+     {
+         if a.shape != b.shape {
+             return Err("Shape mismatch for greater_equal operation".to_string());
+         }
+ 
+         let total_elements = a.shape.iter().product::<usize>();
+         let mut result = CudaTensor::zeros(&self.memory_manager, a.shape.clone())?;
+ 
+         let block_size = 256;
+         let grid_size = (total_elements + block_size - 1) / block_size;
+ 
+         let cfg = LaunchConfig {
+             grid_dim: (grid_size as u32, 1, 1),
+             block_dim: (block_size as u32, 1, 1),
+             shared_mem_bytes: 0,
+         };
+ 
+         // Choose kernel based on type
+         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+             self.kernels.launch_greater_equal_f32(
+                 cfg,
+                 &a.data,
+                 &b.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+             self.kernels.launch_greater_equal_f64(
+                 cfg,
+                 &a.data,
+                 &b.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else {
+             return Err("Unsupported type for greater_equal operation".to_string());
+         }
+ 
+         Ok(result)
+     }
+ 
+     pub fn less_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+     where
+         T: GPUNumber,
+     {
+         if a.shape != b.shape {
+             return Err("Shape mismatch for less_equal operation".to_string());
+         }
+ 
+         let total_elements = a.shape.iter().product::<usize>();
+         let mut result = CudaTensor::zeros(&self.memory_manager, a.shape.clone())?;
+ 
+         let block_size = 256;
+         let grid_size = (total_elements + block_size - 1) / block_size;
+ 
+         let cfg = LaunchConfig {
+             grid_dim: (grid_size as u32, 1, 1),
+             block_dim: (block_size as u32, 1, 1),
+             shared_mem_bytes: 0,
+         };
+ 
+         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+             self.kernels.launch_less_equal_f32(
+                 cfg,
+                 &a.data,
+                 &b.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+             self.kernels.launch_less_equal_f64(
+                 cfg,
+                 &a.data,
+                 &b.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else {
+             return Err("Unsupported type for less_equal operation".to_string());
+         }
+ 
+         Ok(result)
+     }
+ 
+     pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+     where
+         T: GPUNumber,
+     {
+         if a.shape != b.shape {
+             return Err("Shape mismatch for equal operation".to_string());
+         }
+ 
+         let total_elements = a.shape.iter().product::<usize>();
+         let mut result = CudaTensor::zeros(&self.memory_manager, a.shape.clone())?;
+ 
+         let block_size = 256;
+         let grid_size = (total_elements + block_size - 1) / block_size;
+ 
+         let cfg = LaunchConfig {
+             grid_dim: (grid_size as u32, 1, 1),
+             block_dim: (block_size as u32, 1, 1),
+             shared_mem_bytes: 0,
+         };
+ 
+         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+             self.kernels.launch_equal_f32(
+                 cfg,
+                 &a.data,
+                 &b.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+             self.kernels.launch_equal_f64(
+                 cfg,
+                 &a.data,
+                 &b.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else {
+             return Err("Unsupported type for equal operation".to_string());
+         }
+ 
+         Ok(result)
+     }
+ 
+     pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+     where
+         T: GPUNumber,
+     {
+         let total_elements = input.shape.iter().product::<usize>();
+         let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
+ 
+         let block_size = 256;
+         let grid_size = (total_elements + block_size - 1) / block_size;
+ 
+         let cfg = LaunchConfig {
+             grid_dim: (grid_size as u32, 1, 1),
+             block_dim: (block_size as u32, 1, 1),
+             shared_mem_bytes: 0,
+         };
+ 
+         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+             self.kernels.launch_logical_not_f32(
+                 cfg,
+                 &input.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+             self.kernels.launch_logical_not_f64(
+                 cfg,
+                 &input.data,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else {
+             return Err("Unsupported type for logical_not operation".to_string());
+         }
+ 
+         Ok(result)
+     }
+ 
+     pub fn in_range<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
+     where
+         T: GPUNumber,
+     {
+         let total_elements = input.shape.iter().product::<usize>();
+         let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
+ 
+         let block_size = 256;
+         let grid_size = (total_elements + block_size - 1) / block_size;
+ 
+         let cfg = LaunchConfig {
+             grid_dim: (grid_size as u32, 1, 1),
+             block_dim: (block_size as u32, 1, 1),
+             shared_mem_bytes: 0,
+         };
+ 
+         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+             // Cast min_val and max_val to f32 for the kernel
+             let min_f32 = unsafe { std::mem::transmute::<T, f32>(min_val) };
+             let max_f32 = unsafe { std::mem::transmute::<T, f32>(max_val) };
+             
+             self.kernels.launch_in_range_f32(
+                 cfg,
+                 &input.data,
+                 min_f32,
+                 max_f32,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+             let min_f64 = unsafe { std::mem::transmute::<T, f64>(min_val) };
+             let max_f64 = unsafe { std::mem::transmute::<T, f64>(max_val) };
+             
+             self.kernels.launch_in_range_f64(
+                 cfg,
+                 &input.data,
+                 min_f64,
+                 max_f64,
+                 &mut result.data,
+                 total_elements as i32,
+             )?;
+         } else {
+             return Err("Unsupported type for in_range operation".to_string());
+         }
+ 
+         Ok(result)
+     }
+    
+
+    /// Sign operation using CUDA kernel
+    pub fn sign<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: GPUNumber,
+    {
+        let total_elements = input.shape.iter().product::<usize>();
+        let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
+
+        let block_size = 256;
+        let grid_size = (total_elements + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            self.kernels.launch_sign_f32(
+                cfg,
+                &input.data,
+                &mut result.data,
+                total_elements as i32,
+            )?;
+        } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            self.kernels.launch_sign_f64(
+                cfg,
+                &input.data,
+                &mut result.data,
+                total_elements as i32,
+            )?;
+        } else {
+            return Err("Unsupported type for sign operation".to_string());
+        }
+
+        Ok(result)
+    }
+    
     /// Create zeros tensor with given shape (utility function)
     pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
     where

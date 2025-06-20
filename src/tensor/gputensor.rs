@@ -1,5 +1,5 @@
 use crate::backend::manager::get_backend;
-use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber, CPUFloat};
+use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{BitOr, Index};
@@ -1011,9 +1011,9 @@ where
     /// ------------------------------------------------------------
     /// CLAMP OPERATION
     /// -------------------------------------------------------------
-    
-     /// Clamp values within range
-     pub fn clamp(&self, min_val: T, max_val: T) -> Self {
+
+    /// Clamp values within range
+    pub fn clamp(&self, min_val: T, max_val: T) -> Self {
         match &self.device {
             Device::CPU => self.clamp_cpu(min_val, max_val),
             Device::CUDA(_) => self.clamp_cuda(min_val, max_val).unwrap_or_else(|_| {
@@ -1052,7 +1052,7 @@ where
     /// MAX ALONG DIMENSION
     /// -------------------------------------------------------------
 
-     /// Find maximum values along a specific dimension
+    /// Find maximum values along a specific dimension
     /// Supports both CPU and CUDA execution
     pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
         let shape = self.shape();
@@ -1076,7 +1076,6 @@ where
             },
         }
     }
-
 
     fn max_along_dim_cpu(&self, dim: usize) -> Result<Self, String> {
         let shape = self.shape();
@@ -1158,6 +1157,291 @@ where
             .sum()
     }
 
+    //-------------------------------------------------------------
+    // COMPARISON AND EQUALITY
+    //-------------------------------------------------------------
+
+    // Element-wise greater than or equal comparison
+    pub fn greater_equal(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.device != other.device {
+            return Err("Tensors must be on the same device".to_string());
+        }
+
+        match &self.device {
+            Device::CPU => self.greater_equal_cpu(other),
+            Device::CUDA(_) => self.greater_equal_cuda(other).or_else(|_| {
+                println!("CUDA greater_equal failed, falling back to CPU");
+                self.greater_equal_cpu(other)
+            }),
+        }
+    }
+
+    // CPU implementation for greater_equal
+    fn greater_equal_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for greater_equal: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(&other.data)
+            .map_collect(|&a, &b| {
+                if a >= b {
+                    <T as CPUNumber>::one()
+                } else {
+                    <T as CPUNumber>::zero()
+                }
+            });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    // CUDA implementation for greater_equal
+    fn greater_equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.greater_equal(&cuda_a, &cuda_b)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    // Less than or equal comparison
+    pub fn less_equal(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.device != other.device {
+            return Err("Tensors must be on the same device".to_string());
+        }
+
+        match &self.device {
+            Device::CPU => self.less_equal_cpu(other),
+            Device::CUDA(_) => self.less_equal_cuda(other).or_else(|_| {
+                println!("CUDA less_equal failed, falling back to CPU");
+                self.less_equal_cpu(other)
+            }),
+        }
+    }
+
+    fn less_equal_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for less_equal: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(&other.data)
+            .map_collect(|&a, &b| {
+                if a <= b {
+                    <T as CPUNumber>::one()
+                } else {
+                    <T as CPUNumber>::zero()
+                }
+            });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    fn less_equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.less_equal(&cuda_a, &cuda_b)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    // Equality comparison
+    pub fn equal(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.device != other.device {
+            return Err("Tensors must be on the same device".to_string());
+        }
+
+        match &self.device {
+            Device::CPU => self.equal_cpu(other),
+            Device::CUDA(_) => self.equal_cuda(other).or_else(|_| {
+                println!("CUDA equal failed, falling back to CPU");
+                self.equal_cpu(other)
+            }),
+        }
+    }
+
+    fn equal_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for equal: {:?} vs {:?}",
+                self.shape(),
+                other.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(&other.data)
+            .map_collect(|&a, &b| {
+                if a == b {
+                    <T as CPUNumber>::one()
+                } else {
+                    <T as CPUNumber>::zero()
+                }
+            });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    fn equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.equal(&cuda_a, &cuda_b)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    // Logical NOT operation
+    pub fn logical_not(&self) -> Result<GPUTensor<T>, String> {
+        match &self.device {
+            Device::CPU => self.logical_not_cpu(),
+            Device::CUDA(_) => self.logical_not_cuda().or_else(|_| {
+                println!("CUDA logical_not failed, falling back to CPU");
+                self.logical_not_cpu()
+            }),
+        }
+    }
+
+    fn logical_not_cpu(&self) -> Result<GPUTensor<T>, String> {
+        let result_data = self.data.mapv(|x| {
+            if x == <T as CPUNumber>::zero() {
+                <T as CPUNumber>::one()
+            } else {
+                <T as CPUNumber>::zero()
+            }
+        });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    fn logical_not_cuda(&self) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.logical_not(&cuda_tensor)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    // Check if values are in range
+    pub fn in_range(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
+        match &self.device {
+            Device::CPU => self.in_range_cpu(min_val, max_val),
+            Device::CUDA(_) => self.in_range_cuda(min_val, max_val).or_else(|_| {
+                println!("CUDA in_range failed, falling back to CPU");
+                self.in_range_cpu(min_val, max_val)
+            }),
+        }
+    }
+
+    fn in_range_cpu(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
+        let result_data = self.data.mapv(|x| {
+            if x >= min_val && x <= max_val {
+                <T as CPUNumber>::one()
+            } else {
+                <T as CPUNumber>::zero()
+            }
+        });
+
+        Ok(Self::new_with_device(result_data, self.device.clone()))
+    }
+
+    fn in_range_cuda(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.in_range(&cuda_tensor, min_val, max_val)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
+
+    // Expand dimensions
+    pub fn expand_dims(&self, axis: usize) -> Result<GPUTensor<T>, String> {
+        if axis > self.ndim() {
+            return Err(format!(
+                "Cannot insert axis {} for tensor with {} dimensions",
+                axis,
+                self.ndim()
+            ));
+        }
+
+        let expanded = self.data.clone().insert_axis(ndarray::Axis(axis));
+        Ok(Self::new_with_device(expanded, self.device.clone()))
+    }
+
+    /// SIGN METHOD
+    pub fn sign(&self) -> GPUTensor<T> {
+        match &self.device {
+            Device::CPU => self.sign_cpu(),
+            Device::CUDA(_) => self.sign_cuda().unwrap_or_else(|_| {
+                println!("CUDA sign failed, falling back to CPU");
+                self.sign_cpu()
+            }),
+        }
+    }
+
+    fn sign_cpu(&self) -> GPUTensor<T> {
+        let result_data = self.data.mapv(|x| {
+            if x > <T as CPUNumber>::zero() {
+                <T as CPUNumber>::one()
+            } else if x < <T as CPUNumber>::zero() {
+                -<T as CPUNumber>::one()
+            } else {
+                <T as CPUNumber>::zero()
+            }
+        });
+
+        Self::new_with_device(result_data, self.device.clone())
+    }
+
+    fn sign_cuda(&self) -> Result<GPUTensor<T>, String> {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+        let cuda_ops = cuda_backend.ops();
+        let result_cuda = cuda_ops.sign(&cuda_tensor)?;
+
+        self.create_tensor_from_cuda_result(result_cuda)
+    }
 
     fn create_tensor_from_cuda_result(
         &self,
@@ -1528,7 +1812,6 @@ where
         self.create_tensor_from_cuda_result(result_cuda)
     }
 
-   
     // ------------------------------------------------------------
     // MAX ALONG DIMENSION & SQRT OPS
     // -------------------------------------------------------------
@@ -1548,8 +1831,6 @@ where
             },
         }
     }
-
-   
 
     // CPU fallback implementations
     fn sqrt_cpu(&self) -> Result<Self, String> {
@@ -1580,8 +1861,6 @@ where
 
         self.create_tensor_from_cuda_result(result_cuda)
     }
-
-    
 }
 
 // Additional utility methods for better testing support
