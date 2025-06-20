@@ -23,6 +23,9 @@ pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx"
 pub const MIN_PTX: &[u8] = include_bytes!("../../../kernels/min.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 pub const SIGN_PTX: &[u8] = include_bytes!("../../../kernels/sign.ptx");
+pub const ABS_PTX: &[u8] = include_bytes!("../../../kernels/abs.ptx");
+pub const SQRT_PTX: &[u8] = include_bytes!("../../../kernels/sqrt.ptx");
+pub const MAX_ALONG_DIM_PTX: &[u8] = include_bytes!("../../../kernels/max_along_dim.ptx");
 
 /// CUDA kernel manager that handles loading and executing kernels
 pub struct CudaKernels {
