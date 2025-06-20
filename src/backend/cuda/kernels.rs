@@ -399,13 +399,13 @@ impl CudaKernels {
     /// Gets a cloned kernel function by name for launching
     /// This is the preferred method since launch() consumes the function
     pub fn get_function_cloned(&self, name: &str) -> Option<CudaFunction> {
-        self.functions.get(name).cloned()
+        self.get_function_cloned(name).cloned()
     }
 
     /// Gets a reference to a loaded kernel function by name (Not cloned)
     /// Should only be used if you don't need to launch immediately
     pub fn get_function(&self, name: &str) -> Option<&CudaFunction> {
-        self.functions.get(name)
+        self.get_function_cloned(name)
     }
 
     /// Convenience method to launch add kernel
@@ -825,13 +825,11 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("greater_equal")
+        let func = self.get_function_cloned("greater_equal")
             .ok_or("Greater equal kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch greater_equal kernel: {}", e))?;
         }
         Ok(())
@@ -845,13 +843,11 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("greater_equal_f64")
+        let func = self.get_function_cloned("greater_equal_f64")
             .ok_or("Greater equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch greater_equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -865,13 +861,11 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("less_equal")
+        let func = self.get_function_cloned("less_equal")
             .ok_or("Less equal kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch less_equal kernel: {}", e))?;
         }
         Ok(())
@@ -886,12 +880,11 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String> {
         let func = self
-            .functions
-            .get("less_equal_f64")
+            .get_function_cloned("less_equal_f64")
             .ok_or("Less equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch less_equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -906,12 +899,11 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String> {
         let func = self
-            .functions
-            .get("equal")
+            .get_function_cloned("equal")
             .ok_or("Equal kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch equal kernel: {}", e))?;
         }
         Ok(())
@@ -926,12 +918,11 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String> {
         let func = self
-            .functions
-            .get("equal_f64")
+            .get_function_cloned("equal_f64")
             .ok_or("Equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -944,13 +935,11 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("logical_not")
+        let func = self.get_function_cloned("logical_not")
             .ok_or("Logical not kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch logical_not kernel: {}", e))?;
         }
         Ok(())
@@ -963,13 +952,11 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("logical_not_f64")
+        let func = self.get_function_cloned("logical_not_f64")
             .ok_or("Logical not f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch logical_not_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -984,13 +971,10 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("in_range")
-            .ok_or("In range kernel not loaded")?;
+        let func = self.get_function_cloned("in_range").ok_or("In range kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, min_val, max_val, result, size))
+            func.launch(cfg, (input, min_val, max_val, result, size))
                 .map_err(|e| format!("Failed to launch in_range kernel: {}", e))?;
         }
         Ok(())
@@ -1005,13 +989,11 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self
-            .functions
-            .get("in_range_f64")
+        let func = self.get_function_cloned("in_range_f64")
             .ok_or("In range f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, min_val, max_val, result, size))
+            func.launch(cfg, (input, min_val, max_val, result, size))
                 .map_err(|e| format!("Failed to launch in_range_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -1026,10 +1008,10 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("sign").ok_or("Sign kernel not loaded")?;
+        let func = self.get_function_cloned("sign").ok_or("Sign kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch sign kernel: {}", e))?;
         }
         Ok(())
@@ -1048,7 +1030,7 @@ impl CudaKernels {
             .ok_or("Sign f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch sign_f64 kernel: {}", e))?;
         }
         Ok(())

@@ -744,7 +744,7 @@ impl<'a> CudaOps<'a> {
         b: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
@@ -808,7 +808,7 @@ impl<'a> CudaOps<'a> {
         b: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
@@ -862,7 +862,7 @@ impl<'a> CudaOps<'a> {
 
     pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin+ 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
@@ -933,7 +933,7 @@ impl<'a> CudaOps<'a> {
 
     pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin+ 'static,
     {
         let total_elements = input.shape.iter().product::<usize>();
         let mut result = CudaTensor::zeros(&self.memory, input.shape.clone())?;
@@ -996,7 +996,7 @@ impl<'a> CudaOps<'a> {
         max_val: T,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin+ 'static,
     {
         let total_elements = input.shape.iter().product::<usize>();
         let mut result = CudaTensor::zeros(&self.memory, input.shape.clone())?;
@@ -1067,7 +1067,7 @@ impl<'a> CudaOps<'a> {
     /// Sign operation using CUDA kernel
     pub fn sign<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin ,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         let total_elements = input.shape.iter().product::<usize>();
         let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
