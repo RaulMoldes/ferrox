@@ -125,10 +125,10 @@ where
 
     /// Conditional selection: where condition is true, use true_vals, else false_vals (CPU only for now)
     pub fn where_condition(
-        condition: &CPUTensor<T>,
-        true_vals: &CPUTensor<T>,
-        false_vals: &CPUTensor<T>,
-    ) -> Result<CPUTensor<T>, String> {
+        condition: &GPUTensor<T>,
+        true_vals: &GPUTensor<T>,
+        false_vals: &GPUTensor<T>,
+    ) -> Result<GPUTensor<T>, String> {
         let condition_vec = condition.to_vec()?;
         let true_vec = true_vals.to_vec()?;
         let false_vec = false_vals.to_vec()?;
@@ -146,7 +146,7 @@ where
             })
             .collect();
 
-        CPUTensor::from_vec(result_vec, condition.shape())
+        GPUTensor::from_vec(result_vec, condition.shape())
     }
 
     // Helper method to perform CPU operations on this GPU-capable tensor
