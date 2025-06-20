@@ -114,13 +114,13 @@ where
 
         let a = &inputs[0];
         let b = &inputs[1];
-        
+
         let b_transposed = b.transpose(None)?;
         let grad_a = grad_output.matmul(&b_transposed)?;
-        
+
         let a_transposed = a.transpose(None)?;
         let grad_b = a_transposed.matmul(grad_output)?;
-        
+
         Ok(vec![grad_a, grad_b])
     }
 
@@ -532,8 +532,7 @@ impl TransposeOp {
 
 impl<T> Operator<T> for TransposeOp
 where
-    T: GPUNumber
-        
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -588,7 +587,7 @@ impl ReshapeOp {
 
 impl<T> Operator<T> for ReshapeOp
 where
-    T: GPUNumber
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -628,7 +627,7 @@ impl BroadcastToOp {
 
 impl<T> Operator<T> for BroadcastToOp
 where
-    T: GPUNumber
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -689,7 +688,7 @@ impl SummationOp {
 
 impl<T> Operator<T> for SummationOp
 where
-    T: GPUNumber
+    T: GPUNumber,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -782,7 +781,7 @@ where
 
         let mask_a = inputs[0].less_equal(&inputs[1])?;
         let mask_b = mask_a.logical_not()?;
-        
+
         let grad_a = grad_output.mul(&mask_a)?;
         let grad_b = grad_output.mul(&mask_b)?;
 
@@ -838,7 +837,7 @@ where
         // When a == b, we assign gradient to the first input (arbitrary choice)
         let mask_a = inputs[0].greater_equal(&inputs[1])?;
         let mask_b = mask_a.logical_not()?;
-        
+
         let grad_a = grad_output.mul(&mask_a)?;
         let grad_b = grad_output.mul(&mask_b)?;
 
@@ -894,7 +893,6 @@ where
             return Err("ClampOp requires exactly 1 input".to_string());
         }
 
-        
         Ok(inputs[0].clamp(self.min_val, self.max_val))
     }
 
@@ -958,13 +956,11 @@ where
         // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
         // Special case: at x = 0, we return 0 instead of infinity
 
-        
         let two = Tensor::<T>::ones(inputs[0].shape())
             .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap());
-       
-        
+
         let sqrt_input = inputs[0].sqrt()?;
-    
+
         let denominator = two.mul(&sqrt_input)?;
         let grad = grad_output.div(&denominator)?;
 
@@ -1059,7 +1055,7 @@ where
 /// For elements that were not the maximum, the gradient is zero.
 /// When there are ties (multiple elements have the same maximum value),
 /// the gradient is distributed equally among them.
-/// 
+///
 #[derive(Debug, Clone)]
 pub struct MaxAlongDimOp {
     /// Dimension along which to compute the maximum
@@ -1085,7 +1081,6 @@ where
             return Err("MaxAlongDimOp requires exactly 1 input".to_string());
         }
 
-     
         inputs[0].max_along_dim(self.dim)
     }
 
@@ -1099,7 +1094,6 @@ where
         }
 
         let input = &inputs[0];
-       
 
         // First, compute the maximum values again to determine which elements were maximal
         let max_values = input.max_along_dim(self.dim)?;
@@ -1110,8 +1104,6 @@ where
         let count_maxima = mask.sum(Some(self.dim));
         let expanded_count = count_maxima.expand_dims(self.dim)?;
         let expanded_grad = grad_output.expand_dims(self.dim)?;
-        
-
 
         // Gradient is (mask / count) * grad_output
         // This ensures gradient is distributed equally among tied maxima
@@ -1183,7 +1175,7 @@ where
         // Step 1: Find maximum along the specified dimension for numerical stability
         let max_vals = input.max_along_dim(self.dim)?;
 
-        // Step 2: Expand max_vals back to original shape for broadcasting  
+        // Step 2: Expand max_vals back to original shape for broadcasting
         let expanded_max = max_vals.unsqueeze(self.dim);
         let broadcasted_max = expanded_max.broadcast_to(input_shape)?;
 
@@ -1215,30 +1207,30 @@ where
         if inputs.len() != 1 {
             return Err("SoftmaxOp requires exactly 1 input".to_string());
         }
-    
+
         let input = &inputs[0];
-    
+
         // Recompute softmax output (we need it for gradient computation)
         let softmax_output = self.compute(&[input.clone()])?;
-    
+
         // For softmax gradient: grad_input = softmax * (grad_output - sum(softmax * grad_output, dim))
-        
+
         // Compute element-wise product: softmax * grad_output
         let elementwise_product = softmax_output.mul(grad_output)?;
-    
+
         // Sum along the softmax dimension: sum(softmax * grad_output, dim)
         let sum_product = elementwise_product.sum(Some(self.dim));
-    
+
         // Expand sum back to original shape for broadcasting
         let expanded_sum = sum_product.unsqueeze(self.dim);
         let broadcasted_sum = expanded_sum.broadcast_to(input.shape())?;
-    
+
         // Compute final gradient: softmax * (grad_output - broadcasted_sum)
         let negated_sum = broadcasted_sum.negate();
         // This is equivalent to grad_output - sum(softmax * grad_output, dim)
         let grad_diff = grad_output.add(&negated_sum)?;
         let grad_input = softmax_output.mul(&grad_diff)?;
-    
+
         Ok(vec![grad_input])
     }
 

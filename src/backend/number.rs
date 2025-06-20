@@ -1,10 +1,10 @@
 // src/backend/CPUNumber.rs - Fixed trait implementations
 
+use ndarray::{LinalgScalar, ScalarOperand};
+use rand_distr::num_traits::{FromPrimitive, One, Zero};
 use std::cmp::{PartialEq, PartialOrd};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
-use rand_distr::num_traits::{Zero, One,FromPrimitive};
-use ndarray::{LinalgScalar, ScalarOperand};
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
@@ -87,14 +87,11 @@ pub trait CPUNumber:
 /// Additional trait for floating-point CPUNumber types
 
 pub trait CPUFloat: CPUNumber {
-
     fn zero() -> Self {
-        <Self as CPUNumber>::from_f64(0.0)
-            .expect("Failed to convert 0.0 to CPUFloat type")
+        <Self as CPUNumber>::from_f64(0.0).expect("Failed to convert 0.0 to CPUFloat type")
     }
     fn one() -> Self {
-        <Self as CPUNumber>::from_f64(1.0)
-        .expect("Failed to convert 1.0 to CPUFloat type")
+        <Self as CPUNumber>::from_f64(1.0).expect("Failed to convert 1.0 to CPUFloat type")
     }
     /// Square root
     fn sqrt(self) -> Self;
@@ -156,8 +153,6 @@ pub trait CPUFloat: CPUNumber {
         // Default implementation for Float types
         CPUNumber::from_i64(value)
     }
-
-    
 }
 
 // Implementation for f64
@@ -204,9 +199,6 @@ impl CPUNumber for f64 {
 }
 
 impl CPUFloat for f64 {
-
-    
-
     fn sqrt(self) -> Self {
         self.sqrt()
     }
@@ -339,8 +331,6 @@ impl CPUFloat for f32 {
     fn epsilon() -> Self {
         f32::EPSILON
     }
-
-    
 }
 
 // Implementation for i32
@@ -471,9 +461,6 @@ impl CPUNumber for i64 {
     }
 }
 
-
-
-
 // CUDA trait implementations - only compiled when cuda feature is enabled
 // These implementations ensure that f32, f64, i32, and i64 can be used with GPUNumber
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
@@ -520,7 +507,3 @@ impl<T: CPUNumber> GPUNumber for T {}
 
 #[cfg(not(feature = "cuda"))]
 impl<T: CPUFloat> GPUFloat for T {}
-
-
-
-

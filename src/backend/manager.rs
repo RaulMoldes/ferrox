@@ -23,10 +23,9 @@ impl BackendManager {
 
     /// Initialize with CUDA if available
     pub fn init() -> Self {
-
         #[cfg(not(feature = "cuda"))]
         let manager = Self::new();
-        
+
         #[cfg(feature = "cuda")]
         let mut manager = Self::new();
 

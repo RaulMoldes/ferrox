@@ -397,7 +397,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise minimum operation
-    pub fn min_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    pub fn min_elementwise<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
@@ -416,12 +420,16 @@ impl<'a> CudaOps<'a> {
             &mut result.data,
             size as i32,
         )?;
-        
+
         Ok(result)
     }
 
     /// Element-wise maximum operation
-    pub fn max_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    pub fn max_elementwise<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
@@ -440,7 +448,7 @@ impl<'a> CudaOps<'a> {
             &mut result.data,
             size as i32,
         )?;
-        
+
         Ok(result)
     }
 
@@ -453,13 +461,9 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels.launch_abs(
-            cfg,
-            &input.data,
-            &mut result.data,
-            size as i32,
-        )?;
-        
+        self.kernels
+            .launch_abs(cfg, &input.data, &mut result.data, size as i32)?;
+
         Ok(result)
     }
 
@@ -472,13 +476,9 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels.launch_sqrt(
-            cfg,
-            &input.data,
-            &mut result.data,
-            size as i32,
-        )?;
-        
+        self.kernels
+            .launch_sqrt(cfg, &input.data, &mut result.data, size as i32)?;
+
         Ok(result)
     }
 
@@ -493,31 +493,39 @@ impl<'a> CudaOps<'a> {
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
     {
         let input_shape = &input.shape;
-    
+
         // Validate dimension
         if dim >= input_shape.len() {
-            return Err(format!("Dimension {} out of bounds for tensor with {} dimensions", dim, input_shape.len()));
+            return Err(format!(
+                "Dimension {} out of bounds for tensor with {} dimensions",
+                dim,
+                input_shape.len()
+            ));
         }
-    
+
         // Calculate output shape
         let mut output_shape = input_shape.clone();
         output_shape.remove(dim);
-    
+
         // Calculate dimensions for simpler kernel
         let outer_size = input_shape[..dim].iter().product::<usize>() as i32;
         let axis_size = input_shape[dim] as i32;
         let inner_size = input_shape[dim + 1..].iter().product::<usize>() as i32;
-    
+
         // Create output tensor
         let mut result = CudaTensor::zeros(self.memory, output_shape)?;
-    
+
         // Configure kernel launch
         let cfg = LaunchConfig {
-            grid_dim: (((outer_size * inner_size + 255) / 256).try_into().unwrap(), 1, 1),
+            grid_dim: (
+                ((outer_size * inner_size + 255) / 256).try_into().unwrap(),
+                1,
+                1,
+            ),
             block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
-    
+
         self.kernels.launch_max_along_dim(
             cfg,
             &input.data,
@@ -526,7 +534,7 @@ impl<'a> CudaOps<'a> {
             axis_size,
             inner_size,
         )?;
-    
+
         Ok(result)
     }
 
@@ -663,7 +671,6 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-
     /// Mean along axis (uses sum_axis + division)
     /// This reuses existing kernels rather than creating a new one
     pub fn mean_axis<T>(
@@ -729,222 +736,291 @@ impl<'a> CudaOps<'a> {
     }
 
     /// COMPARISON OPERATIONS
-     // Comparison operations using CUDA kernels
-     pub fn greater_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-     where
-         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-     {
-         if a.shape != b.shape {
-             return Err("Shape mismatch for greater_equal operation".to_string());
-         }
- 
-         let total_elements = a.shape.iter().product::<usize>();
-         let mut result = CudaTensor::zeros(&self.memory_manager, a.shape.clone())?;
- 
-         let block_size = 256;
-         let grid_size = (total_elements + block_size - 1) / block_size;
- 
-         let cfg = LaunchConfig {
-             grid_dim: (grid_size as u32, 1, 1),
-             block_dim: (block_size as u32, 1, 1),
-             shared_mem_bytes: 0,
-         };
- 
-         // Choose kernel based on type
-         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-             self.kernels.launch_greater_equal_f32(
-                 cfg,
-                 &a.data,
-                 &b.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-             self.kernels.launch_greater_equal_f64(
-                 cfg,
-                 &a.data,
-                 &b.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else {
-             return Err("Unsupported type for greater_equal operation".to_string());
-         }
- 
-         Ok(result)
-     }
- 
-     pub fn less_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-     where
-         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-     {
-         if a.shape != b.shape {
-             return Err("Shape mismatch for less_equal operation".to_string());
-         }
- 
-         let total_elements = a.shape.iter().product::<usize>();
-         let mut result = CudaTensor::zeros(&self.memory_manager, a.shape.clone())?;
- 
-         let block_size = 256;
-         let grid_size = (total_elements + block_size - 1) / block_size;
- 
-         let cfg = LaunchConfig {
-             grid_dim: (grid_size as u32, 1, 1),
-             block_dim: (block_size as u32, 1, 1),
-             shared_mem_bytes: 0,
-         };
- 
-         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-             self.kernels.launch_less_equal_f32(
-                 cfg,
-                 &a.data,
-                 &b.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-             self.kernels.launch_less_equal_f64(
-                 cfg,
-                 &a.data,
-                 &b.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else {
-             return Err("Unsupported type for less_equal operation".to_string());
-         }
- 
-         Ok(result)
-     }
- 
-     pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-     where
-         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-     {
-         if a.shape != b.shape {
-             return Err("Shape mismatch for equal operation".to_string());
-         }
- 
-         let total_elements = a.shape.iter().product::<usize>();
-         let mut result = CudaTensor::zeros(&self.memory_manager, a.shape.clone())?;
- 
-         let block_size = 256;
-         let grid_size = (total_elements + block_size - 1) / block_size;
- 
-         let cfg = LaunchConfig {
-             grid_dim: (grid_size as u32, 1, 1),
-             block_dim: (block_size as u32, 1, 1),
-             shared_mem_bytes: 0,
-         };
- 
-         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-             self.kernels.launch_equal_f32(
-                 cfg,
-                 &a.data,
-                 &b.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-             self.kernels.launch_equal_f64(
-                 cfg,
-                 &a.data,
-                 &b.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else {
-             return Err("Unsupported type for equal operation".to_string());
-         }
- 
-         Ok(result)
-     }
- 
-     pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-     where
-         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-     {
-         let total_elements = input.shape.iter().product::<usize>();
-         let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
- 
-         let block_size = 256;
-         let grid_size = (total_elements + block_size - 1) / block_size;
- 
-         let cfg = LaunchConfig {
-             grid_dim: (grid_size as u32, 1, 1),
-             block_dim: (block_size as u32, 1, 1),
-             shared_mem_bytes: 0,
-         };
- 
-         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-             self.kernels.launch_logical_not_f32(
-                 cfg,
-                 &input.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-             self.kernels.launch_logical_not_f64(
-                 cfg,
-                 &input.data,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else {
-             return Err("Unsupported type for logical_not operation".to_string());
-         }
- 
-         Ok(result)
-     }
- 
-     pub fn in_range<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
-     where
-         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
-     {
-         let total_elements = input.shape.iter().product::<usize>();
-         let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
- 
-         let block_size = 256;
-         let grid_size = (total_elements + block_size - 1) / block_size;
- 
-         let cfg = LaunchConfig {
-             grid_dim: (grid_size as u32, 1, 1),
-             block_dim: (block_size as u32, 1, 1),
-             shared_mem_bytes: 0,
-         };
- 
-         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-             // Cast min_val and max_val to f32 for the kernel
-             let min_f32 = unsafe { std::mem::transmute::<T, f32>(min_val) };
-             let max_f32 = unsafe { std::mem::transmute::<T, f32>(max_val) };
-             
-             self.kernels.launch_in_range_f32(
-                 cfg,
-                 &input.data,
-                 min_f32,
-                 max_f32,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-             let min_f64 = unsafe { std::mem::transmute::<T, f64>(min_val) };
-             let max_f64 = unsafe { std::mem::transmute::<T, f64>(max_val) };
-             
-             self.kernels.launch_in_range_f64(
-                 cfg,
-                 &input.data,
-                 min_f64,
-                 max_f64,
-                 &mut result.data,
-                 total_elements as i32,
-             )?;
-         } else {
-             return Err("Unsupported type for in_range operation".to_string());
-         }
- 
-         Ok(result)
-     }
-    
+    // Comparison operations using CUDA kernels
+    pub fn greater_equal<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for greater_equal operation".to_string());
+        }
+
+        let total_elements = a.shape.iter().product::<usize>();
+        let mut result = CudaTensor::zeros(&self.memory, a.shape.clone())?;
+
+        let block_size = 256;
+        let grid_size = (total_elements + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        // Choose kernel based on type
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            // Safe transmutation: we know T is f32 at runtime
+            unsafe {
+                let a_f32 = std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data);
+                let b_f32 = std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data);
+                let result_f32 =
+                    std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data);
+
+                self.kernels.launch_greater_equal_f32(
+                    cfg,
+                    a_f32,
+                    b_f32,
+                    result_f32,
+                    total_elements as i32,
+                )?;
+            }
+        } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            // Safe transmutation: we know T is f64 at runtime
+
+            let a_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&a.data) };
+            let b_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&b.data) };
+            let result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+
+            self.kernels.launch_greater_equal_f64(
+                cfg,
+                a_f64,
+                b_f64,
+                result_f64,
+                total_elements as i32,
+            )?;
+        } else {
+            return Err("Unsupported type for greater_equal operation".to_string());
+        }
+
+        Ok(result)
+    }
+
+    pub fn less_equal<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for less_equal operation".to_string());
+        }
+
+        let total_elements = a.shape.iter().product::<usize>();
+        let mut result = CudaTensor::zeros(&self.memory, a.shape.clone())?;
+
+        let block_size = 256;
+        let grid_size = (total_elements + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            let a_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data) };
+            let b_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data) };
+            let result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+
+            self.kernels.launch_less_equal_f32(
+                cfg,
+                &a_f32,
+                &b_f32,
+                &mut result_f32,
+                total_elements as i32,
+            )?;
+        } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            let a_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&a.data) };
+            let b_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&b.data) };
+            let result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+            self.kernels.launch_less_equal_f64(
+                cfg,
+                &a_f64,
+                &b_f64,
+                &mut result_f64,
+                total_elements as i32,
+            )?;
+        } else {
+            return Err("Unsupported type for less_equal operation".to_string());
+        }
+
+        Ok(result)
+    }
+
+    pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        if a.shape != b.shape {
+            return Err("Shape mismatch for equal operation".to_string());
+        }
+
+        let total_elements = a.shape.iter().product::<usize>();
+        let mut result = CudaTensor::zeros(&self.memory, a.shape.clone())?;
+
+        let block_size = 256;
+        let grid_size = (total_elements + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            let a_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data) };
+            let b_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data) };
+            let result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+            self.kernels.launch_equal_f32(
+                cfg,
+                &a_f32,
+                &b_f32,
+                &mut result_f32,
+                total_elements as i32,
+            )?;
+        } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            let a_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&a.data) };
+            let b_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&b.data) };
+            let result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+            self.kernels.launch_equal_f64(
+                cfg,
+                &a_f64,
+                &b_f64,
+                &mut result_f64,
+                total_elements as i32,
+            )?;
+        } else {
+            return Err("Unsupported type for equal operation".to_string());
+        }
+
+        Ok(result)
+    }
+
+    pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let total_elements = input.shape.iter().product::<usize>();
+        let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
+
+        let block_size = 256;
+        let grid_size = (total_elements + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            let input_f32 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&input.data) };
+            let result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+
+            self.kernels.launch_logical_not_f32(
+                cfg,
+                &input_f32,
+                &mut result_f32,
+                total_elements as i32,
+            )?;
+        } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            let input_f64 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&input.data) };
+            let result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+            self.kernels.launch_logical_not_f64(
+                cfg,
+                &input_f64,
+                &mut result_f64,
+                total_elements as i32,
+            )?;
+        } else {
+            return Err("Unsupported type for logical_not operation".to_string());
+        }
+
+        Ok(result)
+    }
+
+    pub fn in_range<T>(
+        &self,
+        input: &CudaTensor<T>,
+        min_val: T,
+        max_val: T,
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin,
+    {
+        let total_elements = input.shape.iter().product::<usize>();
+        let mut result = CudaTensor::zeros(&self.memory_manager, input.shape.clone())?;
+
+        let block_size = 256;
+        let grid_size = (total_elements + block_size - 1) / block_size;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (block_size as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            // Cast min_val and max_val to f32 for the kernel
+            let min_f32 = unsafe { std::mem::transmute::<T, f32>(min_val) };
+            let max_f32 = unsafe { std::mem::transmute::<T, f32>(max_val) };
+            let input_f32 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&input.data) };
+            let mut result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+            self.kernels.launch_in_range_f32(
+                cfg,
+                &input_f32,
+                min_f32,
+                max_f32,
+                &mut result_f32,
+                total_elements as i32,
+            )?;
+        } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            let min_f64 = unsafe { std::mem::transmute::<T, f64>(min_val) };
+            let max_f64 = unsafe { std::mem::transmute::<T, f64>(max_val) };
+            let input_f64 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&input.data) };
+            let mut result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+
+            self.kernels.launch_in_range_f64(
+                cfg,
+                &input_f64,
+                min_f64,
+                max_f64,
+                &mut result_f64,
+                total_elements as i32,
+            )?;
+        } else {
+            return Err("Unsupported type for in_range operation".to_string());
+        }
+
+        Ok(result)
+    }
 
     /// Sign operation using CUDA kernel
     pub fn sign<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
@@ -964,17 +1040,27 @@ impl<'a> CudaOps<'a> {
         };
 
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+            let input_f32 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&input.data) };
+            let mut result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
             self.kernels.launch_sign_f32(
                 cfg,
-                &input.data,
-                &mut result.data,
+                &input_f32,
+                &mut result_f32,
                 total_elements as i32,
             )?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            let input_f64 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&input.data) };
+            let mut result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
             self.kernels.launch_sign_f64(
                 cfg,
-                &input.data,
-                &mut result.data,
+                &input_f64,
+                &mut result_f64,
                 total_elements as i32,
             )?;
         } else {
@@ -983,7 +1069,7 @@ impl<'a> CudaOps<'a> {
 
         Ok(result)
     }
-    
+
     /// Create zeros tensor with given shape (utility function)
     pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
     where

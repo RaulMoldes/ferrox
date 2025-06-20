@@ -244,62 +244,80 @@ impl CudaKernels {
             }
             "max_along_dim" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "reduction_module", &["max_reduce_along_dim"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "reduction_module",
+                        &["max_reduce_along_dim"],
+                    )
                     .map_err(|e| format!("Failed to load max_along_dim kernel: {}", e))?;
                 let func = self
                     .device
                     .get_func("reduction_module", "max_reduce_along_dim")
                     .ok_or_else(|| "Failed to get max_along_dim function".to_string())?;
                 self.functions.insert("max_along_dim".to_string(), func);
-            }           
+            }
             // Comparison kernels
             "greater_equal" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "comparison_module", &["greater_equal_kernel", "greater_equal_kernel_f64"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "comparison_module",
+                        &["greater_equal_kernel", "greater_equal_kernel_f64"],
+                    )
                     .map_err(|e| format!("Failed to load greater_equal kernel: {}", e))?;
-                
+
                 let func_f32 = self
                     .device
                     .get_func("comparison_module", "greater_equal_kernel")
                     .ok_or_else(|| "Failed to get greater_equal function".to_string())?;
                 self.functions.insert("greater_equal".to_string(), func_f32);
-                
+
                 let func_f64 = self
                     .device
                     .get_func("comparison_module", "greater_equal_kernel_f64")
                     .ok_or_else(|| "Failed to get greater_equal_f64 function".to_string())?;
-                self.functions.insert("greater_equal_f64".to_string(), func_f64);
+                self.functions
+                    .insert("greater_equal_f64".to_string(), func_f64);
             }
-            
+
             "less_equal" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "comparison_module", &["less_equal_kernel", "less_equal_kernel_f64"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "comparison_module",
+                        &["less_equal_kernel", "less_equal_kernel_f64"],
+                    )
                     .map_err(|e| format!("Failed to load less_equal kernel: {}", e))?;
-                
+
                 let func_f32 = self
                     .device
                     .get_func("comparison_module", "less_equal_kernel")
                     .ok_or_else(|| "Failed to get less_equal function".to_string())?;
                 self.functions.insert("less_equal".to_string(), func_f32);
-                
+
                 let func_f64 = self
                     .device
                     .get_func("comparison_module", "less_equal_kernel_f64")
                     .ok_or_else(|| "Failed to get less_equal_f64 function".to_string())?;
-                self.functions.insert("less_equal_f64".to_string(), func_f64);
+                self.functions
+                    .insert("less_equal_f64".to_string(), func_f64);
             }
-            
+
             "equal" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "comparison_module", &["equal_kernel", "equal_kernel_f64"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "comparison_module",
+                        &["equal_kernel", "equal_kernel_f64"],
+                    )
                     .map_err(|e| format!("Failed to load equal kernel: {}", e))?;
-                
+
                 let func_f32 = self
                     .device
                     .get_func("comparison_module", "equal_kernel")
                     .ok_or_else(|| "Failed to get equal function".to_string())?;
                 self.functions.insert("equal".to_string(), func_f32);
-                
+
                 let func_f64 = self
                     .device
                     .get_func("comparison_module", "equal_kernel_f64")
@@ -308,33 +326,42 @@ impl CudaKernels {
             }
             "logical_not" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "comparison_module", &["logical_not_kernel", "logical_not_kernel_f64"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "comparison_module",
+                        &["logical_not_kernel", "logical_not_kernel_f64"],
+                    )
                     .map_err(|e| format!("Failed to load logical_not kernel: {}", e))?;
-                
+
                 let func_f32 = self
                     .device
                     .get_func("comparison_module", "logical_not_kernel")
                     .ok_or_else(|| "Failed to get logical_not function".to_string())?;
                 self.functions.insert("logical_not".to_string(), func_f32);
-                
+
                 let func_f64 = self
                     .device
                     .get_func("comparison_module", "logical_not_kernel_f64")
                     .ok_or_else(|| "Failed to get logical_not_f64 function".to_string())?;
-                self.functions.insert("logical_not_f64".to_string(), func_f64);
+                self.functions
+                    .insert("logical_not_f64".to_string(), func_f64);
             }
-            
+
             "in_range" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "comparison_module", &["in_range_kernel", "in_range_kernel_f64"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "comparison_module",
+                        &["in_range_kernel", "in_range_kernel_f64"],
+                    )
                     .map_err(|e| format!("Failed to load in_range kernel: {}", e))?;
-                
+
                 let func_f32 = self
                     .device
                     .get_func("comparison_module", "in_range_kernel")
                     .ok_or_else(|| "Failed to get in_range function".to_string())?;
                 self.functions.insert("in_range".to_string(), func_f32);
-                
+
                 let func_f64 = self
                     .device
                     .get_func("comparison_module", "in_range_kernel_f64")
@@ -343,22 +370,26 @@ impl CudaKernels {
             }
             "sign" => {
                 self.device
-                    .load_ptx(ptx_str.into(), "sign_module", &["sign_kernel", "sign_kernel_f64"])
+                    .load_ptx(
+                        ptx_str.into(),
+                        "sign_module",
+                        &["sign_kernel", "sign_kernel_f64"],
+                    )
                     .map_err(|e| format!("Failed to load sign kernel: {}", e))?;
-                
+
                 let func_f32 = self
                     .device
                     .get_func("sign_module", "sign_kernel")
                     .ok_or_else(|| "Failed to get sign function".to_string())?;
                 self.functions.insert("sign".to_string(), func_f32);
-                
+
                 let func_f64 = self
                     .device
                     .get_func("sign_module", "sign_kernel_f64")
                     .ok_or_else(|| "Failed to get sign_f64 function".to_string())?;
                 self.functions.insert("sign_f64".to_string(), func_f64);
             }
-            
+
             _ => return Err(format!("Unknown kernel name: {}", name)),
         }
 
@@ -776,7 +807,7 @@ impl CudaKernels {
         let kernel = self
             .get_function_cloned("max_along_dim")
             .ok_or_else(|| "Max along dim kernel not found".to_string())?;
-    
+
         unsafe {
             // Usar la versión simplificada que coincide con el kernel
             kernel
@@ -784,7 +815,6 @@ impl CudaKernels {
                 .map_err(|e| format!("Failed to launch max_along_dim kernel: {}", e))
         }
     }
-
 
     // Launch methods for comparison operations
     pub fn launch_greater_equal_f32(
@@ -795,11 +825,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("greater_equal")
+        let func = self
+            .functions
+            .get("greater_equal")
             .ok_or("Greater equal kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch greater_equal kernel: {}", e))?;
         }
         Ok(())
@@ -813,11 +845,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("greater_equal_f64")
+        let func = self
+            .functions
+            .get("greater_equal_f64")
             .ok_or("Greater equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch greater_equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -831,11 +865,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("less_equal")
+        let func = self
+            .functions
+            .get("less_equal")
             .ok_or("Less equal kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch less_equal kernel: {}", e))?;
         }
         Ok(())
@@ -849,11 +885,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("less_equal_f64")
+        let func = self
+            .functions
+            .get("less_equal_f64")
             .ok_or("Less equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch less_equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -867,11 +905,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("equal")
+        let func = self
+            .functions
+            .get("equal")
             .ok_or("Equal kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch equal kernel: {}", e))?;
         }
         Ok(())
@@ -885,11 +925,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("equal_f64")
+        let func = self
+            .functions
+            .get("equal_f64")
             .ok_or("Equal f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (a, b, result, size))
+            func.launch(cfg, (a, b, result, size))
                 .map_err(|e| format!("Failed to launch equal_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -902,11 +944,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("logical_not")
+        let func = self
+            .functions
+            .get("logical_not")
             .ok_or("Logical not kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch logical_not kernel: {}", e))?;
         }
         Ok(())
@@ -919,11 +963,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("logical_not_f64")
+        let func = self
+            .functions
+            .get("logical_not_f64")
             .ok_or("Logical not f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch logical_not_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -938,11 +984,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("in_range")
+        let func = self
+            .functions
+            .get("in_range")
             .ok_or("In range kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, min_val, max_val, result, size))
+            func.launch(cfg, (input, min_val, max_val, result, size))
                 .map_err(|e| format!("Failed to launch in_range kernel: {}", e))?;
         }
         Ok(())
@@ -957,11 +1005,13 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("in_range_f64")
+        let func = self
+            .functions
+            .get("in_range_f64")
             .ok_or("In range f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, min_val, max_val, result, size))
+            func.launch(cfg, (input, min_val, max_val, result, size))
                 .map_err(|e| format!("Failed to launch in_range_f64 kernel: {}", e))?;
         }
         Ok(())
@@ -976,11 +1026,10 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("sign")
-            .ok_or("Sign kernel not loaded")?;
+        let func = self.functions.get("sign").ok_or("Sign kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch sign kernel: {}", e))?;
         }
         Ok(())
@@ -993,16 +1042,17 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.functions.get("sign_f64")
+        let func = self
+            .functions
+            .get("sign_f64")
             .ok_or("Sign f64 kernel not loaded")?;
 
         unsafe {
-            func.launch_async(cfg, (input, result, size))
+            func.launch(cfg, (input, result, size))
                 .map_err(|e| format!("Failed to launch sign_f64 kernel: {}", e))?;
         }
         Ok(())
     }
-
 
     /// Returns reference to the CUDA device
     pub fn device(&self) -> &Arc<CudaDevice> {

@@ -1,4 +1,4 @@
-use crate::backend::number::{CPUNumber, GPUFloat, CPUFloat};
+use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -318,7 +318,7 @@ where
     /// Creates a new ELU activation layer with default α = 1.0.
     pub fn new() -> Self
     where
-        T: GPUFloat
+        T: GPUFloat,
     {
         Self {
             alpha: <T as CPUFloat>::from_f64(1.0).unwrap(),

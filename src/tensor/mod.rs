@@ -17,4 +17,3 @@ pub type Tensor<T> = GPUTensor<T>;
 
 #[cfg(not(feature = "cuda"))]
 pub type Tensor<T> = CPUTensor<T>;
-
