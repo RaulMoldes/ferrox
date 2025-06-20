@@ -399,7 +399,7 @@ impl CudaKernels {
     /// Gets a cloned kernel function by name for launching
     /// This is the preferred method since launch() consumes the function
     pub fn get_function_cloned(&self, name: &str) -> Option<CudaFunction> {
-        self.functions.get(name).cloned() 
+        self.functions.get(name).cloned()
     }
 
     /// Gets a reference to a loaded kernel function by name (Not cloned)
@@ -825,7 +825,8 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("greater_equal")
+        let func = self
+            .get_function_cloned("greater_equal")
             .ok_or("Greater equal kernel not loaded")?;
 
         unsafe {
@@ -843,7 +844,8 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("greater_equal_f64")
+        let func = self
+            .get_function_cloned("greater_equal_f64")
             .ok_or("Greater equal f64 kernel not loaded")?;
 
         unsafe {
@@ -861,7 +863,8 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("less_equal")
+        let func = self
+            .get_function_cloned("less_equal")
             .ok_or("Less equal kernel not loaded")?;
 
         unsafe {
@@ -935,7 +938,8 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("logical_not")
+        let func = self
+            .get_function_cloned("logical_not")
             .ok_or("Logical not kernel not loaded")?;
 
         unsafe {
@@ -952,7 +956,8 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("logical_not_f64")
+        let func = self
+            .get_function_cloned("logical_not_f64")
             .ok_or("Logical not f64 kernel not loaded")?;
 
         unsafe {
@@ -971,7 +976,9 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("in_range").ok_or("In range kernel not loaded")?;
+        let func = self
+            .get_function_cloned("in_range")
+            .ok_or("In range kernel not loaded")?;
 
         unsafe {
             func.launch(cfg, (input, min_val, max_val, result, size))
@@ -989,7 +996,8 @@ impl CudaKernels {
         result: &mut CudaSlice<f64>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("in_range_f64")
+        let func = self
+            .get_function_cloned("in_range_f64")
             .ok_or("In range f64 kernel not loaded")?;
 
         unsafe {
@@ -1008,7 +1016,9 @@ impl CudaKernels {
         result: &mut CudaSlice<f32>,
         size: i32,
     ) -> Result<(), String> {
-        let func = self.get_function_cloned("sign").ok_or("Sign kernel not loaded")?;
+        let func = self
+            .get_function_cloned("sign")
+            .ok_or("Sign kernel not loaded")?;
 
         unsafe {
             func.launch(cfg, (input, result, size))
@@ -1025,8 +1035,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String> {
         let func = self
-            .functions
-            .get("sign_f64")
+            .get_function_cloned("sign_f64")
             .ok_or("Sign f64 kernel not loaded")?;
 
         unsafe {

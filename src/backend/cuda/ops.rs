@@ -770,15 +770,14 @@ impl<'a> CudaOps<'a> {
                 let b_f32 = std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data);
                 let result_f32 =
                     std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data);
-
-                self.kernels.launch_greater_equal_f32(
-                    cfg,
-                    a_f32,
-                    b_f32,
-                    result_f32,
-                    total_elements as i32,
-                )?;
             }
+            self.kernels.launch_greater_equal_f32(
+                cfg,
+                a_f32,
+                b_f32,
+                result_f32,
+                total_elements as i32,
+            )?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
             // Safe transmutation: we know T is f64 at runtime
 
@@ -829,28 +828,28 @@ impl<'a> CudaOps<'a> {
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
             let a_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data) };
             let b_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data) };
-            let result_f32 = unsafe {
+            let mut result_f32 = unsafe {
                 std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
             };
 
             self.kernels.launch_less_equal_f32(
                 cfg,
-                &a_f32,
-                &b_f32,
+                a_f32,
+                b_f32,
                 result_f32,
                 total_elements as i32,
             )?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
             let a_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&a.data) };
             let b_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&b.data) };
-            let result_f64 = unsafe {
+            let mut result_f64 = unsafe {
                 std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
             };
             self.kernels.launch_less_equal_f64(
                 cfg,
-                &a_f64,
-                &b_f64,
-                &mut result_f64,
+                a_f64,
+                b_f64,
+                result_f64,
                 total_elements as i32,
             )?;
         } else {
@@ -862,7 +861,7 @@ impl<'a> CudaOps<'a> {
 
     pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin+ 'static,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
@@ -881,49 +880,21 @@ impl<'a> CudaOps<'a> {
         };
 
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-            let a_ptr = a.data.as_ptr() as *const f32;
-            let b_ptr = b.data.as_ptr() as *const f32;
-            let result_ptr = result.data.as_mut_ptr() as *mut f32;
-            
-            // Create f32 slices from raw pointers
-            let a_f32 = unsafe { 
-                std::slice::from_raw_parts(a_ptr, total_elements) 
+            let a_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&a.data) };
+            let b_f32 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&b.data) };
+            let mut result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
             };
-            let b_f32 = unsafe { 
-                std::slice::from_raw_parts(b_ptr, total_elements) 
-            };
-            let result_f32 = unsafe { 
-                std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-            };
-            self.kernels.launch_equal_f32(
-                cfg,
-                &a_f32,
-                &b_f32,
-                result_f32,
-                total_elements as i32,
-            )?;
+            self.kernels
+                .launch_equal_f32(cfg, a_f32, b_f32, result_f32, total_elements as i32)?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-            let a_ptr = a.data.as_ptr() as *const f64;
-            let b_ptr = b.data.as_ptr() as *const f64;
-            let result_ptr = result.data.as_mut_ptr() as *mut f64;
-            
-            // Create f32 slices from raw pointers
-            let a_f64 = unsafe { 
-                std::slice::from_raw_parts(a_ptr, total_elements) 
+            let a_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&a.data) };
+            let b_f64 = unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&b.data) };
+            let mut result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
             };
-            let b_f64 = unsafe { 
-                std::slice::from_raw_parts(b_ptr, total_elements) 
-            };
-            let result_f64 = unsafe { 
-                std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-            };
-            self.kernels.launch_equal_f64(
-                cfg,
-                &a_f64,
-                &b_f64,
-                result_f64,
-                total_elements as i32,
-            )?;
+            self.kernels
+                .launch_equal_f64(cfg, a_f64, b_f64, result_f64, total_elements as i32)?;
         } else {
             return Err("Unsupported type for equal operation".to_string());
         }
@@ -933,7 +904,7 @@ impl<'a> CudaOps<'a> {
 
     pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin+ 'static,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         let total_elements = input.shape.iter().product::<usize>();
         let mut result = CudaTensor::zeros(&self.memory, input.shape.clone())?;
@@ -949,36 +920,26 @@ impl<'a> CudaOps<'a> {
 
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
             // Safe casting - we know T is f32 here
-        let input_ptr = input.data.as_ptr() as *const f32;
-        let result_ptr = result.data.as_mut_ptr() as *mut f32;
-        
-        // Create f32 slices from raw pointers
-        let input_f32 = unsafe { 
-            std::slice::from_raw_parts(input_ptr, total_elements) 
-        };
-        let result_f32 = unsafe { 
-            std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-        };
+            let input_f32 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&input.data) };
+            let mut result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
             self.kernels.launch_logical_not_f32(
                 cfg,
-                &input_f32,
+                input_f32,
                 result_f32,
                 total_elements as i32,
             )?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-            // Similar for f64
-        let input_ptr = input.data.as_ptr() as *const f64;
-        let result_ptr = result.data.as_mut_ptr() as *mut f64;
-        
-        let input_f64 = unsafe { 
-            std::slice::from_raw_parts(input_ptr, total_elements) 
-        };
-        let result_f64 = unsafe { 
-            std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-        };
+            let input_f64 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&input.data) };
+            let mut result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
             self.kernels.launch_logical_not_f64(
                 cfg,
-                &input_f64,
+                input_f64,
                 result_f64,
                 total_elements as i32,
             )?;
@@ -996,7 +957,7 @@ impl<'a> CudaOps<'a> {
         max_val: T,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin+ 'static,
+        T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + Unpin + 'static,
     {
         let total_elements = input.shape.iter().product::<usize>();
         let mut result = CudaTensor::zeros(&self.memory, input.shape.clone())?;
@@ -1012,23 +973,18 @@ impl<'a> CudaOps<'a> {
 
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
             // Safe casting - we know T is f32 here
-        let input_ptr = input.data.as_ptr() as *const f32;
-        let result_ptr = result.data.as_mut_ptr() as *mut f32;
-        
-        // Create f32 slices from raw pointers
-        let input_f32 = unsafe { 
-            std::slice::from_raw_parts(input_ptr, total_elements) 
-        };
-        let result_f32 = unsafe { 
-            std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-        };
-        
-        // Cast values to f32
-        let min_f32 = unsafe { std::ptr::read(&min_val as *const T as *const f32) };
-        let max_f32 = unsafe { std::ptr::read(&max_val as *const T as *const f32) };
+            let input_f32 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&input.data) };
+            let mut result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+
+            // Cast values to f32
+            let min_f32 = unsafe { std::ptr::read(&min_val as *const T as *const f32) };
+            let max_f32 = unsafe { std::ptr::read(&max_val as *const T as *const f32) };
             self.kernels.launch_in_range_f32(
                 cfg,
-                &input_f32,
+                input_f32,
                 min_f32,
                 max_f32,
                 result_f32,
@@ -1036,22 +992,18 @@ impl<'a> CudaOps<'a> {
             )?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
             // Similar for f64
-        let input_ptr = input.data.as_ptr() as *const f64;
-        let result_ptr = result.data.as_mut_ptr() as *mut f64;
-        
-        let input_f64 = unsafe { 
-            std::slice::from_raw_parts(input_ptr, total_elements) 
-        };
-        let result_f64 = unsafe { 
-            std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-        };
-        
-        let min_f64 = unsafe { std::ptr::read(&min_val as *const T as *const f64) };
-        let max_f64 = unsafe { std::ptr::read(&max_val as *const T as *const f64) };
+            let input_f64 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&input.data) };
+            let mut result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+
+            let min_f64 = unsafe { std::ptr::read(&min_val as *const T as *const f64) };
+            let max_f64 = unsafe { std::ptr::read(&max_val as *const T as *const f64) };
 
             self.kernels.launch_in_range_f64(
                 cfg,
-                &input_f64,
+                input_f64,
                 min_f64,
                 max_f64,
                 result_f64,
@@ -1082,41 +1034,22 @@ impl<'a> CudaOps<'a> {
         };
 
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-             // Safe casting - we know T is f32 here
-        let input_ptr = input.data.as_ptr() as *const f32;
-        let result_ptr = result.data.as_mut_ptr() as *mut f32;
-        
-        // Create f32 slices from raw pointers
-        let input_f32 = unsafe { 
-            std::slice::from_raw_parts(input_ptr, total_elements) 
-        };
-        let result_f32 = unsafe { 
-            std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-        };
-            self.kernels.launch_sign_f32(
-                cfg,
-                &input_f32,
-                result_f32,
-                total_elements as i32,
-            )?;
+            let input_f32 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f32>>(&input.data) };
+            let mut result_f32 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f32>>(&mut result.data)
+            };
+            self.kernels
+                .launch_sign_f32(cfg, input_f32, result_f32, total_elements as i32)?;
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-             // Safe casting - we know T is f32 here
-        let input_ptr = input.data.as_ptr() as *const f64;
-        let result_ptr = result.data.as_mut_ptr() as *mut f64;
-        
-        // Create f64 slices from raw pointers
-        let input_f64 = unsafe { 
-            std::slice::from_raw_parts(input_ptr, total_elements) 
-        };
-        let result_f64 = unsafe { 
-            std::slice::from_raw_parts_mut(result_ptr, total_elements) 
-        };
-            self.kernels.launch_sign_f64(
-                cfg,
-                &input_f64,
-                result_f64,
-                total_elements as i32,
-            )?;
+            // Safe casting - we know T is f32 here
+            let input_f64 =
+                unsafe { std::mem::transmute::<&CudaSlice<T>, &CudaSlice<f64>>(&input.data) };
+            let mut result_f64 = unsafe {
+                std::mem::transmute::<&mut CudaSlice<T>, &mut CudaSlice<f64>>(&mut result.data)
+            };
+            self.kernels
+                .launch_sign_f64(cfg, &input_f64, result_f64, total_elements as i32)?;
         } else {
             return Err("Unsupported type for sign operation".to_string());
         }
