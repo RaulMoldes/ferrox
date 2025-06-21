@@ -45,7 +45,6 @@ fn compile_cuda_kernels() {
         "negate",    // New kernel
         "transpose", // New kernel
         "min",
-        "sub",
         "sqrt",
         "max_along_dim",
         "comparison", // New kernel

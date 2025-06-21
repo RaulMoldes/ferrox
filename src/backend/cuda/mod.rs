@@ -16,6 +16,9 @@ pub use memory::{CudaMemoryManager, CudaTensor};
 #[cfg(all(test, feature = "cuda"))]
 mod tests;
 
+#[cfg(all(test, feature = "cuda"))]
+mod kernel_tests;
+
 #[cfg(feature = "cuda")]
 pub use device::CudaBackend;
 #[cfg(feature = "cuda")]
