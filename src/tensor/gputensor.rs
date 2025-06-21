@@ -46,6 +46,19 @@ where
         }
     }
 
+    /// Helper to eliminate repeated backend access pattern.
+    /// This removes the need to repeatedly call `get_backend()` in every method.
+    /// Allows us to execute a closure with the CUDA backend.
+    fn with_cuda_backend<F, R>(&self, f: F) -> Result<R, String>
+    where
+        F: FnOnce(&crate::backend::cuda::CudaBackend) -> Result<R, String>,
+    {
+        use crate::backend::manager::get_backend;
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        f(cuda_backend)
+    }
+
     // Create tensor from Vec - this is the main way users will create tensors
     // Works exactly like CPUTensor but the result can be moved to GPU
     pub fn from_vec(data: Vec<T>, shape: &[usize]) -> Result<Self, String> {
@@ -195,11 +208,6 @@ where
         ))
     }
 
-    // Helper method to wrap CPU result back into GPUTensor
-    // This is needed when we fall back to CPU operations
-    fn wrap_cpu_result(&self, cpu_result: Self) -> Self {
-        cpu_result
-    }
 
     // Smart addition - this is the main API users will use
     // Automatically chooses between CPU and CUDA based on device
@@ -377,55 +385,22 @@ where
             ));
         }
 
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        // Get or create CUDA tensors for both operands
-        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
-
-        // Extract matrix dimensions
-        let m = a_shape[0] as i32; // rows of A
-        let k = a_shape[1] as i32; // cols of A / rows of B  
-        let n = b_shape[1] as i32; // cols of B
-
-        // Get CUDA operations handle
-        let cuda_ops = cuda_backend.ops();
-
-        // Create result tensor on GPU
-        let result_shape = vec![m as usize, n as usize];
-        let mut result_cuda = crate::backend::cuda::CudaTensor::zeros(
-            &cuda_backend.memory_manager(),
-            result_shape.clone(),
-        )?;
-
-        // Calculate optimal launch configuration for the kernel
-        // For matmul, we typically use 2D thread blocks
-        let block_size = 16; // 16x16 = 256 threads per block (good for most GPUs)
-        let grid_x = (n + block_size - 1) / block_size as i32;
-        let grid_y = (m + block_size - 1) / block_size as i32;
-
-        let cfg = cudarc::driver::LaunchConfig {
-            grid_dim: (grid_x as u32, grid_y as u32, 1),
-            block_dim: (block_size as u32, block_size as u32, 1),
-            shared_mem_bytes: 0,
-        };
-
-        // Launch the matmul kernel
-        // The kernel should compute: C[i,j] = sum_k(A[i,k] * B[k,j])
-        cuda_ops.kernels().launch_matmul(
-            cfg,
-            &cuda_a.data,          // input matrix A
-            &cuda_b.data,          // input matrix B
-            &mut result_cuda.data, // output matrix C
-            m,                     // rows of A
-            n,                     // cols of B
-            k,                     // inner dimension
-        )?;
-
-        // Convert the CUDA result back to GPUTensor
-        self.create_tensor_from_cuda_result(result_cuda)
-    }
+        
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensors for both operands
+            let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+            
+            // Get CUDA operations handle
+            let cuda_ops = cuda_backend.ops();
+            
+            // Use the high-level matmul operation instead of direct kernel launch
+            let result_cuda = cuda_ops.matmul(&cuda_a, &cuda_b)?;
+            
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+}
 }
 
 #[cfg(feature = "cuda")]
