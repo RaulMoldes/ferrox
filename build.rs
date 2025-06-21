@@ -28,28 +28,13 @@ fn compile_cuda_kernels() {
 
     // List of kernels to compile
     let kernels = [
-        "add",
-        "mul",
-        "div",
-        "sub", // New kernel
+        "elementwise",
+        "reduce",
         "matmul",
-        "relu",
-        "exp",
-        "log",
-        "sigmoid",
-        "tanh",
-        "powf",
-        "clamp",     // New kernel
-        "max",       // New kernel
-        "sum_axis",  // New kernel
-        "negate",    // New kernel
-        "transpose", // New kernel
-        "min",
-        "sqrt",
-        "max_along_dim",
+        "activations",
+        "transpose",
         "comparison", // New kernel
-        "sign",
-        "abs",
+      
     ];
 
     println!("Compiling CUDA kernels...");
