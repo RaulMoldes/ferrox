@@ -58,7 +58,7 @@ __global__ void elementwise_div(const float* a, const float* b, float* c, int si
 }
 
 extern "C" __global__ void elementwise_exp(const float* input, float* output, int size) {
-    int idx = get_global_idx()
+    int idx = get_global_idx();
     // THis is a basic element-wise exponential kernel
     if (idx < size) {
         output[idx] = expf(input[idx]);

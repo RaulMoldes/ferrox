@@ -25,7 +25,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
     KernelConfig { name: "elementwise", ptx: ELEMENTWISE_PTX, module: "elementwise_module", functions: &["elementwise_add","elementwise_sqrt", "elemenwise_abs", "elementwise_mul","elementwise_div","elementwise_sub","elementwise_pow", "elementwise_min", "elementwise_max", "elementwise_exp", "elementwise_log", "elementwise_negate"] },
     
     KernelConfig { name: "matmul", ptx: MATMUL_PTX, module: "matmul_module", functions: &["matmul"] },
-    KernelConfig { name: "activations", ptx: ACTIVATIONS_PTX, module: "activations_module", functions: &["relu", "sigmoid", "tanh"] },
+    KernelConfig { name: "activations", ptx: ACTIVATIONS_PTX, module: "activations_module", functions: &["relu", "sigmoid", "hyperbolic_tanh"] },
 
 
     KernelConfig { name: "sum_axis", ptx: REDUCES_PTX, module: "reduces_module", functions: &["sum_axis", "max_along_dim"] },

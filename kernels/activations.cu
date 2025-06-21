@@ -25,7 +25,7 @@ extern "C" __global__ void sigmoid(const float* input, float* output, int size) 
 }
 
 
-extern "C" __global__ void tanh(
+extern "C" __global__ void hyperbolic_tangent(
     const float* input,
     float* output,
     int size
