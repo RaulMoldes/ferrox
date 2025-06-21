@@ -3,7 +3,7 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
-use crate::backend::{CPUNumber, GPUFloat, GPUNumber, CPUFloat};
+use crate::backend::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
 use crate::tensor::Tensor;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug

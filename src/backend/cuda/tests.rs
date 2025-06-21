@@ -642,9 +642,6 @@ mod tests {
             }
         }
     }
-
-
-    
 }
 
 // ----------------------------------------------------------
@@ -679,16 +676,19 @@ mod kernel_tests {
             let size = 1024;
             let a = vec![1.0f32; size];
             let b = vec![2.0f32; size];
-            
+
             let a_gpu = backend.device().htod_copy(a).unwrap();
             let b_gpu = backend.device().htod_copy(b).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             assert!(result.iter().all(|&x| (x - 3.0).abs() < 1e-6));
         }
@@ -700,16 +700,19 @@ mod kernel_tests {
             let size = 512;
             let a = vec![3.0f32; size];
             let b = vec![4.0f32; size];
-            
+
             let a_gpu = backend.device().htod_copy(a).unwrap();
             let b_gpu = backend.device().htod_copy(b).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_mul(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_mul(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             assert!(result.iter().all(|&x| (x - 12.0).abs() < 1e-6));
         }
@@ -721,16 +724,19 @@ mod kernel_tests {
             let size = 256;
             let a = vec![10.0f32; size];
             let b = vec![3.0f32; size];
-            
+
             let a_gpu = backend.device().htod_copy(a).unwrap();
             let b_gpu = backend.device().htod_copy(b).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_sub(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_sub(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             assert!(result.iter().all(|&x| (x - 7.0).abs() < 1e-6));
         }
@@ -742,16 +748,19 @@ mod kernel_tests {
             let size = 128;
             let a = vec![12.0f32; size];
             let b = vec![3.0f32; size];
-            
+
             let a_gpu = backend.device().htod_copy(a).unwrap();
             let b_gpu = backend.device().htod_copy(b).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_div(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_div(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             assert!(result.iter().all(|&x| (x - 4.0).abs() < 1e-6));
         }
@@ -762,20 +771,30 @@ mod kernel_tests {
         if let Some(backend) = setup_test_backend() {
             let size = 1000;
             let input: Vec<f32> = (0..size).map(|i| i as f32 - 500.0).collect();
-            
+
             let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
             let mut output_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_relu(cfg, &input_gpu, &mut output_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_relu(cfg, &input_gpu, &mut output_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
-            
+
             for (i, (&inp, &res)) in input.iter().zip(result.iter()).enumerate() {
                 let expected = inp.max(0.0);
-                assert!((res - expected).abs() < 1e-6, "ReLU failed at index {}: input={}, expected={}, got={}", i, inp, expected, res);
+                assert!(
+                    (res - expected).abs() < 1e-6,
+                    "ReLU failed at index {}: input={}, expected={}, got={}",
+                    i,
+                    inp,
+                    expected,
+                    res
+                );
             }
         }
     }
@@ -785,20 +804,30 @@ mod kernel_tests {
         if let Some(backend) = setup_test_backend() {
             let size = 100;
             let input: Vec<f32> = (0..size).map(|i| (i as f32 - 50.0) * 0.1).collect();
-            
+
             let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
             let mut output_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_activation("sigmoid", cfg, &input_gpu, &mut output_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_activation("sigmoid", cfg, &input_gpu, &mut output_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
-            
+
             for (i, (&inp, &res)) in input.iter().zip(result.iter()).enumerate() {
                 let expected = 1.0 / (1.0 + (-inp).exp());
-                assert!((res - expected).abs() < 1e-5, "Sigmoid failed at index {}: input={}, expected={}, got={}", i, inp, expected, res);
+                assert!(
+                    (res - expected).abs() < 1e-5,
+                    "Sigmoid failed at index {}: input={}, expected={}, got={}",
+                    i,
+                    inp,
+                    expected,
+                    res
+                );
             }
         }
     }
@@ -809,16 +838,19 @@ mod kernel_tests {
             let size = 64;
             let base = vec![2.0f32; size];
             let exp = vec![3.0f32; size];
-            
+
             let base_gpu = backend.device().htod_copy(base).unwrap();
             let exp_gpu = backend.device().htod_copy(exp).unwrap();
             let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_power(cfg, &base_gpu, &exp_gpu, &mut result_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_power(cfg, &base_gpu, &exp_gpu, &mut result_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
             assert!(result.iter().all(|&x| (x - 8.0).abs() < 1e-5));
         }
@@ -828,49 +860,60 @@ mod kernel_tests {
     fn test_kernel_error_handling() {
         if let Some(backend) = setup_test_backend() {
             let kernels = backend.kernels();
-            
+
             // Test non-existent kernel
             assert!(kernels.get_function_cloned("nonexistent").is_none());
-            
+
             // Test kernel with wrong parameters (should fail gracefully)
             let cfg = LaunchConfig {
                 grid_dim: (1, 1, 1),
                 block_dim: (1, 1, 1),
                 shared_mem_bytes: 0,
             };
-            
+
             let dummy_gpu = backend.device().alloc_zeros::<f32>(1).unwrap();
             let mut dummy_output = backend.device().alloc_zeros::<f32>(1).unwrap();
-            
+
             // This should work
-            let result = backend.kernels().launch_add(cfg, &dummy_gpu, &dummy_gpu, &mut dummy_output, 1);
+            let result =
+                backend
+                    .kernels()
+                    .launch_add(cfg, &dummy_gpu, &dummy_gpu, &mut dummy_output, 1);
             assert!(result.is_ok());
         }
     }
 
-    #[test] 
+    #[test]
     fn test_kernel_precision() {
         if let Some(backend) = setup_test_backend() {
             let size = 1000;
-            let precision_test: Vec<f32> = (0..size)
-                .map(|i| i as f32 * 0.001 + 1000.0)
-                .collect();
-            
+            let precision_test: Vec<f32> = (0..size).map(|i| i as f32 * 0.001 + 1000.0).collect();
+
             let a_gpu = backend.device().htod_copy(precision_test.clone()).unwrap();
             let b_gpu = backend.device().htod_copy(precision_test.clone()).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
-            backend.kernels().launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+
+            backend
+                .kernels()
+                .launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
-            
+
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-            
+
             for (i, (&a, &res)) in precision_test.iter().zip(result.iter()).enumerate() {
                 let expected = a * 2.0;
                 let diff = (res - expected).abs();
-                assert!(diff < 1e-5, "Precision error at index {}: expected={}, got={}, diff={}", i, expected, res, diff);
+                assert!(
+                    diff < 1e-5,
+                    "Precision error at index {}: expected={}, got={}, diff={}",
+                    i,
+                    expected,
+                    res,
+                    diff
+                );
             }
         }
     }
@@ -879,28 +922,31 @@ mod kernel_tests {
     fn test_large_tensor_operations() {
         if let Some(backend) = setup_test_backend() {
             let size = 1_000_000;
-            
+
             let a = vec![1.5f32; size];
             let b = vec![2.5f32; size];
-            
+
             let a_gpu = backend.device().htod_copy(a).unwrap();
             let b_gpu = backend.device().htod_copy(b).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-            
+
             let cfg = create_launch_config(size);
-            
+
             let start = std::time::Instant::now();
-            backend.kernels().launch_mul(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_mul(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
             let elapsed = start.elapsed();
-            
+
             println!("Large tensor mul ({} elements) took: {:?}", size, elapsed);
-            
+
             // Sample check
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             assert!((result[0] - 3.75).abs() < 1e-6);
-            assert!((result[size/2] - 3.75).abs() < 1e-6);
-            assert!((result[size-1] - 3.75).abs() < 1e-6);
+            assert!((result[size / 2] - 3.75).abs() < 1e-6);
+            assert!((result[size - 1] - 3.75).abs() < 1e-6);
         }
     }
 }
