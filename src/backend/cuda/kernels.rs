@@ -2,6 +2,7 @@
 use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::env::Args;
 
 /// Embedded PTX kernels
 pub const ELEMENTWISE_PTX: &[u8] = include_bytes!("../../../kernels/elementwise.ptx");
