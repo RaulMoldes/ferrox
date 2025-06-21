@@ -1371,8 +1371,8 @@ where
     fn logical_not_cuda(&self) -> Result<GPUTensor<T>, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Ensure both tensors are on CUDA
-            if !self.is_cuda() || !other.is_cuda() {
-                return Err("Both tensors must be on CUDA for logical not operation".to_string());
+            if !self.is_cuda()  {
+                return Err("Tensor must be on CUDA for logical not operation".to_string());
             }
 
             let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
@@ -1409,8 +1409,8 @@ where
     fn in_range_cuda(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Ensure both tensors are on CUDA
-            if !self.is_cuda() || !other.is_cuda() {
-                return Err("Both tensors must be on CUDA for in range operation".to_string());
+            if !self.is_cuda()  {
+                return Err("Tensor must be on CUDA for in range operation".to_string());
             }
 
             let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
