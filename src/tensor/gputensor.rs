@@ -428,20 +428,24 @@ where
     // This uses a parallel reduction on CUDA to sum the tensor.
     // It can sum along a specific axis or over the entire tensor.
     fn sum_cuda(&self, axis: Option<usize>) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
 
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensor
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
 
-        let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
-        let cuda_ops = cuda_backend.ops();
+            // Perform summation operation
+            let result_cuda = match axis {
+                // Use sum_axis for summing along a specific axis
+                Some(ax) => cuda_ops.sum_axis(&cuda_tensor, ax, false)?,
+                // Use sum_all for summing over the entire tensor
+                None => cuda_ops.sum_all(&cuda_tensor)?,
+            };
 
-        let result_cuda = match axis {
-            Some(ax) => cuda_ops.sum_axis(&cuda_tensor, ax, false)?,
-            None => cuda_ops.sum_all(&cuda_tensor)?,
-        };
-
-        self.create_tensor_from_cuda_result(result_cuda)
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+       
     }
 
     /// Smart sum operation
@@ -457,7 +461,7 @@ where
 
     // For mean operation, we can use the same logic as sum,
     // but we need to divide by the number of elements along the specified axis.
-
+    // TODO: Add a kernel for mean operation on CUDA.
     pub fn mean(&self, axis: Option<usize>) -> Self {
         match axis {
             Some(ax) => {
@@ -812,32 +816,36 @@ where
     }
 
     /// ------------------------------------------------------------
-    /// CUDA - BASED ARITHMETIC OPERATIONS
+    /// CUDA - BASED ELEMENTWISE ARITHMETIC OPERATIONS
     /// -------------------------------------------------------------
 
     pub fn add_cuda(&self, other: &GPUTensor<T>) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for add operation".to_string());
+            }
 
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+            // Convert tensors to CUDA if needed
+            let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
 
-        // Convert tensors to CUDA if needed
-        let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
-        let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+            // Perform CUDA operation
+            let cuda_ops = cuda_backend.ops();
+            let result_cuda = cuda_ops.add(&cuda_a, &cuda_b)?;
 
-        // Perform CUDA operation
-        let cuda_ops = cuda_backend.ops();
-        let result_cuda = cuda_ops.add(&cuda_a, &cuda_b)?;
-
-        // Create result tensor with CUDA storage
-        self.create_tensor_from_cuda_result(result_cuda)
+            // Create result tensor with CUDA storage
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
+    /// Element-wise multiplication on CUDA tensors
     pub fn mul_cuda(&self, other: &GPUTensor<T>) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+       self.with_cuda_backend(|cuda_backend| {
+        // Ensure both tensors are on CUDA
+        if !self.is_cuda() || !other.is_cuda() {
+            return Err("Both tensors must be on CUDA for mul operation".to_string());
+        }
 
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
@@ -846,13 +854,15 @@ where
         let result_cuda = cuda_ops.mul(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+       })
     }
-
+    /// Element-wise division on CUDA tensors
     pub fn div_cuda(&self, other: &GPUTensor<T>) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for div operation".to_string());
+            }
 
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
@@ -861,10 +871,11 @@ where
         let result_cuda = cuda_ops.div(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // ------------------------------------------------------------
-    // MAX-MIN-ABS OPERATIONS
+    // MAX-MIN-ABS OPERATIONS (ELEMENTWISE)
     // -------------------------------------------------------------
 
     /// Element-wise minimum between two tensors
@@ -968,10 +979,11 @@ where
 
     // CUDA implementations
     fn min_cuda(&self, other: &Self) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure both tensors are on CUDA
+        if !self.is_cuda() || !other.is_cuda() {
+            return Err("Both tensors must be on CUDA for min operation".to_string());
+        }
 
         let self_cuda = self.get_or_create_cuda_tensor(cuda_backend)?;
         let other_cuda = other.get_or_create_cuda_tensor(cuda_backend)?;
@@ -980,13 +992,15 @@ where
         let result_cuda = cuda_ops.min_elementwise(&self_cuda, &other_cuda)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+    })
     }
 
     fn max_cuda(&self, other: &Self) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for max operation".to_string());
+            }
 
         let self_cuda = self.get_or_create_cuda_tensor(cuda_backend)?;
         let other_cuda = other.get_or_create_cuda_tensor(cuda_backend)?;
@@ -995,19 +1009,22 @@ where
         let result_cuda = cuda_ops.max_elementwise(&self_cuda, &other_cuda)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn abs_cuda(&self) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure tensor is on CUDA
+        if !self.is_cuda() {
+            return Err("Tensor must be on CUDA for abs operation".to_string());
+        }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.abs(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
     /// ------------------------------------------------------------
     /// CLAMP OPERATION
@@ -1038,15 +1055,19 @@ where
     }
 
     fn clamp_cuda(&self, min_val: T, max_val: T) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
+        
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure tensor is on CUDA
+        if !self.is_cuda() {
+            return Err("Tensor must be on CUDA for clamp operation".to_string());
+        }
+        // Get or create CUDA tensor
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
 
         let result_cuda = cuda_ops.clamp(&cuda_tensor, min_val, max_val)?;
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     /// -------------------------------------------------------------
@@ -1120,16 +1141,18 @@ where
     }
 
     fn max_along_dim_cuda(&self, dim: usize) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure tensor is on CUDA
+        if !self.is_cuda() {
+            return Err("Tensor must be on CUDA for max_along_dim operation".to_string());
+        }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.max_along_dim(&cuda_tensor, dim)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Helper methods (similar to CPUTensor)
@@ -1202,11 +1225,14 @@ where
 
     // CUDA implementation for greater_equal
     fn greater_equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
+        
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure both tensors are on CUDA
+        if !self.is_cuda() || !other.is_cuda() {
+            return Err("Both tensors must be on CUDA for greater_equal operation".to_string());
+        }
 
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
+        // Get or create CUDA tensors for both operands
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
 
@@ -1214,6 +1240,7 @@ where
         let result_cuda = cuda_ops.greater_equal(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Less than or equal comparison
@@ -1254,10 +1281,11 @@ where
     }
 
     fn less_equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for less_equal operation".to_string());
+            }
 
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
@@ -1266,6 +1294,7 @@ where
         let result_cuda = cuda_ops.less_equal(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Equality comparison
@@ -1306,10 +1335,11 @@ where
     }
 
     fn equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for equal operation".to_string());
+            }
 
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
@@ -1318,6 +1348,7 @@ where
         let result_cuda = cuda_ops.equal(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Logical NOT operation
@@ -1344,16 +1375,18 @@ where
     }
 
     fn logical_not_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for logical not operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.logical_not(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Check if values are in range
@@ -1380,16 +1413,18 @@ where
     }
 
     fn in_range_cuda(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for in range operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.in_range(&cuda_tensor, min_val, max_val)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Expand dimensions
@@ -1432,16 +1467,18 @@ where
     }
 
     fn sign_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for sign operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.sign(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn create_tensor_from_cuda_result(
@@ -1521,42 +1558,48 @@ where
     // ------------------------------------------
 
     pub fn add_scalar_cuda(&self, scalar: T) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for add scalar operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.add_scalar(&cuda_tensor, scalar)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     pub fn mul_scalar_cuda(&self, scalar: T) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for mul scalar operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.mul_scalar(&cuda_tensor, scalar)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     pub fn div_scalar_cuda(&self, scalar: T) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for div scalar operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.div_scalar(&cuda_tensor, scalar)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 }
 
@@ -1720,36 +1763,41 @@ where
     // CUDA - BASED ACTIVATION FUNCTIONS
     // -------------------------------------------------------------
     pub fn relu_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for relu operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.relu(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     pub fn exp_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for exp operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.exp(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn powf_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for pow operation".to_string());
+            }
 
         // Convert both tensors to CUDA
         let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
@@ -1759,62 +1807,72 @@ where
         let result_cuda = cuda_ops.power(&cuda_a, &cuda_b)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn power_scalar_cuda(&self, scalar: T) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for power scalar operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.power_scalar(&cuda_tensor, scalar)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn log_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for log operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.log(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn tanh_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+             // Ensure both tensors are on CUDA
+             if !self.is_cuda() {
+                return Err("Tensor must be on CUDA for tanh operation".to_string());
+            }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.tanh(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     fn sigmoid_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure tensor is on CUDA
+        if !self.is_cuda() {
+            return Err("Tensor must be on CUDA for sigmoid operation".to_string());
+        }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.sigmoid(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+
+        })
     }
 
     // ------------------------------------------------------------
-    // MAX ALONG DIMENSION & SQRT OPS
+    // SQRT OPS
     // -------------------------------------------------------------
 
     /// Element-wise square root
@@ -1851,16 +1909,19 @@ where
 
     // CUDA implementations
     fn sqrt_cuda(&self) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
+        self.with_cuda_backend(|cuda_backend| {
+        
+        // Ensure tensor is on CUDA
+        if !self.is_cuda() {
+            return Err("Tensor must be on CUDA for sqrt operation".to_string());
+        }
+        // Get or create CUDA tensor
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.sqrt(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 }
 
@@ -1881,16 +1942,18 @@ where
     }
 
     fn negate_cuda(&self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        self.with_cuda_backend(|cuda_backend| {
+        // Ensure tensor is on CUDA
+        if !self.is_cuda() {
+            return Err("Tensor must be on CUDA for negate operation".to_string());
+        }
 
         let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
         let cuda_ops = cuda_backend.ops();
         let result_cuda = cuda_ops.negate(&cuda_tensor)?;
 
         self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     /// Smart negate operation
