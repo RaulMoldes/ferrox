@@ -1,6 +1,6 @@
 // Helper function to get global thread index
 __device__ inline int get_global_idx() {
-    return  get_global_idx();;
+    return  blockIdx.x * blockDim.x + threadIdx.x;
 }
 
 extern "C" __global__ void relu(
