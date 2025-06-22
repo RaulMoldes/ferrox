@@ -11,6 +11,19 @@ pub const REDUCES_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
 pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 
+// Common trait for CUDA kernel types
+// This trait ensures that any type used in CUDA kernels implements the necessary traits
+// - DeviceRepr: for CUDA memory representation
+// - Clone: for cloning kernel parameters
+// - ValidAsZeroBits: for zero-initialization compatibility
+// - Unpin: for safe usage in async contexts
+pub trait CudaKernelType: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin {}
+
+impl<T> CudaKernelType for T 
+where 
+    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin 
+{}
+
 // Generic kernel launch macro
 macro_rules! launch_kernel {
     ($self:expr, $kernel_name:expr, $cfg:expr, $params:expr) => {{
@@ -25,12 +38,6 @@ macro_rules! launch_kernel {
     }};
 }
 
-// Common type constraint for CUDA kernels.
-// Dyn keyword tells the rust compiler to use dynamic dispatch for this type,
-// allowing us to store different kernel types in the same collection.
-// This is necessary because CUDA kernels can have different signatures and types,
-// but we want to treat them uniformly in our kernel manager.
-type CudaKernelType = dyn cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin;
 
 /// Kernel configuration for automatic loading
 struct KernelConfig {
