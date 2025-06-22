@@ -6,9 +6,7 @@ use super::kernels::CudaKernels;
 use super::memory::{CudaMemoryManager, CudaTensor};
 use cudarc::driver::LaunchConfig;
 
-// Common type constraint for all CUDA operations - reduces repetitive where clauses
-pub trait CudaOperationType: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin {}
-/// High-level CUDA operations manager
+// CudaOps provides a high-level interface for performing tensor operations on GPU
 /// This is the main interface for performing tensor operations on GPU
 /// The lifetime parameter ensures operations don't outlive the underlying CUDA resources
 pub struct CudaOps<'a> {

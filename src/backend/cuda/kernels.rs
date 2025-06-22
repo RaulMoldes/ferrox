@@ -12,10 +12,6 @@ pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx"
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 
 
-impl<T> CudaKernelType for T 
-where 
-    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin 
-{}
 
 // Generic kernel launch macro
 macro_rules! launch_kernel {
