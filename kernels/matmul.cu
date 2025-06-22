@@ -1,4 +1,7 @@
 // matmul.cu
+#include <cuda_runtime.h>
+#include <math.h>
+#include <float.h>
 
 #define TILE_SIZE 16
 

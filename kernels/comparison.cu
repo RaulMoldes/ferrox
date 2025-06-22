@@ -1,5 +1,7 @@
 // kernels/comparison.cu
-
+#include <cuda_runtime.h>
+#include <math.h>
+#include <float.h>
 // CUDA kernels for comparison operations
 
 // Helper function to get global thread index

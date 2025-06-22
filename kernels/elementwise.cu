@@ -1,5 +1,7 @@
 // Helper function to get global thread index
-
+#include <cuda_runtime.h>
+#include <math.h>
+#include <float.h>
 
 __device__ inline int get_global_idx() {
     return blockIdx.x * blockDim.x + threadIdx.x;

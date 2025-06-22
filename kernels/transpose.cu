@@ -1,4 +1,7 @@
 // transpose.cu 
+#include <cuda_runtime.h>
+#include <math.h>
+#include <float.h>
 
 extern "C" __global__ void transpose_2d(
     const float* input,
