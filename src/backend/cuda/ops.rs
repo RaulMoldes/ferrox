@@ -78,7 +78,7 @@ impl<'a> CudaOps<'a> {
     /// More efficient than creating dedicated scalar kernels for each operation
     pub fn full<T>(&self, shape: &[usize], value: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType,
+        T: CudaOperationType,
     {
         let size = shape.iter().product();
         let host_data = vec![value; size];
@@ -89,7 +89,7 @@ impl<'a> CudaOps<'a> {
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
     pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + Default,
+        T: CudaOperationType + Default,
     {
         CudaTensor::zeros(self.memory, shape.to_vec())
     }
@@ -97,7 +97,7 @@ impl<'a> CudaOps<'a> {
     /// Create ones tensor - useful for creating bias vectors and normalization
     pub fn ones<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + From<i32>,
+        T: CudaOperationType + From<i32>,
     {
         let one = T::from(1);
         self.full(shape, one)
@@ -108,7 +108,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise addition: result = a + b
     pub fn add<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());
@@ -126,7 +126,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise multiplication: result = a * b  
     pub fn mul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for multiplication".to_string());
@@ -144,7 +144,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise division: result = a / b
     pub fn div<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for division".to_string());
@@ -162,7 +162,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise subtraction: result = a - b
     pub fn sub<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for subtraction".to_string());
@@ -180,7 +180,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise power: result = a^b
     pub fn power<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for power operation".to_string());
@@ -198,7 +198,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise minimum: result = min(a, b)
     pub fn min_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for min operation".to_string());
@@ -216,7 +216,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise maximum: result = max(a, b)
     pub fn max_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for max operation".to_string());
@@ -236,7 +236,7 @@ impl<'a> CudaOps<'a> {
     /// Scalar addition: result = tensor + scalar
     pub fn add_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.add(a, &scalar_tensor)
@@ -245,7 +245,7 @@ impl<'a> CudaOps<'a> {
     /// Scalar multiplication: result = tensor * scalar
     pub fn mul_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.mul(a, &scalar_tensor)
@@ -254,7 +254,7 @@ impl<'a> CudaOps<'a> {
     /// Scalar division: result = tensor / scalar
     pub fn div_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.div(a, &scalar_tensor)
@@ -263,7 +263,7 @@ impl<'a> CudaOps<'a> {
     /// Scalar subtraction: result = tensor - scalar
     pub fn sub_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.sub(a, &scalar_tensor)
@@ -272,7 +272,7 @@ impl<'a> CudaOps<'a> {
     /// Scalar power: result = tensor^scalar
     pub fn power_scalar<T>(&self, base: &CudaTensor<T>, exponent: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let exponent_tensor = self.full(&base.shape, exponent)?;
         self.power(base, &exponent_tensor)
@@ -282,7 +282,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise absolute value: result = |input|
     pub fn abs<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -296,7 +296,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise square root: result = sqrt(input)
     pub fn sqrt<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -310,7 +310,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise exponential: result = exp(input)
     pub fn exp<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -324,7 +324,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise natural logarithm: result = ln(input)
     pub fn log<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -338,7 +338,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise negation: result = -input
     pub fn negate<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -353,7 +353,7 @@ impl<'a> CudaOps<'a> {
     /// ReLU activation: result = max(0, input)
     pub fn relu<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -367,7 +367,7 @@ impl<'a> CudaOps<'a> {
     /// Sigmoid activation: result = 1 / (1 + exp(-input))
     pub fn sigmoid<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType,
+        T: CudaOperationType,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -381,7 +381,7 @@ impl<'a> CudaOps<'a> {
     /// Hyperbolic tangent activation: result = tanh(input)
     pub fn tanh<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType,
+        T: CudaOperationType,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -396,7 +396,7 @@ impl<'a> CudaOps<'a> {
     /// Clamp values to specified range: result = clamp(input, min_val, max_val)
     pub fn clamp<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -411,7 +411,7 @@ impl<'a> CudaOps<'a> {
     /// Implements Leaky ReLU when min_val > 0, bounded ReLU when max_val < inf
     pub fn relu_clamp<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let relu_result = self.relu(input)?;
         self.clamp(&relu_result, min_val, max_val)
@@ -426,7 +426,7 @@ impl<'a> CudaOps<'a> {
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
     pub fn matmul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + Copy + 'static,
+        T: CudaOperationType + Copy + 'static,
     {
         if a.ndim() != 2 || b.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
@@ -465,7 +465,7 @@ impl<'a> CudaOps<'a> {
     /// 2D matrix transpose: result[j, i] = input[i, j]
     pub fn transpose_2d<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if input.shape.len() != 2 {
             return Err("Transpose operation requires 2D tensor".to_string());
@@ -493,7 +493,7 @@ impl<'a> CudaOps<'a> {
     /// Sum along specified axis
     pub fn sum_axis<T>(&self, input: &CudaTensor<T>, axis: usize, keep_dims: bool) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let input_shape = &input.shape;
 
@@ -538,7 +538,7 @@ impl<'a> CudaOps<'a> {
     /// Maximum along specified axis
     pub fn max_along_dim<T>(&self, input: &CudaTensor<T>, dim: usize) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let input_shape = &input.shape;
 
@@ -583,7 +583,7 @@ impl<'a> CudaOps<'a> {
     /// Sum all elements in tensor
     pub fn sum_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let mut current = input.clone();
         for axis in (0..input.shape.len()).rev() {
@@ -595,7 +595,7 @@ impl<'a> CudaOps<'a> {
     /// Sum along multiple axes
     pub fn sum_axes<T>(&self, input: &CudaTensor<T>, axes: &[usize], keep_dims: bool) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let mut sorted_axes = axes.to_vec();
         sorted_axes.sort_by(|a, b| b.cmp(a)); // Sort in descending order
@@ -610,7 +610,7 @@ impl<'a> CudaOps<'a> {
     /// Mean along axis: sum / count
     pub fn mean_axis<T>(&self, input: &CudaTensor<T>, axis: usize, keep_dims: bool) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + From<f32> + 'static,
+        T: CudaOperationType + From<f32> + 'static,
     {
         let sum_result = self.sum_axis(input, axis, keep_dims)?;
         let axis_size = input.shape[axis];
@@ -622,7 +622,7 @@ impl<'a> CudaOps<'a> {
     /// Mean of all elements
     pub fn mean_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + From<f32> + 'static,
+        T: CudaOperationType + From<f32> + 'static,
     {
         let sum_result = self.sum_all(input)?;
         let total_elements = input.size();
@@ -635,7 +635,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
     pub fn greater_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
@@ -653,7 +653,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
     pub fn less_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
@@ -671,7 +671,7 @@ impl<'a> CudaOps<'a> {
     /// Element-wise equality: result = (a == b) ? 1.0 : 0.0
     pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
@@ -690,7 +690,7 @@ impl<'a> CudaOps<'a> {
     /// Inverts boolean tensors following IEEE 754 convention
     pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -704,7 +704,7 @@ impl<'a> CudaOps<'a> {
     /// Sign function: result = sign(input) ∈ {-1, 0, 1}
     pub fn sign<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
@@ -718,7 +718,7 @@ impl<'a> CudaOps<'a> {
     /// Range check: result = (min_val <= input <= max_val) ? 1.0 : 0.0
     pub fn in_range<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
     where
-        T: CudaOPerationType + 'static,
+        T: CudaOperationType + 'static,
     {
         let size = input.size();
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
