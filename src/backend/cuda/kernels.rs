@@ -11,13 +11,6 @@ pub const REDUCES_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
 pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 
-// Common trait for CUDA kernel types
-// This trait ensures that any type used in CUDA kernels implements the necessary traits
-// - DeviceRepr: for CUDA memory representation
-// - Clone: for cloning kernel parameters
-// - ValidAsZeroBits: for zero-initialization compatibility
-// - Unpin: for safe usage in async contexts
-pub trait CudaKernelType: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin {}
 
 impl<T> CudaKernelType for T 
 where 
@@ -174,7 +167,7 @@ impl CudaKernels {
                                    a: &CudaSlice<T>, b: &CudaSlice<T>, 
                                    result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where 
-        T: CudaKernelType + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, (a, b, result, size))
@@ -186,7 +179,7 @@ impl CudaKernels {
                                   input: &CudaSlice<T>, output: &mut CudaSlice<T>, 
                                   size: i32) -> Result<(), String>
     where 
-        T: CudaKernelType + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, (input, output, size))
@@ -198,7 +191,7 @@ impl CudaKernels {
                           input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                           outer_size: i32, axis_size: i32, inner_size: i32) -> Result<(), String>
     where 
-        T: CudaKernelType + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, (input, output, outer_size, axis_size, inner_size))
@@ -211,7 +204,7 @@ impl CudaKernels {
     /// Element-wise tensor addition: result[i] = a[i] + b[i]
     pub fn launch_add<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_add", cfg, a, b, c, size)
     }
@@ -219,7 +212,7 @@ impl CudaKernels {
     /// Element-wise tensor multiplication: result[i] = a[i] * b[i] 
     pub fn launch_mul<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
     }
@@ -227,7 +220,7 @@ impl CudaKernels {
     /// Element-wise tensor division: result[i] = a[i] / b[i]
     pub fn launch_div<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_div", cfg, a, b, c, size)
     }
@@ -235,7 +228,7 @@ impl CudaKernels {
     /// Element-wise tensor subtraction: result[i] = a[i] - b[i]
     pub fn launch_sub<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_sub", cfg, a, b, c, size)
     }
@@ -243,7 +236,7 @@ impl CudaKernels {
     /// Element-wise power operation: result[i] = a[i] ^ b[i]
     pub fn launch_power<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                            c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_pow", cfg, a, b, c, size)
     }
@@ -251,7 +244,7 @@ impl CudaKernels {
     /// Element-wise minimum: result[i] = min(a[i], b[i])
     pub fn launch_min_elementwise<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                                     c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_min", cfg, a, b, c, size)
     }
@@ -259,7 +252,7 @@ impl CudaKernels {
     /// Element-wise maximum: result[i] = max(a[i], b[i])  
     pub fn launch_max_elementwise<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                                     c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_max", cfg, a, b, c, size)
     }
@@ -267,42 +260,42 @@ impl CudaKernels {
     // Unary elementwise operations
     pub fn launch_abs<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                         output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_elementwise("elementwise_abs", cfg, input, output, size)
     }
 
     pub fn launch_sqrt<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                          output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_elementwise("elementwise_sqrt", cfg, input, output, size)
     }
 
     pub fn launch_exp<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                         output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_elementwise("elementwise_exp", cfg, input, output, size)
     }
 
     pub fn launch_log<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                         output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_elementwise("elementwise_log", cfg, input, output, size)
     }
 
     pub fn launch_negate<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                            output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_elementwise("elementwise_negate", cfg, input, output, size)
     }
 
     pub fn launch_relu<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                           output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_elementwise("relu", cfg, input, output, size)
     }
@@ -310,14 +303,14 @@ impl CudaKernels {
     // Reduction operations
     pub fn launch_sum_axis<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                              outer_size: i32, axis_size: i32, inner_size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_reduction("sum_axis", cfg, input, output, outer_size, axis_size, inner_size)
     }
 
     pub fn launch_max_along_dim<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                                   outer_size: i32, axis_size: i32, inner_size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_reduction("max_along_dim", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -325,7 +318,7 @@ impl CudaKernels {
     // Special cases that need custom parameters
     pub fn launch_clamp<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                           min_val: T, max_val: T, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("clamp");
         launch_kernel!(self, &kernel_name, cfg, (input, output, min_val, max_val, size))
@@ -333,7 +326,7 @@ impl CudaKernels {
 
     pub fn launch_matmul<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                            c: &mut CudaSlice<T>, m: i32, n: i32, k: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("matmul");
         launch_kernel!(self, &kernel_name, cfg, (a, b, c, m, n, k))
@@ -341,7 +334,7 @@ impl CudaKernels {
 
     pub fn launch_transpose_2d<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                                  output: &mut CudaSlice<T>, rows: i32, cols: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("transpose_2d");
         launch_kernel!(self, &kernel_name, cfg, (input, output, rows, cols))
@@ -356,7 +349,7 @@ impl CudaKernels {
                                   a: &CudaSlice<T>, b: &CudaSlice<T>, 
                                   result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where 
-        T: CudaKernelType + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, (a, b, result, size))
@@ -368,7 +361,7 @@ impl CudaKernels {
                                  input: &CudaSlice<T>, result: &mut CudaSlice<T>, 
                                  size: i32) -> Result<(), String>
     where 
-        T: CudaKernelType + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, (input, result, size))
@@ -379,7 +372,7 @@ impl CudaKernels {
     /// Returns 1.0 for true, 0.0 for false - standard convention for boolean tensors in ML
     pub fn launch_greater_equal<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                                   result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_comparison("greater_equal", cfg, a, b, result, size)
     }
@@ -388,7 +381,7 @@ impl CudaKernels {
     /// Used in loss function computations and threshold-based operations
     pub fn launch_less_equal<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                                result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_comparison("less_equal", cfg, a, b, result, size)
     }
@@ -398,7 +391,7 @@ impl CudaKernels {
     /// Note: For floating point, this is exact equality - use with caution or implement tolerance-based version
     pub fn launch_equal<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                           result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_comparison("equal", cfg, a, b, result, size)
     }
@@ -408,7 +401,7 @@ impl CudaKernels {
     /// Follows IEEE 754 convention: 0.0 is false, any non-zero value is true
     pub fn launch_logical_not<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>,
                                 result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_comparison("logical_not", cfg, input, result, size)
     }
@@ -418,7 +411,7 @@ impl CudaKernels {
     /// This is mathematically different from logical operations - preserves the sign information
     pub fn launch_sign<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>,
                          result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_unary_comparison("sign", cfg, input, result, size)
     }
@@ -429,7 +422,7 @@ impl CudaKernels {
     /// Template parameters allow this to work with both f32 and f64 automatically
     pub fn launch_in_range<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                              min_val: T, max_val: T, result: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType + 'static,
+    where T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("in_range");
         launch_kernel!(self, &kernel_name, cfg, (input, min_val, max_val, result, size))
@@ -438,7 +431,7 @@ impl CudaKernels {
     // Keep existing unified activation launcher
     pub fn launch_activation<T>(&self, kernel_name: &str, cfg: LaunchConfig, 
                                input: &CudaSlice<T>, output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
-    where T: CudaKernelType,
+    where T: crate::backend::number::GPUNumber,
     {
         launch_kernel!(self, kernel_name, cfg, (input, output, size))
     }
