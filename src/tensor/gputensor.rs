@@ -474,12 +474,12 @@ where
     }
 
     // Smart mean operation
-    pub fn mean(&self, axis: Option<usize>) -> Result<Self, String> {
+    pub fn mean(&self, axis: Option<usize>) -> Self {
         match &self.device {
-            Device::CPU => Ok(self.mean_cpu(axis)),
-            Device::CUDA(_) => self.mean_cuda(axis).or_else(|_| {
+            Device::CPU => self.mean_cpu(axis),
+            Device::CUDA(_) => self.mean_cuda(axis).unwrap_or_else(|_| {
                 println!("CUDA mean failed, falling back to CPU");
-                Ok(self.mean_cpu(axis))
+                self.mean_cpu(axis)
             }),
         }
     }

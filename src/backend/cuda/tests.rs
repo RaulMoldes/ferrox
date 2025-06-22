@@ -713,8 +713,8 @@ mod kernel_tests {
             let b = vec![2.0f32; size];
             let expected = vec![3.0f32; size];
 
-            let a_gpu = backend.device().htod_copy(a).unwrap();
-            let b_gpu = backend.device().htod_copy(b).unwrap();
+            let a_gpu = backend.device().htod_copy(a.clone()).unwrap();
+            let b_gpu = backend.device().htod_copy(b.clone()).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
