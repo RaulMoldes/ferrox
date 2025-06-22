@@ -7,10 +7,7 @@ use super::memory::{CudaMemoryManager, CudaTensor};
 use cudarc::driver::LaunchConfig;
 
 // Common type constraint for all CUDA operations - reduces repetitive where clauses
-type CudaOperationType<T> = T
-where
-    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin;
-
+pub trait CudaOperationType: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin {}
 /// High-level CUDA operations manager
 /// This is the main interface for performing tensor operations on GPU
 /// The lifetime parameter ensures operations don't outlive the underlying CUDA resources

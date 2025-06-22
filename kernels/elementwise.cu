@@ -92,6 +92,9 @@ extern "C" __global__ void elementwise_log(
 
 
 
+
+
+
 extern "C" __global__ void elementwise_pow(
     const float* a,        // Base array
     const float* b,        // Exponent array  
@@ -232,5 +235,190 @@ extern "C" __global__ void elementwise_sub(
     int idx = get_global_idx();
     if (idx < size) {
         c[idx] = a[idx] - b[idx];
+    }
+}
+// ------------------------------------------------------
+// Double precision version of the elementwise operations
+// ------------------------------------------------------
+
+extern "C" __global__ void elementwise_add_f64(
+    const double* a,
+    const double* b,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = a[idx] + b[idx];
+    }
+}
+
+extern "C" __global__ void elementwise_abs_f64(
+    const double* input, 
+    double* output, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        output[idx] = fabs(input[idx]);
+    }
+}
+
+extern "C" __global__ void elementwise_mul_f64(
+    const double* a, 
+    const double* b, 
+    double* c, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        c[idx] = a[idx] * b[idx];
+    }
+}
+
+extern "C" __global__ void elementwise_div_f64(
+    const double* a, 
+    const double* b, 
+    double* c, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        if (b[idx] != 0.0) {
+            c[idx] = a[idx] / b[idx];
+        } else {
+            c[idx] = CUDART_INF;
+        }
+    }
+}
+
+extern "C" __global__ void elementwise_exp_f64(
+    const double* input, 
+    double* output, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        output[idx] = exp(input[idx]);
+    }
+}
+
+extern "C" __global__ void elementwise_log_f64(
+    const double* input,
+    double* output,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        double x = input[idx];
+        if (x <= 0.0) {
+            output[idx] = (x == 0.0) ? -CUDART_INF : CUDART_NAN;
+        } else {
+            output[idx] = log(x);
+        }
+    }
+}
+
+extern "C" __global__ void elementwise_pow_f64(
+    const double* a,
+    const double* b,
+    double* output,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        double base = a[idx];
+        double exponent = b[idx];
+        
+        if (base == 0.0 && exponent == 0.0) {
+            output[idx] = 1.0;
+        } else if (base == 0.0 && exponent > 0.0) {
+            output[idx] = 0.0;
+        } else if (base == 0.0 && exponent < 0.0) {
+            output[idx] = CUDART_INF;
+        } else if (base < 0.0 && floor(exponent) != exponent) {
+            output[idx] = CUDART_NAN;
+        } else {
+            output[idx] = pow(base, exponent);
+        }
+    }
+}
+
+extern "C" __global__ void elementwise_max_f64(
+    const double* a, 
+    const double* b, 
+    double* c, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        c[idx] = fmax(a[idx], b[idx]);
+    }
+}
+
+extern "C" __global__ void elementwise_min_f64(
+    const double* a, 
+    const double* b, 
+    double* c, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        c[idx] = fmin(a[idx], b[idx]);
+    }
+}
+
+extern "C" __global__ void elementwise_negate_f64(
+    const double* input,
+    double* output,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        output[idx] = -input[idx];
+    }
+}
+
+extern "C" __global__ void elementwise_sqrt_f64(
+    const double* input, 
+    double* output, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        double val = input[idx];
+        if (val >= 0.0) {
+            output[idx] = sqrt(val);
+        } else {
+            output[idx] = CUDART_NAN;
+        }
+    }
+}
+
+extern "C" __global__ void elementwise_sub_f64(
+    const double* a, 
+    const double* b, 
+    double* c, 
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        c[idx] = a[idx] - b[idx];
+    }
+}
+
+extern "C" __global__ void clamp_f64(
+    const double* input,
+    double* output, 
+    double min_val,
+    double max_val,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        double val = input[idx];
+        val = val < min_val ? min_val : val;
+        val = val > max_val ? max_val : val;
+        output[idx] = val;
     }
 }
