@@ -3,6 +3,18 @@
 #include <math.h>
 #include <float.h>
 
+#ifdef CUDART_INF
+// CUDART_INF is available
+#else
+#define CUDART_INF INFINITY
+#endif
+
+#ifdef CUDART_NAN
+// CUDART_NAN is available
+#else
+#define CUDART_NAN NAN
+#endif
+
 __device__ inline int get_global_idx() {
     return blockIdx.x * blockDim.x + threadIdx.x;
 }
