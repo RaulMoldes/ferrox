@@ -99,7 +99,7 @@ impl CudaKernels {
     fn launch_kernel<T, P>(&self, kernel_name: &str, cfg: LaunchConfig, params: P) -> Result<(), String>
     where
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
-         P: cudarc::driver::LaunchAsync<Args>,
+         P: cudarc::driver::LaunchAsync<P>,
     {
         let kernel = self.get_function_cloned(kernel_name)
             .ok_or_else(|| format!("{} kernel not found", kernel_name))?;
