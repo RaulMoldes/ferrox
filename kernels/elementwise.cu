@@ -1,4 +1,8 @@
 // Helper function to get global thread index
+
+#define CUDART_INF_F __int_as_float(0x7f800000)
+#define CUDART_INF __longlong_as_double(0x7ff0000000000000ULL)
+
 __device__ inline int get_global_idx() {
     return blockIdx.x * blockDim.x + threadIdx.x;
 }

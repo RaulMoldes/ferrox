@@ -1,4 +1,6 @@
 // transpose.cu 
+#define CUDART_INF_F __int_as_float(0x7f800000)
+#define CUDART_INF __longlong_as_double(0x7ff0000000000000ULL)
 
 extern "C" __global__ void transpose_2d(
     const float* input,
