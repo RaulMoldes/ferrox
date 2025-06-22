@@ -13,6 +13,21 @@ pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx"
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 
 
+// Generic kernel launch macro
+/// This macro simplifies launching kernels by automatically retrieving the function
+macro_rules! launch_kernel {
+    ($self:expr, $kernel_name:expr, $cfg:expr, $params:expr) => {{
+        let kernel = $self
+            .get_function_cloned($kernel_name)
+            .ok_or_else(|| format!("{} kernel not found", $kernel_name))?;
+        
+        unsafe {
+            kernel.launch($cfg, $params)
+                .map_err(|e| format!("Failed to launch {} kernel: {}", $kernel_name, e))
+        }
+    }};
+}
+
 /// Kernel configuration for automatic loading
 struct KernelConfig {
     name: &'static str,
@@ -95,7 +110,7 @@ impl CudaKernels {
     pub fn get_function(&self, name: &str) -> Option<&CudaFunction> {
         self.functions.get(name)
     }
-
+/*
     fn launch_kernel<T, P>(&self, kernel_name: &str, cfg: LaunchConfig, params: P) -> Result<(), String>
     where
         T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
@@ -108,49 +123,49 @@ impl CudaKernels {
             kernel.launch(cfg, params)
                 .map_err(|e| format!("Failed to launch {} kernel: {}", kernel_name, e))
         }
-    }
+    }*/
 
     // Simplified launch methods using the generic launcher
     pub fn launch_add<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("add", cfg, (a, b, c, size))
+        launch_kernel!(self, "add", cfg, (a, b, c, size))
     }
 
     pub fn launch_mul<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("mul", cfg, (a, b, c, size))
+        launch_kernel!(self, "mul", cfg, (a, b, c, size))
     }
 
     pub fn launch_div<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("div", cfg, (a, b, c, size))
+        launch_kernel!(self, "div", cfg, (a, b, c, size))
     }
 
     pub fn launch_sub<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                          c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("sub", cfg, (a, b, c, size))
+        launch_kernel!(self, "sub", cfg, (a, b, c, size))
     }
 
     pub fn launch_power<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                            c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("power", cfg, (a, b, c, size))
+        launch_kernel!(self, "power", cfg, (a, b, c, size))
     }
 
     pub fn launch_relu<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                           output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("relu", cfg, (input, output, size))
+        launch_kernel!(self, "relu", cfg, (input, output, size))
     }
 
     /// Unified activation launcher
@@ -158,77 +173,77 @@ impl CudaKernels {
                                input: &CudaSlice<T>, output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>(kernel_name, cfg, (input, output, size))
+        launch_kernel!(self, kernel_name, cfg, (input, output, size))
     }
 
     pub fn launch_matmul<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>, 
                            c: &mut CudaSlice<T>, m: i32, n: i32, k: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("matmul", cfg, (a, b, c, m, n, k))
+        launch_kernel!(self, "matmul", cfg, (a, b, c, m, n, k))
     }
 
     pub fn launch_clamp<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                           min_val: T, max_val: T, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("clamp", cfg, (input, output, min_val, max_val, size))
+        launch_kernel!(self, "clamp", cfg, (input, output, min_val, max_val, size))
     }
 
     pub fn launch_sum_axis<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                              outer_size: i32, axis_size: i32, inner_size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("sum_axis", cfg, (input, output, outer_size, axis_size, inner_size))
+        launch_kernel!(self, "sum_axis", cfg, (input, output, outer_size, axis_size, inner_size))
     }
 
     pub fn launch_negate<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                            output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("negate", cfg, (input, output, size))
+        launch_kernel!(self, "negate", cfg, (input, output, size))
     }
 
     pub fn launch_transpose_2d<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                                  output: &mut CudaSlice<T>, rows: i32, cols: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("transpose", cfg, (input, output, rows, cols))
+        launch_kernel!(self, "transpose", cfg, (input, output, rows, cols))
     }
 
     pub fn launch_min_elementwise<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                                     c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("min", cfg, (a, b, c, size))
+        launch_kernel!(self, "min", cfg, (a, b, c, size))
     }
 
     pub fn launch_max_elementwise<T>(&self, cfg: LaunchConfig, a: &CudaSlice<T>, b: &CudaSlice<T>,
                                     c: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("max", cfg, (a, b, c, size))
+        launch_kernel!(self, "max", cfg, (a, b, c, size))
     }
 
     pub fn launch_abs<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                         output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("abs", cfg, (input, output, size))
+        launch_kernel!(self, "abs", cfg, (input, output, size))
     }
 
     pub fn launch_sqrt<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, 
                          output: &mut CudaSlice<T>, size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("sqrt", cfg, (input, output, size))
+        launch_kernel!(self, "sqrt", cfg, (input, output, size))
     }
 
     pub fn launch_max_along_dim<T>(&self, cfg: LaunchConfig, input: &CudaSlice<T>, output: &mut CudaSlice<T>,
                                   outer_size: i32, axis_size: i32, inner_size: i32) -> Result<(), String>
     where T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
     {
-        self.launch_kernel::<T, _>("max_along_dim", cfg, (input, output, outer_size, axis_size, inner_size))
+        launch_kernel!(self, "max_along_dim", cfg, (input, output, outer_size, axis_size, inner_size))
     }
 
     // Comparison operations
