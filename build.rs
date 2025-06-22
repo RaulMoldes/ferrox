@@ -77,6 +77,8 @@ fn compile_cuda_kernels() {
             .arg(&cu_file)
             .arg("-o")
             .arg(&ptx_file)
+            .arg("-I/usr/local/cuda/include")
+            .arg("--std=c++11")
             .output();
 
         match output {
