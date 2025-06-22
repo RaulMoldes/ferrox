@@ -249,63 +249,63 @@ impl CudaKernels {
     // Comparison operations
     pub fn launch_greater_equal_f32(&self, cfg: LaunchConfig, a: &CudaSlice<f32>, b: &CudaSlice<f32>,
                                    result: &mut CudaSlice<f32>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f32, _>("greater_equal", cfg, (a, b, result, size))
+        launch_kernel!(self, "greater_equal", cfg, (a, b, result, size))
     }
 
     pub fn launch_greater_equal_f64(&self, cfg: LaunchConfig, a: &CudaSlice<f64>, b: &CudaSlice<f64>,
                                    result: &mut CudaSlice<f64>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f64, _>("greater_equal_f64", cfg, (a, b, result, size))
+        launch_kernel!(self, "greater_equal_f64", cfg, (a, b, result, size))
     }
 
     pub fn launch_less_equal_f32(&self, cfg: LaunchConfig, a: &CudaSlice<f32>, b: &CudaSlice<f32>,
                                 result: &mut CudaSlice<f32>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f32, _>("less_equal", cfg, (a, b, result, size))
+        launch_kernel!(self, "less_equal", cfg, (a, b, result, size))
     }
 
     pub fn launch_less_equal_f64(&self, cfg: LaunchConfig, a: &CudaSlice<f64>, b: &CudaSlice<f64>,
                                 result: &mut CudaSlice<f64>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f64, _>("less_equal_f64", cfg, (a, b, result, size))
+        launch_kernel!(self, "less_equal_f64", cfg, (a, b, result, size))
     }
 
     pub fn launch_equal_f32(&self, cfg: LaunchConfig, a: &CudaSlice<f32>, b: &CudaSlice<f32>,
                            result: &mut CudaSlice<f32>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f32, _>("equal", cfg, (a, b, result, size))
+        launch_kernel!(self, "equal", cfg, (a, b, result, size))
     }
 
     pub fn launch_equal_f64(&self, cfg: LaunchConfig, a: &CudaSlice<f64>, b: &CudaSlice<f64>,
                            result: &mut CudaSlice<f64>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f64, _>("equal_f64", cfg, (a, b, result, size))
+        launch_kernel!(self, "equal_f64", cfg, (a, b, result, size))
     }
 
     // Unary comparison operations
     pub fn launch_logical_not_f32(&self, cfg: LaunchConfig, input: &CudaSlice<f32>,
                                  result: &mut CudaSlice<f32>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f32, _>("logical_not", cfg, (input, result, size))
+        launch_kernel!(self, "logical_not", cfg, (input, result, size))
     }
 
     pub fn launch_logical_not_f64(&self, cfg: LaunchConfig, input: &CudaSlice<f64>,
                                  result: &mut CudaSlice<f64>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f64, _>("logical_not_f64", cfg, (input, result, size))
+        launch_kernel!(self, "logical_not_f64", cfg, (input, result, size))
     }
 
     pub fn launch_in_range_f32(&self, cfg: LaunchConfig, input: &CudaSlice<f32>, min_val: f32, max_val: f32,
                               result: &mut CudaSlice<f32>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f32, _>("in_range", cfg, (input, min_val, max_val, result, size))
+        launch_kernel!(self, "in_range", cfg, (input, min_val, max_val, result, size))
     }
 
     pub fn launch_in_range_f64(&self, cfg: LaunchConfig, input: &CudaSlice<f64>, min_val: f64, max_val: f64,
                               result: &mut CudaSlice<f64>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f64, _>("in_range_f64", cfg, (input, min_val, max_val, result, size))
+        launch_kernel!(self, "in_range_f64", cfg, (input, min_val, max_val, result, size))
     }
 
     pub fn launch_sign_f32(&self, cfg: LaunchConfig, input: &CudaSlice<f32>,
                           result: &mut CudaSlice<f32>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f32, _>("sign", cfg, (input, result, size))
+        launch_kernel!(self, "sign", cfg, (input, result, size))
     }
 
     pub fn launch_sign_f64(&self, cfg: LaunchConfig, input: &CudaSlice<f64>,
                           result: &mut CudaSlice<f64>, size: i32) -> Result<(), String> {
-        self.launch_kernel::<f64, _>("sign_f64", cfg, (input, result, size))
+        launch_kernel!(self, "sign_f64", cfg, (input, result, size))
     }
 
 
