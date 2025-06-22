@@ -457,8 +457,7 @@ where
 
     // For mean operation, we can use the same logic as sum,
     // but we need to divide by the number of elements along the specified axis.
-    // TODO: Add a kernel for mean operation on CUDA.
-    pub fn mean(&self, axis: Option<usize>) -> Self {
+    pub fn mean_cpu(&self, axis: Option<usize>) -> Self {
         match axis {
             Some(ax) => {
                 let result = self.data.mean_axis(Axis(ax)).unwrap();
@@ -472,6 +471,35 @@ where
                 )
             }
         }
+    }
+
+    // Smart mean operation
+    pub fn mean(&self, axis: Option<usize>) -> Result<Self, String> {
+        match &self.device {
+            Device::CPU => Ok(self.mean_cpu(axis)),
+            Device::CUDA(_) => self.mean_cuda(axis).or_else(|_| {
+                println!("CUDA mean failed, falling back to CPU");
+                Ok(self.mean_cpu(axis))
+            }),
+        }
+    }
+
+    // CUDA mean operation
+    pub fn mean_cuda(&self, axis: Option<usize>) -> Result<Self, String> {
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensor
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
+
+            // Perform mean operation
+            let result_cuda = match axis {
+                Some(ax) => cuda_ops.mean_axis(&cuda_tensor, ax, false)?,
+                None => cuda_ops.mean_all(&cuda_tensor)?,
+            };
+
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
     }
 
     // Broadcasting for gradient computation - now returns GPUTensor

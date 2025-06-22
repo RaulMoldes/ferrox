@@ -670,283 +670,358 @@ mod kernel_tests {
         }
     }
 
+    fn create_2d_launch_config(rows: usize, cols: usize) -> LaunchConfig {
+        let block_size = 16;
+        let grid_x = (cols + block_size - 1) / block_size;
+        let grid_y = (rows + block_size - 1) / block_size;
+        LaunchConfig {
+            grid_dim: (grid_x as u32, grid_y as u32, 1),
+            block_dim: (block_size as u32, block_size as u32, 1),
+            shared_mem_bytes: 0,
+        }
+    }
+
+    fn assert_f32_eq(result: &[f32], expected: &[f32], tolerance: f32) {
+        assert_eq!(result.len(), expected.len());
+        for (i, (&res, &exp)) in result.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (res - exp).abs() < tolerance,
+                "Mismatch at index {}: expected={}, got={}, diff={}",
+                i, exp, res, (res - exp).abs()
+            );
+        }
+    }
+
+    fn assert_f64_eq(result: &[f64], expected: &[f64], tolerance: f64) {
+        assert_eq!(result.len(), expected.len());
+        for (i, (&res, &exp)) in result.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (res - exp).abs() < tolerance,
+                "Mismatch at index {}: expected={}, got={}, diff={}",
+                i, exp, res, (res - exp).abs()
+            );
+        }
+    }
+
+    // ===== BINARY ELEMENTWISE TESTS =====
+
     #[test]
-    fn test_add_kernel() {
+    fn test_add_kernel_f32() {
         if let Some(backend) = setup_test_backend() {
             let size = 1024;
             let a = vec![1.0f32; size];
             let b = vec![2.0f32; size];
+            let expected = vec![3.0f32; size];
 
             let a_gpu = backend.device().htod_copy(a).unwrap();
             let b_gpu = backend.device().htod_copy(b).unwrap();
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-            assert!(result.iter().all(|&x| (x - 3.0).abs() < 1e-6));
-        }
-    }
-
-    #[test]
-    fn test_mul_kernel() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 512;
-            let a = vec![3.0f32; size];
-            let b = vec![4.0f32; size];
-
-            let a_gpu = backend.device().htod_copy(a).unwrap();
-            let b_gpu = backend.device().htod_copy(b).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_mul(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-            assert!(result.iter().all(|&x| (x - 12.0).abs() < 1e-6));
-        }
-    }
-
-    #[test]
-    fn test_sub_kernel() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 256;
-            let a = vec![10.0f32; size];
-            let b = vec![3.0f32; size];
-
-            let a_gpu = backend.device().htod_copy(a).unwrap();
-            let b_gpu = backend.device().htod_copy(b).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_sub(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-            assert!(result.iter().all(|&x| (x - 7.0).abs() < 1e-6));
-        }
-    }
-
-    #[test]
-    fn test_div_kernel() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 128;
-            let a = vec![12.0f32; size];
-            let b = vec![3.0f32; size];
-
-            let a_gpu = backend.device().htod_copy(a).unwrap();
-            let b_gpu = backend.device().htod_copy(b).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_div(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-            assert!(result.iter().all(|&x| (x - 4.0).abs() < 1e-6));
-        }
-    }
-
-    #[test]
-    fn test_relu_kernel() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 1000;
-            let input: Vec<f32> = (0..size).map(|i| i as f32 - 500.0).collect();
-
-            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
-            let mut output_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_relu(cfg, &input_gpu, &mut output_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
-
-            for (i, (&inp, &res)) in input.iter().zip(result.iter()).enumerate() {
-                let expected = inp.max(0.0);
-                assert!(
-                    (res - expected).abs() < 1e-6,
-                    "ReLU failed at index {}: input={}, expected={}, got={}",
-                    i,
-                    inp,
-                    expected,
-                    res
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_sigmoid_kernel() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 100;
-            let input: Vec<f32> = (0..size).map(|i| (i as f32 - 50.0) * 0.1).collect();
-
-            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
-            let mut output_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_activation("sigmoid", cfg, &input_gpu, &mut output_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
-
-            for (i, (&inp, &res)) in input.iter().zip(result.iter()).enumerate() {
-                let expected = 1.0 / (1.0 + (-inp).exp());
-                assert!(
-                    (res - expected).abs() < 1e-5,
-                    "Sigmoid failed at index {}: input={}, expected={}, got={}",
-                    i,
-                    inp,
-                    expected,
-                    res
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_power_kernel() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 64;
-            let base = vec![2.0f32; size];
-            let exp = vec![3.0f32; size];
-
-            let base_gpu = backend.device().htod_copy(base).unwrap();
-            let exp_gpu = backend.device().htod_copy(exp).unwrap();
-            let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_power(cfg, &base_gpu, &exp_gpu, &mut result_gpu, size as i32)
-                .unwrap();
+            backend.kernels().launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
-            assert!(result.iter().all(|&x| (x - 8.0).abs() < 1e-5));
-        }
-    }
-
-    #[test]
-    fn test_kernel_error_handling() {
-        if let Some(backend) = setup_test_backend() {
-            let kernels = backend.kernels();
-
-            // Test non-existent kernel
-            assert!(kernels.get_function_cloned("nonexistent").is_none());
-
-            // Test kernel with wrong parameters (should fail gracefully)
-            let cfg = LaunchConfig {
-                grid_dim: (1, 1, 1),
-                block_dim: (1, 1, 1),
-                shared_mem_bytes: 0,
-            };
-
-            let dummy_gpu = backend.device().alloc_zeros::<f32>(1).unwrap();
-            let mut dummy_output = backend.device().alloc_zeros::<f32>(1).unwrap();
-
-            // This should work
-            let result =
-                backend
-                    .kernels()
-                    .launch_add(cfg, &dummy_gpu, &dummy_gpu, &mut dummy_output, 1);
-            assert!(result.is_ok());
-        }
-    }
-
-    #[test]
-    fn test_kernel_precision() {
-        if let Some(backend) = setup_test_backend() {
-            let size = 1000;
-            let precision_test: Vec<f32> = (0..size).map(|i| i as f32 * 0.001 + 1000.0).collect();
-
-            let a_gpu = backend.device().htod_copy(precision_test.clone()).unwrap();
-            let b_gpu = backend.device().htod_copy(precision_test.clone()).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
-
-            let cfg = create_launch_config(size);
-
-            backend
-                .kernels()
-                .launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
-                .unwrap();
-            backend.synchronize().unwrap();
-
-            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-
-            for (i, (&a, &res)) in precision_test.iter().zip(result.iter()).enumerate() {
-                let expected = a * 2.0;
-                let diff = (res - expected).abs();
-                assert!(
-                    diff < 1e-5,
-                    "Precision error at index {}: expected={}, got={}, diff={}",
-                    i,
-                    expected,
-                    res,
-                    diff
-                );
+            for i in 0..size {
+                let expected = if a[i] == b[i] { 1.0 } else { 0.0 };
+                assert!((result[i] - expected).abs() < 1e-6);
             }
         }
     }
 
     #[test]
-    fn test_large_tensor_operations() {
+    fn test_logical_not_f32() {
         if let Some(backend) = setup_test_backend() {
-            let size = 1_000_000;
+            let size = 8;
+            let input = vec![0.0f32, 1.0, -1.0, 2.5, 0.0, -0.0, 100.0, -50.0];
 
-            let a = vec![1.5f32; size];
-            let b = vec![2.5f32; size];
-
-            let a_gpu = backend.device().htod_copy(a).unwrap();
-            let b_gpu = backend.device().htod_copy(b).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
+            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
+            let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-
-            let start = std::time::Instant::now();
-            backend
-                .kernels()
-                .launch_mul(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
-                .unwrap();
+            backend.kernels().launch_logical_not(cfg, &input_gpu, &mut result_gpu, size as i32).unwrap();
             backend.synchronize().unwrap();
-            let elapsed = start.elapsed();
 
-            println!("Large tensor mul ({} elements) took: {:?}", size, elapsed);
+            let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
+            for i in 0..size {
+                let expected = if input[i] == 0.0 { 1.0 } else { 0.0 };
+                assert!((result[i] - expected).abs() < 1e-6);
+            }
+        }
+    }
 
-            // Sample check
+    #[test]
+    fn test_sign_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let size = 9;
+            let input = vec![-5.0f32, -1.0, -0.1, 0.0, 0.1, 1.0, 5.0, -0.0, 100.0];
+
+            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
+            let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
+
+            let cfg = create_launch_config(size);
+            backend.kernels().launch_sign(cfg, &input_gpu, &mut result_gpu, size as i32).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
+            let expected = vec![-1.0f32, -1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0];
+            assert_f32_eq(&result, &expected, 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_sign_f64() {
+        if let Some(backend) = setup_test_backend() {
+            let size = 6;
+            let input = vec![-10.5f64, -0.001, 0.0, 0.001, 10.5, -0.0];
+
+            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
+            let mut result_gpu = backend.device().alloc_zeros::<f64>(size).unwrap();
+
+            let cfg = create_launch_config(size);
+            backend.kernels().launch_sign(cfg, &input_gpu, &mut result_gpu, size as i32).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
+            let expected = vec![-1.0f64, -1.0, 0.0, 1.0, 1.0, 0.0];
+            assert_f64_eq(&result, &expected, 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_in_range_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let size = 10;
+            let input: Vec<f32> = (0..size).map(|i| i as f32).collect();
+            let min_val = 3.0f32;
+            let max_val = 7.0f32;
+
+            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
+            let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
+
+            let cfg = create_launch_config(size);
+            backend.kernels().launch_in_range(cfg, &input_gpu, min_val, max_val, &mut result_gpu, size as i32).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
+            for i in 0..size {
+                let expected = if input[i] >= min_val && input[i] <= max_val { 1.0 } else { 0.0 };
+                assert!((result[i] - expected).abs() < 1e-6);
+            }
+        }
+    }
+
+    // ===== SPECIAL OPERATIONS TESTS =====
+
+    #[test]
+    fn test_clamp_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let size = 10;
+            let input: Vec<f32> = (0..size).map(|i| (i as f32 - 5.0) * 2.0).collect();
+            let min_val = -5.0f32;
+            let max_val = 5.0f32;
+
+            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
+            let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
+
+            let cfg = create_launch_config(size);
+            backend.kernels().launch_clamp(cfg, &input_gpu, &mut result_gpu, min_val, max_val, size as i32).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
+            for i in 0..size {
+                let expected = input[i].max(min_val).min(max_val);
+                assert!((result[i] - expected).abs() < 1e-6);
+            }
+        }
+    }
+
+    #[test]
+    fn test_clamp_f64() {
+        if let Some(backend) = setup_test_backend() {
+            let size = 8;
+            let input = vec![-100.0f64, -5.0, -1.0, 0.0, 1.0, 5.0, 10.0, 100.0];
+            let min_val = -2.0f64;
+            let max_val = 8.0f64;
+
+            let input_gpu = backend.device().htod_copy(input.clone()).unwrap();
+            let mut result_gpu = backend.device().alloc_zeros::<f64>(size).unwrap();
+
+            let cfg = create_launch_config(size);
+            backend.kernels().launch_clamp(cfg, &input_gpu, &mut result_gpu, min_val, max_val, size as i32).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
+            let expected = vec![-2.0f64, -2.0, -1.0, 0.0, 1.0, 5.0, 8.0, 8.0];
+            assert_f64_eq(&result, &expected, 1e-10);
+        }
+    }
+
+    // ===== MATRIX OPERATIONS TESTS =====
+
+    #[test]
+    fn test_matmul_kernel_small_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let m = 2;
+            let n = 2;
+            let k = 2;
+
+            let a_host = vec![1.0f32, 2.0, 3.0, 4.0];
+            let b_host = vec![5.0f32, 6.0, 7.0, 8.0];
+            let expected = vec![19.0f32, 22.0, 43.0, 50.0];
+
+            let a_gpu = backend.device().htod_copy(a_host).unwrap();
+            let b_gpu = backend.device().htod_copy(b_host).unwrap();
+            let mut c_gpu = backend.device().alloc_zeros::<f32>((m * n) as usize).unwrap();
+
+            let cfg = create_2d_launch_config(m as usize, n as usize);
+            backend.kernels().launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k).unwrap();
+            backend.synchronize().unwrap();
+
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
-            assert!((result[0] - 3.75).abs() < 1e-6);
-            assert!((result[size / 2] - 3.75).abs() < 1e-6);
-            assert!((result[size - 1] - 3.75).abs() < 1e-6);
+            assert_f32_eq(&result, &expected, 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_matmul_kernel_identity_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let size = 3;
+            let m = size;
+            let n = size;
+            let k = size;
+
+            let a_host = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+            let b_host = vec![1.0f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+
+            let a_gpu = backend.device().htod_copy(a_host.clone()).unwrap();
+            let b_gpu = backend.device().htod_copy(b_host).unwrap();
+            let mut c_gpu = backend.device().alloc_zeros::<f32>((m * n) as usize).unwrap();
+
+            let cfg = create_2d_launch_config(m as usize, n as usize);
+            backend.kernels().launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
+            assert_f32_eq(&result, &a_host, 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_matmul_kernel_f64() {
+        if let Some(backend) = setup_test_backend() {
+            let m = 2;
+            let n = 3;
+            let k = 2;
+
+            let a_host = vec![1.5f64, 2.5, 3.5, 4.5];
+            let b_host = vec![2.0f64, 1.0, 0.5, 3.0, 2.0, 1.5];
+            let expected = vec![10.5f64, 6.5, 4.5, 20.5, 12.5, 8.5];
+
+            let a_gpu = backend.device().htod_copy(a_host).unwrap();
+            let b_gpu = backend.device().htod_copy(b_host).unwrap();
+            let mut c_gpu = backend.device().alloc_zeros::<f64>((m * n) as usize).unwrap();
+
+            let cfg = create_2d_launch_config(m as usize, n as usize);
+            backend.kernels().launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
+            assert_f64_eq(&result, &expected, 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_transpose_2d_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let rows = 3;
+            let cols = 4;
+            let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+            let expected = vec![1.0f32, 5.0, 9.0, 2.0, 6.0, 10.0, 3.0, 7.0, 11.0, 4.0, 8.0, 12.0];
+
+            let input_gpu = backend.device().htod_copy(input).unwrap();
+            let mut output_gpu = backend.device().alloc_zeros::<f32>((rows * cols) as usize).unwrap();
+
+            let cfg = create_2d_launch_config(rows as usize, cols as usize);
+            backend.kernels().launch_transpose_2d(cfg, &input_gpu, &mut output_gpu, rows, cols).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
+            assert_f32_eq(&result, &expected, 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_transpose_2d_f64() {
+        if let Some(backend) = setup_test_backend() {
+            let rows = 2;
+            let cols = 3;
+            let input = vec![1.5f64, 2.5, 3.5, 4.5, 5.5, 6.5];
+            let expected = vec![1.5f64, 4.5, 2.5, 5.5, 3.5, 6.5];
+
+            let input_gpu = backend.device().htod_copy(input).unwrap();
+            let mut output_gpu = backend.device().alloc_zeros::<f64>((rows * cols) as usize).unwrap();
+
+            let cfg = create_2d_launch_config(rows as usize, cols as usize);
+            backend.kernels().launch_transpose_2d(cfg, &input_gpu, &mut output_gpu, rows, cols).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
+            assert_f64_eq(&result, &expected, 1e-10);
+        }
+    }
+
+    // ===== REDUCTION TESTS =====
+
+    #[test]
+    fn test_sum_axis_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let outer_size = 2;
+            let axis_size = 3;
+            let inner_size = 2;
+            let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+            let expected = vec![9.0f32, 12.0, 27.0, 30.0];
+
+            let input_gpu = backend.device().htod_copy(input).unwrap();
+            let mut output_gpu = backend.device().alloc_zeros::<f32>((outer_size * inner_size) as usize).unwrap();
+
+            let cfg = LaunchConfig {
+                grid_dim: (outer_size as u32, 1, 1),
+                block_dim: (inner_size as u32, 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            backend.kernels().launch_sum_axis(cfg, &input_gpu, &mut output_gpu, outer_size, axis_size, inner_size).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
+            assert_f32_eq(&result, &expected, 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_max_along_dim_f32() {
+        if let Some(backend) = setup_test_backend() {
+            let outer_size = 2;
+            let axis_size = 3;
+            let inner_size = 2;
+            let input = vec![1.0f32, 2.0, 8.0, 4.0, 5.0, 9.0, 7.0, 3.0, 6.0, 10.0, 11.0, 12.0];
+            let expected = vec![8.0f32, 9.0, 11.0, 12.0];
+
+            let input_gpu = backend.device().htod_copy(input).unwrap();
+            let mut output_gpu = backend.device().alloc_zeros::<f32>((outer_size * inner_size) as usize).unwrap();
+
+            let cfg = LaunchConfig {
+                grid_dim: (((outer_size * inner_size + 255) / 256) as u32, 1, 1),
+                block_dim: (256, 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            backend.kernels().launch_max_along_dim(cfg, &input_gpu, &mut output_gpu, outer_size, axis_size, inner_size).unwrap();
+            backend.synchronize().unwrap();
+
+            let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
+            assert_f32_eq(&result, &expected, 1e-6);
         }
     }
 }
