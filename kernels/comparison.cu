@@ -167,7 +167,7 @@ extern "C" __global__ void sign(
     }
 }
 
-extern "C" __global__ void sign_kernel_f64(
+extern "C" __global__ void sign_f64(
     const double* input,
     double* result,
     int size
