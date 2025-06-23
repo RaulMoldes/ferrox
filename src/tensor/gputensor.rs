@@ -180,7 +180,7 @@ where
         }
         
         Ok(Self::new_with_device(
-            &*self_data + &*other_data,
+            self_data.as_ref() + other_data.as_ref(),
             Device::CPU,
         ))
     }
@@ -197,7 +197,7 @@ where
         }
         
         Ok(Self::new_with_device(
-            &*self_data * &*other_data,
+            self_data.as_ref() * other_data.as_ref(),
             Device::CPU,
         ))
     }
@@ -213,7 +213,7 @@ where
         }
 
         Ok(Self::new_with_device(
-            &*self_data / &*other_data,
+            self_data.as_ref() / other_data.as_ref(),
             Device::CPU,
         ))
     }
@@ -229,7 +229,7 @@ where
         }
 
         Ok(Self::new_with_device(
-            &*self.data - &*other.data,
+            self.data.as_ref() - other.data.as_ref(),
             self.device.clone(),
         ))
     }
@@ -483,7 +483,7 @@ where
 
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for sum on CPU");
-        });;
+        });
 
         match axis {
             Some(ax) => {
@@ -537,7 +537,7 @@ where
 
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for mean on CPU");
-        });;
+        });
         match axis {
             Some(ax) => {
                 let result = data.mean_axis(Axis(ax)).unwrap();
@@ -606,8 +606,8 @@ where
 
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for unsqueeze on CPU");
-        });;
-        let expanded = data.clone().insert_axis(Axis(axis));
+        });
+        let expanded = data.into_owned().insert_axis(Axis(axis));
         Self::new_with_device(expanded, Device::CPU) // CPU only for now
     }
 
@@ -625,11 +625,11 @@ where
                         self.shape()[ax]
                     ));
                 }
-                let squeezed = data.clone().remove_axis(Axis(ax));
+                let squeezed = data.into_owned().remove_axis(Axis(ax));
                 Ok(Self::new_with_device(squeezed, Device::CPU)) // Return Self, not CPUTensor
             }
             None => {
-                let mut result = data.clone();
+                let mut result = data.into_owned();
                 let axes_to_remove: Vec<usize> = self
                     .shape()
                     .iter()
@@ -662,7 +662,7 @@ where
             ));
         }
 
-        match data.clone().into_shape_with_order(IxDyn(new_shape)) {
+        match data.into_owned().into_shape_with_order(IxDyn(new_shape)) {
             Ok(reshaped) => Ok(Self::new_with_device(reshaped, Device::CPU)), // Return Self, not CPUTensor
             Err(e) => Err(format!("Failed to reshape tensor: {}", e)),
         }
@@ -722,7 +722,7 @@ where
                 // This section happens on CPU only
                 let data = self.get_data_synced()?;
                 // Create the transposed array by permuting axes
-                let transposed = data.clone().permuted_axes(axes_order);
+                let transposed = data.into_owned().permuted_axes(axes_order);
                 Ok(Self::new_with_device(transposed, Device::CPU))
             }
             // If no axes are provided, we perform the default transpose operation,
@@ -741,7 +741,7 @@ where
                             Device::CPU => {
                                 // This section happens on CPU only
                                 let data = self.get_data_synced()?;
-                                let transposed = data.clone().reversed_axes();
+                                let transposed = data.into_owned().reversed_axes();
                                 Ok(Self::new_with_device(transposed, Device::CPU))
                             }
                             Device::CUDA(_) => self.transpose_2D_cuda(),
@@ -757,7 +757,7 @@ where
                         // Convert Vec<usize> to &[usize] for permuted_axes.
                         // This is required because the dimension of the Vec is not known at compile time.
                         // We can use `as_slice()` to convert it to a slice.
-                        let transposed = data.clone().permuted_axes(axes_order.as_slice());
+                        let transposed = data.into_owned().permuted_axes(axes_order.as_slice());
                         Ok(Self::new_with_device(transposed, Device::CPU))
                     }
                 }
@@ -1370,8 +1370,8 @@ where
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
 
-        let result_data = ndarray::Zip::from(&self_data)
-            .and(&other_data)
+        let result_data = ndarray::Zip::from(self_data.as_ref())
+            .and(other_data.as_ref())
             .map_collect(|&a, &b| {
                 if a >= b {
                     <T as CPUNumber>::one()
@@ -1429,8 +1429,8 @@ where
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
 
-        let result_data = ndarray::Zip::from(&self_data)
-            .and(&other_data)
+        let result_data = ndarray::Zip::from(self_data.as_ref())
+            .and(other_data.as_ref())
             .map_collect(|&a, &b| {
                 if a <= b {
                     <T as CPUNumber>::one()
@@ -1485,8 +1485,8 @@ where
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
 
-        let result_data = ndarray::Zip::from(&self_data)
-            .and(&other_data)
+        let result_data = ndarray::Zip::from(self_data.as_ref())
+            .and(other_data.as_ref())
             .map_collect(|&a, &b| {
                 if a == b {
                     <T as CPUNumber>::one()
@@ -1704,20 +1704,20 @@ where
         let data = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for scalar addition on CPU");
         });
-        Self::new_with_device(&data + scalar, Device::CPU)
+        Self::new_with_device(data.as_ref() + scalar, Device::CPU)
     }
 
     fn mul_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
         let data = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for scalar multiplication on CPU");
         });
-        Self::new_with_device(&data * scalar, Device::CPU)
+        Self::new_with_device(data.as_ref() * scalar, Device::CPU)
     }
     fn div_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
         let data = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for scalar division on CPU");
         });
-        Self::new_with_device(&data / scalar, Device::CPU)
+        Self::new_with_device(data.as_ref() / scalar, Device::CPU)
     }
 
     // Smart scalar operations
@@ -1810,7 +1810,7 @@ where
     fn relu_cpu(&self) -> GPUTensor<T> {
         let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for relu on CPU");
-        });;
+        });
         // Apply ReLU: max(0, x)
         Self::new_with_device(
             self_data.mapv(|x| {
@@ -1919,8 +1919,8 @@ where
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
         Ok(Self::new_with_device(
-            ndarray::Zip::from(&self_data)
-                .and(&other_data)
+            ndarray::Zip::from(self_data.as_ref())
+                .and(other_data.as_ref())
                 .map_collect(|&a, &b| a.powf(b)),
             Device::CPU,
         ))
@@ -1959,7 +1959,7 @@ where
     fn log_cpu(&self) -> GPUTensor<T> {
         let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for log on CPU");
-        });;
+        });
         
         Self::new_with_device(self_data.mapv(|x| x.ln()), Device::CPU)
     }
@@ -2262,9 +2262,10 @@ where
             );
         }
 
-        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
-            panic!("Failed to get data for indexing on CPU");
-        });
+        // Can't use get_data_synced() here - need actual data
+        if self.is_cuda() && self.data.is_empty() {
+            panic!("Cannot index GPU tensor. Call .to_cpu() first");
+        }
 
         // Convert flat index to multi-dimensional coordinates
         let shape = self_data.shape();
@@ -2279,6 +2280,6 @@ where
         // Access using multi-dimensional indexing
         // Aparently this t¡is not the safest way to do this, but it is the fastest.
         // This returns a reference to the element at the specified index.
-        &self_data[&coords[..]]
+        self_data.as_ref()[&coords[..]]
     }
 }
