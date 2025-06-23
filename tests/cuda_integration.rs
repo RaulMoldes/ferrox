@@ -320,7 +320,11 @@ fn test_gpu_chaining_efficiency() {
                 assert!((cpu_result.data()[[2]] - 14.0).abs() < 1e-6);
                 
                 println!("GPU chaining test passed!");
+            } else {
+                panic!("GPU chaining failed: could not multiply by scalar");
             }
+        }else {
+            panic!("GPU chaining failed: could not add tensors");
         }
     } else {
         println!("CUDA not available, skipping GPU chaining test");
