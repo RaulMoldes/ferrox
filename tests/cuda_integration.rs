@@ -216,7 +216,7 @@ fn test_concurrent_cuda_operations() {
 // NEW TESTS FOR GPU-ONLY BEHAVIOR
 #[cfg(feature = "cuda")]
 #[test]
-#[should_panic(expected = "GPU tensor data not synced to CPU")]
+#[should_panic(expected = "Cannot index GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_indexing_panics() {
     if let Ok(cuda_backend) = CudaBackend::new(0) {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
@@ -238,7 +238,7 @@ fn test_gpu_only_tensor_indexing_panics() {
 
 #[cfg(feature = "cuda")]
 #[test]
-#[should_panic(expected = "Cannot iter GPU tensor")]
+#[should_panic(expected = "Cannot iter GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_iter_panics() {
     if let Ok(cuda_backend) = CudaBackend::new(0) {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
@@ -259,7 +259,7 @@ fn test_gpu_only_tensor_iter_panics() {
 
 #[cfg(feature = "cuda")]
 #[test]
-#[should_panic(expected = "Cannot detach GPU tensor")]
+#[should_panic(expected = "Cannot detach GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_detach_panics() {
     if let Ok(cuda_backend) = CudaBackend::new(0) {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
