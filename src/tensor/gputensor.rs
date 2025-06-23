@@ -3,6 +3,7 @@ use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{BitOr, Index};
+use std::borrow::Cow;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -62,6 +63,8 @@ where
     // Create tensor from Vec - this is the main way users will create tensors
     // Works exactly like CPUTensor but the result can be moved to GPU
     pub fn from_vec(data: Vec<T>, shape: &[usize]) -> Result<Self, String> {
+
+       
         let total_elements: usize = shape.iter().product();
         if data.len() != total_elements {
             return Err(format!(
@@ -119,16 +122,16 @@ where
     // Convert to Vec - handles both CPU and CUDA tensors
     pub fn to_vec(&self) -> Result<Vec<T>, String> {
         if let Some(cuda_tensor) = &self.cuda_storage {
-            // If we have CUDA data, copy it back to CPU first
-            use crate::backend::manager::get_backend;
-            let backend = get_backend();
+            // Priority: use CUDA data if available
+            let backend = crate::backend::manager::get_backend();
             let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
             let memory_manager = cuda_backend.memory_manager();
-
             memory_manager.device_to_host(&cuda_tensor.data)
-        } else {
-            // If it's CPU data, just clone it
+        } else if !self.data.is_empty() {
+            // Fallback to CPU data
             Ok(self.data.iter().cloned().collect())
+        } else {
+            Err("Tensor has no data in either CPU or GPU storage".to_string())
         }
     }
 
@@ -142,6 +145,8 @@ where
         true_vals: &GPUTensor<T>,
         false_vals: &GPUTensor<T>,
     ) -> Result<GPUTensor<T>, String> {
+
+        
         let condition_vec = condition.to_vec()?;
         let true_vec = true_vals.to_vec()?;
         let false_vec = false_vals.to_vec()?;
@@ -165,47 +170,84 @@ where
     // Helper method to perform CPU operations on this GPU-capable tensor
     // This allows us to fall back to CPU when CUDA fails
     fn add_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
+        // Get data without unnecessary clones
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
+        // Ensure shapes match before performing addition
+        if self_data.shape() != other_data.shape() {
+            return Err(format!("Shape mismatch: {:?} vs {:?}", 
+                              self_data.shape(), other_data.shape()));
         }
+        
         Ok(Self::new_with_device(
-            &self.data + &other.data,
-            self.device.clone(),
+            &*self_data + &*other_data,
+            Device::CPU,
         ))
     }
 
     // Helper method to perform CPU multiplication
     fn mul_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
+        
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
+        
+        if self_data.shape() != other_data.shape() {
+            return Err(format!("Shape mismatch: {:?} vs {:?}", 
+                              self_data.shape(), other_data.shape()));
         }
+        
         Ok(Self::new_with_device(
-            &self.data * &other.data,
-            self.device.clone(),
+            &*self_data * &*other_data,
+            Device::CPU,
         ))
     }
 
     // Helper method to perform CPU division
     fn div_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
+        
+        if self_data.shape() != other_data.shape() {
+            return Err(format!("Shape mismatch: {:?} vs {:?}", 
+                              self_data.shape(), other_data.shape()));
         }
+
         Ok(Self::new_with_device(
-            &self.data / &other.data,
+            &*self_data / &*other_data,
+            Device::CPU,
+        ))
+    }
+
+    // Substraction on CPU
+    fn sub_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
+        
+        if self_data.shape() != other_data.shape() {
+            return Err(format!("Shape mismatch: {:?} vs {:?}", 
+                              self_data.shape(), other_data.shape()));
+        }
+
+        Ok(Self::new_with_device(
+            &*self.data - &*other.data,
             self.device.clone(),
         ))
+    }
+
+
+    // Intelligent substraction - this is the main API users will use
+    pub fn sub(&self, other: &Self) -> Result<GPUTensor<T>, String> {
+        if self.device != other.device {
+            return Err("Tensors must be on the same device for operation".to_string());
+        }
+
+        match &self.device {
+            Device::CPU => self.sub_cpu(other),
+            Device::CUDA(_) => self.sub_cuda(other).or_else(|_| {
+                println!("CUDA sub failed, falling back to CPU");
+                self.sub_cpu(other)
+            }),
+        }
     }
 
     // Smart addition - this is the main API users will use
@@ -264,15 +306,24 @@ where
     // Detach operation - creates a new tensor without gradient tracking
     // Useful for autograd system
     pub fn detach(&self) -> Self {
+        if self.is_cuda() && self.data.is_empty() {
+            panic!("Cannot detach GPU tensor. Call .to_cpu() first");
+        }
         Self::new_with_device(self.data.clone(), self.device.clone())
     }
 
     // Iterator methods - these work on CPU data
     pub fn iter(&self) -> ndarray::iter::Iter<'_, T, ndarray::IxDyn> {
+        if self.is_cuda() && self.data.is_empty() {
+            panic!("Cannot iter GPU tensor. Call .to_cpu() first");
+        }
         self.data.iter()
     }
 
     pub fn iter_mut(&mut self) -> ndarray::iter::IterMut<'_, T, ndarray::IxDyn> {
+        if self.is_cuda() && self.data.is_empty() {
+            panic!("Cannot iter GPU tensor. Call .to_cpu() first");
+        }
         self.data.iter_mut()
     }
 
@@ -313,6 +364,22 @@ where
             Ok(crate::backend::cuda::CudaTensor::new(cuda_data, shape))
         }
     }
+
+    // Helper to avoid repeatedly calling `to_cpu()` in every method
+    fn get_data_synced(
+        &self,
+    ) -> Result<Cow<ArrayD<T>>, String> {
+        if self.is_cuda() && self.data.is_empty() {
+            // If CUDA tensor is empty, convert to CPU first
+            match self.to_cpu() {
+                Ok(cpu_tensor) => Ok(Cow::Owned(cpu_tensor.data)),
+                Err(e) => Err(e),
+            }
+        } else {
+            // Otherwise, just borrow the existing data
+            Ok(Cow::Borrowed(&self.data))
+        }
+    }
 }
 
 ///  GPU TENSOR REPRESENTS A TENSOR THAT CAN BE MOVED TO CUDA
@@ -326,24 +393,28 @@ where
         if self.ndim() != 2 || other.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
-
-        let a_shape = self.shape();
-        let b_shape = other.shape();
-
+    
+        // Get data using CoW pattern
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
+    
+        let a_shape = self_data.shape();
+        let b_shape = other_data.shape();
+        
         if a_shape[1] != b_shape[0] {
             return Err(format!(
                 "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
                 a_shape[0], a_shape[1], b_shape[0], b_shape[1]
             ));
         }
-
-        let a: ndarray::ArrayView2<T> = self.data.view().into_dimensionality().unwrap();
-        let b: ndarray::ArrayView2<T> = other.data.view().into_dimensionality().unwrap();
+    
+        let a: ndarray::ArrayView2<T> = self_data.view().into_dimensionality().unwrap();
+        let b: ndarray::ArrayView2<T> = other_data.view().into_dimensionality().unwrap();
         let result = a.dot(&b);
-
+    
         Ok(Self::new_with_device(
             result.into_dyn(),
-            self.device.clone(),
+            Device::CPU, // Result is always CPU for CPU operations
         ))
     }
 
@@ -409,16 +480,21 @@ where
     // Summation operations for GPUTensor
     // These methods handle summation along specified axes or over the entire tensor.
     fn sum_cpu(&self, axis: Option<usize>) -> GPUTensor<T> {
+
+        let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for sum on CPU");
+        });;
+
         match axis {
             Some(ax) => {
-                let result = self.data.sum_axis(ndarray::Axis(ax));
-                Self::new_with_device(result, self.device.clone())
+                let result = data.sum_axis(ndarray::Axis(ax));
+                Self::new_with_device(result, Device::CPU)
             }
             None => {
                 // Sum all elements
-                let total_sum = self.data.sum();
+                let total_sum = data.sum();
                 let result_array = ArrayD::from_elem(IxDyn(&[]), total_sum);
-                Self::new_with_device(result_array, self.device.clone())
+                Self::new_with_device(result_array, Device::CPU)
             }
         }
     }
@@ -458,16 +534,20 @@ where
     // For mean operation, we can use the same logic as sum,
     // but we need to divide by the number of elements along the specified axis.
     pub fn mean_cpu(&self, axis: Option<usize>) -> Self {
+
+        let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for mean on CPU");
+        });;
         match axis {
             Some(ax) => {
-                let result = self.data.mean_axis(Axis(ax)).unwrap();
-                Self::new_with_device(result, self.device.clone())
+                let result = data.mean_axis(Axis(ax)).unwrap();
+                Self::new_with_device(result, Device::CPU)
             }
             None => {
-                let total_mean = self.data.mean().unwrap();
+                let total_mean = data.mean().unwrap();
                 Self::new_with_device(
                     ArrayD::from_elem(IxDyn(&[]), total_mean),
-                    self.device.clone(),
+                    Device::CPU,
                 )
             }
         }
@@ -502,12 +582,16 @@ where
         })
     }
 
-    // Broadcasting for gradient computation - now returns GPUTensor
+    // Broadcasting for gradient computation - now returns GPUTensor.
+    // Note that this operation is only CPU for now. Using it is very inefficient on GPU.
     pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<Self, String> {
-        match self.data.broadcast(target_shape) {
+        
+        let data: Cow<ArrayD<T>> = self.get_data_synced()?;
+
+        match data.broadcast(target_shape) {
             Some(broadcasted) => Ok(Self::new_with_device(
                 broadcasted.to_owned(),
-                self.device.clone(),
+                Device::CPU, // Broadcasting is CPU only for now
             )),
             None => Err(format!(
                 "Cannot broadcast {:?} to {:?}",
@@ -519,26 +603,33 @@ where
 
     // Similar to tf.expand_dims, this function adds a new dimension at the specified axis.
     pub fn unsqueeze(&self, axis: usize) -> Self {
-        let expanded = self.data.clone().insert_axis(Axis(axis));
-        Self::new_with_device(expanded, self.device.clone())
+
+        let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for unsqueeze on CPU");
+        });;
+        let expanded = data.clone().insert_axis(Axis(axis));
+        Self::new_with_device(expanded, Device::CPU) // CPU only for now
     }
 
     // Squeeze operation - remove dimensions of size 1
     pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
+
+        let data: Cow<ArrayD<T>> = self.get_data_synced()?;
+
         match axis {
             Some(ax) => {
-                if self.shape()[ax] != 1 {
+                if data.shape()[ax] != 1 {
                     return Err(format!(
                         "Cannot squeeze axis {} with size {}",
                         ax,
                         self.shape()[ax]
                     ));
                 }
-                let squeezed = self.data.clone().remove_axis(Axis(ax));
-                Ok(Self::new_with_device(squeezed, self.device.clone())) // Return Self, not CPUTensor
+                let squeezed = data.clone().remove_axis(Axis(ax));
+                Ok(Self::new_with_device(squeezed, Device::CPU)) // Return Self, not CPUTensor
             }
             None => {
-                let mut result = self.data.clone();
+                let mut result = data.clone();
                 let axes_to_remove: Vec<usize> = self
                     .shape()
                     .iter()
@@ -551,14 +642,17 @@ where
                     result = result.remove_axis(Axis(ax));
                 }
 
-                Ok(Self::new_with_device(result, self.device.clone())) // Return Self, not CPUTensor
+                Ok(Self::new_with_device(result, Device::CPU)) // Return Self, not CPUTensor
             }
         }
     }
 
     // Reshape operation - change tensor shape while preserving total elements
     pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, String> {
-        let total_elements: usize = self.shape().iter().product();
+
+
+        let data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let total_elements: usize = data.shape().iter().product();
         let new_total_elements: usize = new_shape.iter().product();
 
         if total_elements != new_total_elements {
@@ -568,8 +662,8 @@ where
             ));
         }
 
-        match self.data.clone().into_shape_with_order(IxDyn(new_shape)) {
-            Ok(reshaped) => Ok(Self::new_with_device(reshaped, self.device.clone())),
+        match data.clone().into_shape_with_order(IxDyn(new_shape)) {
+            Ok(reshaped) => Ok(Self::new_with_device(reshaped, Device::CPU)), // Return Self, not CPUTensor
             Err(e) => Err(format!("Failed to reshape tensor: {}", e)),
         }
     }
@@ -599,6 +693,8 @@ where
     pub fn transpose(&self, axes: Option<&[usize]>) -> Result<Self, String> {
         match axes {
             Some(axes_order) => {
+                
+            
                 if axes_order.len() != self.ndim() {
                     return Err(format!(
                         "Axes length {} doesn't match tensor dimensions {}",
@@ -622,9 +718,12 @@ where
                         self.ndim()
                     ));
                 }
+
+                // This section happens on CPU only
+                let data = self.get_data_synced()?;
                 // Create the transposed array by permuting axes
-                let transposed = self.data.clone().permuted_axes(axes_order);
-                Ok(Self::new_with_device(transposed, self.device.clone()))
+                let transposed = data.clone().permuted_axes(axes_order);
+                Ok(Self::new_with_device(transposed, Device::CPU))
             }
             // If no axes are provided, we perform the default transpose operation,
             // which as we know is to reverse the order of the axes.
@@ -640,13 +739,17 @@ where
                         // to perform the transpose efficiently.
                         match &self.device {
                             Device::CPU => {
-                                let transposed = self.data.clone().reversed_axes();
-                                Ok(Self::new_with_device(transposed, self.device.clone()))
+                                // This section happens on CPU only
+                                let data = self.get_data_synced()?;
+                                let transposed = data.clone().reversed_axes();
+                                Ok(Self::new_with_device(transposed, Device::CPU))
                             }
                             Device::CUDA(_) => self.transpose_2D_cuda(),
                         }
                     }
                     _ => {
+                        // This section happens on CPU only
+                        let data = self.get_data_synced()?;
                         // Till now it has been easy. Now we need to handle higher dimensional arrays.
                         // Everybody gangsta until they have to transpose a 3D or higher tensor.
                         // For higher dimensional arrays, reverse the order of all axes
@@ -654,8 +757,8 @@ where
                         // Convert Vec<usize> to &[usize] for permuted_axes.
                         // This is required because the dimension of the Vec is not known at compile time.
                         // We can use `as_slice()` to convert it to a slice.
-                        let transposed = self.data.clone().permuted_axes(axes_order.as_slice());
-                        Ok(Self::new_with_device(transposed, self.device.clone()))
+                        let transposed = data.clone().permuted_axes(axes_order.as_slice());
+                        Ok(Self::new_with_device(transposed, Device::CPU))
                     }
                 }
             }
@@ -664,6 +767,8 @@ where
 
     /// Sum along multiple axes (matches CPU tensor functionality)
     fn sum_axes_cpu(&self, axes: Option<&[usize]>) -> GPUTensor<T> {
+        // No need to call `get_data_synced()` here,
+        // as i happens on sum_cpu.
         match axes {
             Some(axes_list) => {
                 // Validate axes are within bounds
@@ -683,11 +788,11 @@ where
 
                 let mut current = self.clone();
                 for &axis in &sorted_axes {
-                    current = current.sum(Some(axis));
+                    current = current.sum_cpu(Some(axis));
                 }
                 current
             }
-            None => self.sum(None),
+            None => self.sum_cpu(None),
         }
     }
 
@@ -898,6 +1003,23 @@ where
         })
     }
 
+    pub fn sub_cuda(&self, other: &GPUTensor<T>) -> Result<Self, String> {
+        self.with_cuda_backend(|cuda_backend| {
+            // Ensure both tensors are on CUDA
+            if !self.is_cuda() || !other.is_cuda() {
+                return Err("Both tensors must be on CUDA for sub operation".to_string());
+            }
+
+            let cuda_a = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_b = other.get_or_create_cuda_tensor(cuda_backend)?;
+
+            let cuda_ops = cuda_backend.ops();
+            let result_cuda = cuda_ops.sub(&cuda_a, &cuda_b)?;
+
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+    }
+
     // ------------------------------------------------------------
     // MAX-MIN-ABS OPERATIONS (ELEMENTWISE)
     // -------------------------------------------------------------
@@ -965,40 +1087,47 @@ where
 
     // CPU fallback implementations
     fn min_cpu(&self, other: &Self) -> Result<Self, String> {
-        let result_data: Vec<T> = self
-            .data
+
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+        let result_data: Vec<T> = self_data
             .iter()
-            .zip(other.data.iter())
+            .zip(other_data.iter())
             .map(|(&a, &b)| if a <= b { a } else { b })
             .collect();
 
         let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
             .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
-        Ok(Self::new_with_device(result_array, self.device.clone()))
+        Ok(Self::new_with_device(result_array, Device::CPU))
     }
 
     fn max_cpu(&self, other: &Self) -> Result<Self, String> {
-        let result_data: Vec<T> = self
-            .data
+
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+        let result_data: Vec<T> = self_data
             .iter()
-            .zip(other.data.iter())
+            .zip(other_data.iter())
             .map(|(&a, &b)| if a >= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+        let result_array = ndarray::Array::from_shape_vec(self_data.raw_dim(), result_data)
             .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
-        Ok(Self::new_with_device(result_array, self.device.clone()))
+        Ok(Self::new_with_device(result_array, Device::CPU))
     }
 
     fn abs_cpu(&self) -> Self {
-        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for abs on CPU");
+        });
+        let result_data: Vec<T> = self_data.iter().map(|&x| x.abs()).collect();
 
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+        let result_array = ndarray::Array::from_shape_vec(self_data.raw_dim(), result_data)
             .expect("Shape should match original tensor");
 
-        Self::new_with_device(result_array, self.device.clone())
+        Self::new_with_device(result_array, Device::CPU)
     }
 
     // CUDA implementations
@@ -1066,7 +1195,10 @@ where
     }
 
     fn clamp_cpu(&self, min_val: T, max_val: T) -> Self {
-        let result_data = self.data.mapv(|x| {
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for clamp on CPU");
+        });
+        let result_data = self_data.mapv(|x| {
             if x < min_val {
                 min_val
             } else if x > max_val {
@@ -1075,7 +1207,7 @@ where
                 x
             }
         });
-        Self::new_with_device(result_data, self.device.clone())
+        Self::new_with_device(result_data, Device::CPU)
     }
 
     fn clamp_cuda(&self, min_val: T, max_val: T) -> Result<Self, String> {
@@ -1123,7 +1255,9 @@ where
     }
 
     fn max_along_dim_cpu(&self, dim: usize) -> Result<Self, String> {
+
         let shape = self.shape();
+        let data = self.get_data_synced()?;
 
         // Calculate the output shape (remove the specified dimension)
         let mut output_shape = shape.to_vec();
@@ -1142,13 +1276,13 @@ where
         let output_strides = Self::calculate_strides_for_shape(&output_shape);
 
         // Iterate through all elements and find maximum along the specified dimension
-        for input_idx in 0..self.data.len() {
+        for input_idx in 0..data.len() {
             let mut coords = Self::flat_to_coords(input_idx, &input_strides, shape);
             coords.remove(dim);
 
             let output_idx = Self::coords_to_flat(&coords, &output_strides);
 
-            let current_value = self.data.as_slice().unwrap()[input_idx];
+            let current_value = data.as_slice().unwrap()[input_idx];
             if current_value > result_data[output_idx] {
                 result_data[output_idx] = current_value;
             }
@@ -1159,7 +1293,7 @@ where
 
         Ok(Self::new_with_device(
             result_array.into_dyn(),
-            self.device.clone(),
+            Device::CPU, // CPU only for now
         ))
     }
 
@@ -1233,8 +1367,11 @@ where
             ));
         }
 
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(&other.data)
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+
+        let result_data = ndarray::Zip::from(&self_data)
+            .and(&other_data)
             .map_collect(|&a, &b| {
                 if a >= b {
                     <T as CPUNumber>::one()
@@ -1243,7 +1380,7 @@ where
                 }
             });
 
-        Ok(Self::new_with_device(result_data, self.device.clone()))
+        Ok(Self::new_with_device(result_data, Device::CPU))
     }
 
     // CUDA implementation for greater_equal
@@ -1289,8 +1426,11 @@ where
             ));
         }
 
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(&other.data)
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+
+        let result_data = ndarray::Zip::from(&self_data)
+            .and(&other_data)
             .map_collect(|&a, &b| {
                 if a <= b {
                     <T as CPUNumber>::one()
@@ -1299,7 +1439,7 @@ where
                 }
             });
 
-        Ok(Self::new_with_device(result_data, self.device.clone()))
+        Ok(Self::new_with_device(result_data, Device::CPU))
     }
 
     fn less_equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
@@ -1342,9 +1482,11 @@ where
                 other.shape()
             ));
         }
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
 
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(&other.data)
+        let result_data = ndarray::Zip::from(&self_data)
+            .and(&other_data)
             .map_collect(|&a, &b| {
                 if a == b {
                     <T as CPUNumber>::one()
@@ -1353,7 +1495,7 @@ where
                 }
             });
 
-        Ok(Self::new_with_device(result_data, self.device.clone()))
+        Ok(Self::new_with_device(result_data, Device::CPU))
     }
 
     fn equal_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
@@ -1385,7 +1527,10 @@ where
     }
 
     fn logical_not_cpu(&self) -> Result<GPUTensor<T>, String> {
-        let result_data = self.data.mapv(|x| {
+        let data = self.get_data_synced()?;
+        // Create a new tensor where 0 becomes 1 and all other values become 0
+        // This is a logical NOT operation
+        let result_data = data.mapv(|x| {
             if x == <T as CPUNumber>::zero() {
                 <T as CPUNumber>::one()
             } else {
@@ -1393,7 +1538,7 @@ where
             }
         });
 
-        Ok(Self::new_with_device(result_data, self.device.clone()))
+        Ok(Self::new_with_device(result_data, Device::CPU))
     }
 
     fn logical_not_cuda(&self) -> Result<GPUTensor<T>, String> {
@@ -1423,7 +1568,8 @@ where
     }
 
     fn in_range_cpu(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
-        let result_data = self.data.mapv(|x| {
+        let data = self.get_data_synced()?;
+        let result_data = data.mapv(|x| {
             if x >= min_val && x <= max_val {
                 <T as CPUNumber>::one()
             } else {
@@ -1431,7 +1577,7 @@ where
             }
         });
 
-        Ok(Self::new_with_device(result_data, self.device.clone()))
+        Ok(Self::new_with_device(result_data, Device::CPU))
     }
 
     fn in_range_cuda(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
@@ -1458,9 +1604,9 @@ where
                 self.ndim()
             ));
         }
-
-        let expanded = self.data.clone().insert_axis(ndarray::Axis(axis));
-        Ok(Self::new_with_device(expanded, self.device.clone()))
+        let data = self.get_data_synced()?;
+        let expanded = data.clone().insert_axis(ndarray::Axis(axis));
+        Ok(Self::new_with_device(expanded, Device::CPU))
     }
 
     /// SIGN METHOD
@@ -1475,7 +1621,11 @@ where
     }
 
     fn sign_cpu(&self) -> GPUTensor<T> {
-        let result_data = self.data.mapv(|x| {
+
+        let data = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for sign on CPU");
+        });
+        let result_data = data.mapv(|x| {
             if x > <T as CPUNumber>::zero() {
                 <T as CPUNumber>::one()
             } else if x < <T as CPUNumber>::zero() {
@@ -1485,7 +1635,7 @@ where
             }
         });
 
-        Self::new_with_device(result_data, self.device.clone())
+        Self::new_with_device(result_data, Device::CPU)
     }
 
     fn sign_cuda(&self) -> Result<GPUTensor<T>, String> {
@@ -1503,7 +1653,11 @@ where
         })
     }
 
-    fn create_tensor_from_cuda_result(
+    // Note: This methods sends the CUDA tensor back to CPU
+    // and creates a new GPUTensor from the result.
+    // It is not the most efficient way to handle CUDA results,
+    // A better approach is to use the most optimized method that keeps the data on CUDA and allows to chain operations on the GPU.
+    fn create_sync_tensor_from_cuda_result(
         &self,
         cuda_result: crate::backend::cuda::CudaTensor<T>,
     ) -> Result<Self, String> {
@@ -1520,9 +1674,23 @@ where
         // Create a new ArrayD from the CPU result
         let result_array = ArrayD::from_shape_vec(IxDyn(shape), result_cpu)
             .map_err(|e| format!("Failed to create array from CUDA result: {}", e))?;
-        let mut result_tensor = GPUTensor::new_with_device(result_array, Device::CUDA(0));
-        result_tensor.cuda_storage = Some(cuda_result);
-        Ok(result_tensor)
+        Ok(GPUTensor::new_with_device(result_array, Device::CPU))
+    }
+    
+    /// Create a new GPUTensor from a CUDA result
+    /// This method DOES NOT transfer the CUDA result back to CPU.
+    /// You should manually call the to_cpu() method if you need the result on CPU.
+    fn create_tensor_from_cuda_result(
+        &self,
+        cuda_result: crate::backend::cuda::CudaTensor<T>,
+    ) -> Result<Self, String> {
+        
+        let shape = cuda_result.shape();
+        Ok(Self {
+            data: ArrayD::zeros(IxDyn(shape)), 
+            device: Device::CUDA(0),
+            cuda_storage: Some(cuda_result),
+        })
     }
 }
 
@@ -1533,15 +1701,23 @@ where
 {
     // CPU scalar operations for fallback
     fn add_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
-        Self::new_with_device(&self.data + scalar, self.device.clone())
+        let data = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for scalar addition on CPU");
+        });
+        Self::new_with_device(&data + scalar, Device::CPU)
     }
 
     fn mul_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
-        Self::new_with_device(&self.data * scalar, self.device.clone())
+        let data = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for scalar multiplication on CPU");
+        });
+        Self::new_with_device(&data * scalar, Device::CPU)
     }
-
     fn div_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
-        Self::new_with_device(&self.data / scalar, self.device.clone())
+        let data = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for scalar division on CPU");
+        });
+        Self::new_with_device(&data / scalar, Device::CPU)
     }
 
     // Smart scalar operations
@@ -1632,17 +1808,24 @@ where
 {
     // CPU activation functions for fallback
     fn relu_cpu(&self) -> GPUTensor<T> {
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for relu on CPU");
+        });;
+        // Apply ReLU: max(0, x)
         Self::new_with_device(
-            self.data.mapv(|x| {
+            self_data.mapv(|x| {
                 let zero = <T as CPUNumber>::zero();
                 if x > zero { x } else { zero }
             }),
-            self.device.clone(),
+            Device::CPU,
         )
     }
 
     fn exp_cpu(&self) -> GPUTensor<T> {
-        Self::new_with_device(self.data.mapv(|x| x.exp()), self.device.clone())
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for exp on CPU");
+        });
+        Self::new_with_device(self_data.mapv(|x| x.exp()), Device::CPU)
     }
 
     // Smart activation functions
@@ -1668,13 +1851,16 @@ where
 
     // Sigmoid activation function
     pub fn sigmoid_cpu(&self) -> GPUTensor<T> {
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for sigmoid on CPU");
+        });
         Self::new_with_device(
-            self.data.mapv(|x| {
+            self_data.mapv(|x| {
                 let one = <T as CPUNumber>::one();
                 let neg_x = -x;
                 one / (one + neg_x.exp())
             }),
-            self.device.clone(),
+            Device::CPU,
         )
     }
 
@@ -1730,17 +1916,21 @@ where
                 other.shape()
             ));
         }
-
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
         Ok(Self::new_with_device(
-            ndarray::Zip::from(&self.data)
-                .and(&other.data)
+            ndarray::Zip::from(&self_data)
+                .and(&other_data)
                 .map_collect(|&a, &b| a.powf(b)),
-            self.device.clone(),
+            Device::CPU,
         ))
     }
 
     fn power_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
-        Self::new_with_device(self.data.mapv(|x| x.powf(scalar)), self.device.clone())
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for power_scalar on CPU");
+        });
+        Self::new_with_device(self_data.mapv(|x| x.powf(scalar)), Device::CPU)
     }
 
     /// Natural logarithm with CUDA support and CPU fallback
@@ -1767,17 +1957,26 @@ where
 
     // CPU log implementation for fallback
     fn log_cpu(&self) -> GPUTensor<T> {
-        Self::new_with_device(self.data.mapv(|x| x.ln()), self.device.clone())
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for log on CPU");
+        });;
+        
+        Self::new_with_device(self_data.mapv(|x| x.ln()), Device::CPU)
     }
 
     fn tanh_cpu(&self) -> GPUTensor<T> {
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for tanh on CPU");
+        });
+        // Apply tanh: (e^x - e^-x) / (e^x + e^-x)
+        // Using exp() for better numerical stability
         Self::new_with_device(
-            self.data.mapv(|x| {
+            self_data.mapv(|x| {
                 let e_x = x.exp();
                 let e_neg_x = (-x).exp();
                 (e_x - e_neg_x) / (e_x + e_neg_x)
             }),
-            self.device.clone(),
+            Device::CPU,
         )
     }
 
@@ -1914,18 +2113,20 @@ where
 
     // CPU fallback implementations
     fn sqrt_cpu(&self) -> Result<Self, String> {
+
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         // Check for negative values first
-        let has_negative = self.data.iter().any(|&x| x < <T as CPUFloat>::zero());
+        let has_negative = self_data.iter().any(|&x| x < <T as CPUFloat>::zero());
         if has_negative {
             return Err("Cannot compute square root of negative values".to_string());
         }
 
-        let result_data: Vec<T> = self.data.iter().map(|&x| x.sqrt()).collect();
+        let result_data: Vec<T> = self_data.iter().map(|&x| x.sqrt()).collect();
 
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+        let result_array = ndarray::Array::from_shape_vec(self_data.raw_dim(), result_data)
             .map_err(|e| format!("Failed to create result tensor: {}", e))?;
 
-        Ok(Self::new_with_device(result_array, self.device.clone()))
+        Ok(Self::new_with_device(result_array, Device::CPU))
     }
 
     // CUDA implementations
@@ -1950,15 +2151,47 @@ where
 impl<T> GPUTensor<T>
 where
     T: GPUNumber,
-{
-    // Method to access data field for tests (similar to the errors we saw)
+{    
+    
+    // Read-only access - warns if data might be stale
     pub fn data(&self) -> &ArrayD<T> {
+        if self.is_cuda() && self.cuda_storage.is_some() && self.data.is_empty() {
+            panic!("GPU tensor data not synced to CPU. Call .to_cpu() first or use .to_vec()");
+        }
         &self.data
+    }
+
+    // Force sync from GPU to CPU (expensive operation)
+    pub fn sync_to_cpu(&mut self) -> Result<(), String> {
+        if !self.is_cuda() || self.cuda_storage.is_none() {
+            return Ok(()); // Already on CPU or no CUDA data
+        }
+
+        let cuda_tensor = self.cuda_storage.as_ref().unwrap();
+        let backend = crate::backend::manager::get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        let memory_manager = cuda_backend.memory_manager();
+        
+        let cpu_data = cuda_tensor.to_cpu(memory_manager)?;
+        self.data = ArrayD::from_shape_vec(IxDyn(cuda_tensor.shape()), cpu_data)
+            .map_err(|e| format!("Failed to create ArrayD: {}", e))?;
+        
+        Ok(())
+    }
+
+    // Safe data access that auto-syncs (use sparingly)
+    pub fn data_synced(&mut self) -> Result<&ArrayD<T>, String> {
+        self.sync_to_cpu()?;
+        Ok(&self.data)
     }
 
     // Negate operation for GPUTensor
     fn negate_cpu(&self) -> GPUTensor<T> {
-        Self::new_with_device(self.data.mapv(|x| -x), self.device.clone())
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for negate operation on CPU");
+        });
+        // Negate each element
+        Self::new_with_device(self_data.mapv(|x| -x), Device::CPU)
     }
 
     fn negate_cuda(&self) -> Result<GPUTensor<T>, String> {
@@ -1999,10 +2232,16 @@ where
         if self.shape() != other.shape() || self.device != other.device {
             return false;
         }
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for equality check on CPU");
+        });
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for equality check on CPU");
+        });
 
         // Not the best implementation as we should compare the CUDA storage
         // But for now, we compare the data directly
-        self.data == other.data
+        self_data == other_data
     }
 }
 
@@ -2023,8 +2262,12 @@ where
             );
         }
 
+        let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
+            panic!("Failed to get data for indexing on CPU");
+        });
+
         // Convert flat index to multi-dimensional coordinates
-        let shape = self.data.shape();
+        let shape = self_data.shape();
         let mut coords = vec![0; shape.len()];
         let mut remaining = index;
 
@@ -2036,6 +2279,6 @@ where
         // Access using multi-dimensional indexing
         // Aparently this t¡is not the safest way to do this, but it is the fastest.
         // This returns a reference to the element at the specified index.
-        &self.data[&coords[..]]
+        &self_data[&coords[..]]
     }
 }
