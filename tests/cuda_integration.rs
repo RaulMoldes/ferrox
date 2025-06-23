@@ -372,13 +372,16 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     
     let (ptx_bytes, expected_functions) = match name {
         "elementwise" => (ELEMENTWISE_PTX, vec![
-            "elementwise_add", "elementwise_sqrt", "elementwise_abs", "elementwise_mul"
+            "elementwise_add", "elementwise_sqrt", "elementwise_abs", "elementwise_mul",
+            "elementwise_pow", "elementwise_min", "elementwise_max", "elmentwise_min_f64", "elementwise_max_f64",
+             "elementwise_add_f64", "elementwise_sqrt_f64", "elementwise_abs_f64", "elementwise_mul_f64",
+             "elementwise_exp", "elementwise_log", "elementwise_negate", "elementwise_exp_f64", "elementwise_log_f64", "elementwise_negate_f64"
         ]),
         "matmul" => (MATMUL_PTX, vec!["matmul", "matmul_f64"]),
-        "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tangent"]),
-        "reduces" => (REDUCES_PTX, vec!["sum_axis", "max_along_dim"]),
+        "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tangent","relu_f64", "sigmoid_f64", "hyperbolic_tangent_f64"]),
+        "reduces" => (REDUCES_PTX, vec!["sum_axis", "max_along_dim","sum_axis_f64", "max_along_dim_f64"]),
         "transpose" => (TRANSPOSE_PTX, vec!["transpose_2d", "transpose_2d_f64"]),
-        "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign"]),
+        "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign","greater_equal_f64", "equal_f64", "sign_f64", "less_equal", "less_equal", "less_equal_f64"]),
         _ => return Err(format!("Unknown kernel: {}", name)),
     };
     
