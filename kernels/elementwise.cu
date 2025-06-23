@@ -59,7 +59,7 @@ extern "C" __global__ void elementwise_mul(const float* a, const float* b, float
 
 
 // Element-wise division: output[i] = a[i] / b[i]
-__global__ void elementwise_div(const float* a, const float* b, float* c, int size) {
+extern "C" __global__ void elementwise_div(const float* a, const float* b, float* c, int size) {
     int idx = get_global_idx();
     
     if (idx < size) {
