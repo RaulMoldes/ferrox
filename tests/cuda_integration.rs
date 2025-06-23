@@ -365,6 +365,39 @@ fn test_to_vec_works_on_gpu_tensors() {
     }
 }
 
+#[cfg(feature = "cuda")]
+#[test]
+#[should_panic(expected = "Cannot index GPU tensor. Call .to_cpu() first")]
+fn test_gpu_only_tensor_indexing_panics() {
+  
+    
+    let backend = get_backend();
+    if let Some(cuda_backend) = backend.cuda_backend() {
+        if let Ok(cuda_tensor) = CudaTensor::from_vec(
+            cuda_backend.memory_manager(),
+            vec![1.0f32, 2.0, 3.0],
+            vec![3]
+        ) {
+            // Create GPU-only tensor
+            let gpu_tensor = Tensor {
+                data: ArrayD::zeros(IxDyn(&[0])), // Empty CPU data
+                device: Device::CUDA(0),
+                cuda_storage: Some(cuda_tensor),
+            };
+            
+            let _ = gpu_tensor[0]; // Should panic
+        }
+    } else {
+        // Force panic without CUDA if backend unavailable
+        let gpu_tensor = Tensor {
+            data: ArrayD::zeros(IxDyn(&[0])), 
+            device: Device::CUDA(0),
+            cuda_storage: None,
+        };
+        let _ = gpu_tensor[0]; // Should panic
+    }
+}
+
 // Helper function to load a single kernel with detailed error reporting
 #[cfg(feature = "cuda")]
 fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), String> {
