@@ -1605,7 +1605,7 @@ where
             ));
         }
         let data = self.get_data_synced()?;
-        let expanded = data.clone().insert_axis(ndarray::Axis(axis));
+        let expanded = data.into_owned().insert_axis(ndarray::Axis(axis));
         Ok(Self::new_with_device(expanded, Device::CPU))
     }
 
