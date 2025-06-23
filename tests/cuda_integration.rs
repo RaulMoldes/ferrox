@@ -220,8 +220,9 @@ fn test_concurrent_cuda_operations() {
 #[should_panic(expected = "Cannot index GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_indexing_panics() {
     
-    
+    println!("Testing GPU-only tensor indexing panics...");
     let backend = get_backend();
+   
     if let Some(cuda_backend) = backend.cuda_backend() {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
             cuda_backend.memory_manager(),
@@ -237,7 +238,9 @@ fn test_gpu_only_tensor_indexing_panics() {
             
             let _ = gpu_tensor[0]; // Should panic
         }
-    } 
+    } else {
+        println!("CUDA backend not available, skipping test");
+    }
 }
 
 #[cfg(feature = "cuda")]
@@ -265,6 +268,8 @@ fn test_gpu_only_tensor_iter_panics() {
 
 
         }
+    } else {
+        println!("CUDA backend not available, skipping test");
     }
 }
 
@@ -288,6 +293,8 @@ fn test_gpu_only_tensor_detach_panics() {
             
             let _ = gpu_tensor.detach(); // Should panic
         }
+    } else {
+        println!("CUDA backend not available, skipping test");
     }
 }
 
