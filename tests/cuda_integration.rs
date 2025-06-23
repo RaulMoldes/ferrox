@@ -375,7 +375,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
             "elementwise_add", "elementwise_sqrt", "elementwise_abs", "elementwise_mul"
         ]),
         "matmul" => (MATMUL_PTX, vec!["matmul", "matmul_f64"]),
-        "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tanh"]),
+        "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tangent"]),
         "reduces" => (REDUCES_PTX, vec!["sum_axis", "max_along_dim"]),
         "transpose" => (TRANSPOSE_PTX, vec!["transpose_2d", "transpose_2d_f64"]),
         "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign"]),
