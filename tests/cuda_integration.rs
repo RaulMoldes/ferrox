@@ -242,11 +242,13 @@ fn test_gpu_only_tensor_indexing_panics() {
 fn test_gpu_only_tensor_iter_panics() {
     println!("Testing GPU-only tensor iteration panics...");
     if let Ok(cuda_backend) = CudaBackend::new(0) {
+        println!("CUDA backend initialized successfully");
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
             cuda_backend.memory_manager(), 
             vec![1.0f32, 2.0, 3.0], 
             vec![3]
         ) {
+            println!("Created CUDA tensor successfully");
             let gpu_tensor = Tensor {
                 data: ArrayD::zeros(IxDyn(&[0])),
                 device: Device::CUDA(0),
@@ -254,6 +256,10 @@ fn test_gpu_only_tensor_iter_panics() {
             };
             println!("Created GPU-only tensor: {:?}", gpu_tensor.shape());
             for _ in gpu_tensor.iter() {} // Should panic
+        }else {
+            println!("Failed to create CUDA tensor");
+
+            
         }
     }
 }
