@@ -18,7 +18,7 @@ where
 {
     pub data: ArrayD<T>,
     device: Device,
-    cuda_storage: Option<CudaTensor<T>>,
+    pub cuda_storage: Option<CudaTensor<T>>,
 }
 
 #[cfg(feature = "cuda")]
