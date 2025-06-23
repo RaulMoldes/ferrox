@@ -213,15 +213,17 @@ fn test_concurrent_cuda_operations() {
     println!("All concurrent operations completed");
 }
 
-// NEW TESTS FOR GPU-ONLY BEHAVIOR
 #[cfg(feature = "cuda")]
 #[test]
 #[should_panic(expected = "Cannot index GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_indexing_panics() {
-    if let Ok(cuda_backend) = CudaBackend::new(0) {
+    use crate::backend::manager::get_backend;
+    
+    let backend = get_backend();
+    if let Some(cuda_backend) = backend.cuda_backend() {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
-            cuda_backend.memory_manager(), 
-            vec![1.0f32, 2.0, 3.0], 
+            cuda_backend.memory_manager(),
+            vec![1.0f32, 2.0, 3.0],
             vec![3]
         ) {
             // Create GPU-only tensor
@@ -233,6 +235,14 @@ fn test_gpu_only_tensor_indexing_panics() {
             
             let _ = gpu_tensor[0]; // Should panic
         }
+    } else {
+        // Force panic without CUDA if backend unavailable
+        let gpu_tensor = Tensor {
+            data: ArrayD::zeros(IxDyn(&[0])), 
+            device: Device::CUDA(0),
+            cuda_storage: None,
+        };
+        let _ = gpu_tensor[0]; // Should panic
     }
 }
 
@@ -259,7 +269,7 @@ fn test_gpu_only_tensor_iter_panics() {
         }else {
             println!("Failed to create CUDA tensor");
 
-            
+
         }
     }
 }
