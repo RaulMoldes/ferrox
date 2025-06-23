@@ -226,7 +226,7 @@ fn test_gpu_only_tensor_indexing_panics() {
         ) {
             // Create GPU-only tensor
             let gpu_tensor = Tensor {
-                data: ArrayD::empty(), // Empty CPU data
+                data: ArrayD::zeros(IxDyn(&[])), // Empty CPU data
                 device: Device::CUDA(0),
                 cuda_storage: Some(cuda_tensor),
             };
@@ -247,7 +247,7 @@ fn test_gpu_only_tensor_iter_panics() {
             vec![3]
         ) {
             let gpu_tensor = Tensor {
-                data: ArrayD::empty(), // Empty CPU data
+                data: ArrayD::zeros(IxDyn(&[])),
                 device: Device::CUDA(0),
                 cuda_storage: Some(cuda_tensor),
             };

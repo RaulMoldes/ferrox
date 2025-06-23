@@ -305,7 +305,7 @@ where
     // Detach operation - creates a new tensor without gradient tracking
     // Useful for autograd system
     pub fn detach(&self) -> Self {
-        if self.is_cuda() && self.data.is_empty() {
+        if self.is_cuda() {
             panic!("Cannot detach GPU tensor. Call .to_cpu() first");
         }
         Self::new_with_device(self.data.clone(), self.device.clone())
@@ -313,7 +313,7 @@ where
 
     // Iterator methods - these work on CPU data
     pub fn iter(&self) -> ndarray::iter::Iter<'_, T, ndarray::IxDyn> {
-        if self.is_cuda() && self.data.is_empty() {
+        if self.is_cuda() {
             panic!("Cannot iter GPU tensor. Call .to_cpu() first");
         }
         self.data.iter()
@@ -368,7 +368,7 @@ where
     fn get_data_synced(
         &self,
     ) -> Result<Cow<ArrayD<T>>, String> {
-        if self.is_cuda() && self.data.is_empty() {
+        if self.is_cuda()  {
             // If CUDA tensor is empty, convert to CPU first
             match self.to_cpu() {
                 Ok(cpu_tensor) => Ok(Cow::Owned(cpu_tensor.data)),
@@ -2154,7 +2154,7 @@ where
     
     // Read-only access - warns if data might be stale
     pub fn data(&self) -> &ArrayD<T> {
-        if self.is_cuda() && self.cuda_storage.is_some() && self.data.is_empty() {
+        if self.is_cuda() && self.cuda_storage.is_some()  {
             panic!("GPU tensor data not synced to CPU. Call .to_cpu() first or use .to_vec()");
         }
         &self.data
@@ -2262,7 +2262,7 @@ where
         }
 
         // Can't use get_data_synced() here - need actual data
-        if self.is_cuda() && self.data.is_empty() {
+        if self.is_cuda() {
             panic!("Cannot index GPU tensor. Call .to_cpu() first");
         }
 
