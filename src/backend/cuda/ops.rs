@@ -620,11 +620,11 @@ impl<'a> CudaOps<'a> {
     /// Mean of all elements
     pub fn mean_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: crate::backend::number::GPUNumber + From<f32> + 'static,
+        T: crate::backend::number::GPUNumber  + 'static,
     {
         let sum_result = self.sum_all(input)?;
         let total_elements = input.size();
-        let divisor = T::from(total_elements as f32);
+        let divisor = <T as GPUNUmber>::from_f32(total_elements as f32);
         let divisor_tensor = self.full(&[], divisor)?; // Scalar tensor
         self.div(&sum_result, &divisor_tensor)
     }
