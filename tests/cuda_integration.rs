@@ -251,7 +251,7 @@ fn test_gpu_only_tensor_iter_panics() {
                 device: Device::CUDA(0),
                 cuda_storage: Some(cuda_tensor),
             };
-            
+            println!("Created GPU-only tensor: {:?}", gpu_tensor.shape());
             for _ in gpu_tensor.iter() {} // Should panic
         }
     }
