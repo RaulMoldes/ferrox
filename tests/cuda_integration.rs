@@ -270,7 +270,7 @@ fn test_gpu_only_tensor_detach_panics() {
             use ndarray::ArrayD;
 
             let gpu_tensor = Tensor {
-                data: ArrayD::empty(), // Empty CPU data
+                data:  ArrayD::zeros(IxDyn(&[])), // Empty CPU data
                 device: Device::CUDA(0),
                 cuda_storage: Some(cuda_tensor),
             };
