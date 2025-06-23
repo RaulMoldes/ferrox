@@ -436,7 +436,7 @@ where
     // This function performs matrix multiplication on CUDA tensors
     //----------------------------------------------------------
     fn matmul_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
+       // use crate::backend::manager::get_backend;
 
         // Basic validation - ensure we have 2D tensors
         if self.ndim() != 2 || other.ndim() != 2 {
@@ -675,7 +675,7 @@ where
             return Err("Transpose is only supported for 2D tensors".to_string());
         }
 
-        use crate::backend::manager::get_backend;
+     //   use crate::backend::manager::get_backend;
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
@@ -796,7 +796,7 @@ where
     }
 
     fn sum_axes_cuda(&self, axes: Option<&[usize]>) -> Result<GPUTensor<T>, String> {
-        use crate::backend::manager::get_backend;
+     //   use crate::backend::manager::get_backend;
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
@@ -883,7 +883,7 @@ where
             return Ok(self.clone());
         }
 
-        use crate::backend::manager::get_backend;
+       // use crate::backend::manager::get_backend;
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
@@ -917,7 +917,7 @@ where
         {
             if let Some(cuda_tensor) = &self.cuda_storage {
                 // Get the memory manager from backend
-                use crate::backend::manager::get_backend;
+            //    use crate::backend::manager::get_backend;
                 let backend = get_backend();
                 let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
                 let memory_manager = cuda_backend.memory_manager();
@@ -1660,7 +1660,7 @@ where
         &self,
         cuda_result: crate::backend::cuda::CudaTensor<T>,
     ) -> Result<Self, String> {
-        use crate::backend::manager::get_backend;
+     //   use crate::backend::manager::get_backend;
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
