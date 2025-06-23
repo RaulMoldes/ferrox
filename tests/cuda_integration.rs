@@ -401,7 +401,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     
     // Try to load the PTX
     let module_name = format!("{}_module", name);
-    let functions: Vec<&str> = expected_functions.iter().take(7).cloned().collect(); // Test with fewer functions first
+    let functions: Vec<&str> = expected_functions.iter().take(11).cloned().collect(); // Test with fewer functions first
     
     println!("  Attempting to load PTX into module: {}", module_name);
     println!("  Expected functions: {:?}", functions);
