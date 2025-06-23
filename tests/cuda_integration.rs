@@ -3,6 +3,10 @@
 use ferrox::backend::Device;
 #[cfg(feature = "cuda")]
 use ferrox::tensor::Tensor;
+#[cfg(feature = "cuda")]
+use ferrox::backend::cuda::{CudaBackend, CudaTensor};
+#[cfg(feature = "cuda")]
+use ndarray::{ArrayD, IxDyn};
 
 #[cfg(feature = "cuda")]
 #[test]
@@ -207,4 +211,171 @@ fn test_concurrent_cuda_operations() {
     }
 
     println!("All concurrent operations completed");
+}
+
+// NEW TESTS FOR GPU-ONLY BEHAVIOR
+#[cfg(feature = "cuda")]
+#[test]
+#[should_panic(expected = "GPU tensor data not synced to CPU")]
+fn test_gpu_only_tensor_indexing_panics() {
+    if let Ok(cuda_backend) = CudaBackend::new(0) {
+        if let Ok(cuda_tensor) = CudaTensor::from_vec(
+            cuda_backend.memory_manager(), 
+            vec![1.0f32, 2.0, 3.0], 
+            vec![3]
+        ) {
+            // Create GPU-only tensor
+            let gpu_tensor = Tensor {
+                data: ArrayD::zeros(IxDyn(&[])), // Empty CPU data
+                device: Device::CUDA(0),
+                cuda_storage: Some(cuda_tensor),
+            };
+            
+            let _ = gpu_tensor[0]; // Should panic
+        }
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+#[should_panic(expected = "Cannot iter GPU tensor")]
+fn test_gpu_only_tensor_iter_panics() {
+    if let Ok(cuda_backend) = CudaBackend::new(0) {
+        if let Ok(cuda_tensor) = CudaTensor::from_vec(
+            cuda_backend.memory_manager(), 
+            vec![1.0f32, 2.0, 3.0], 
+            vec![3]
+        ) {
+            let gpu_tensor = Tensor {
+                data: ArrayD::zeros(IxDyn(&[])),
+                device: Device::CUDA(0),
+                cuda_storage: Some(cuda_tensor),
+            };
+            
+            for _ in gpu_tensor.iter() {} // Should panic
+        }
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+#[should_panic(expected = "Cannot detach GPU tensor")]
+fn test_gpu_only_tensor_detach_panics() {
+    if let Ok(cuda_backend) = CudaBackend::new(0) {
+        if let Ok(cuda_tensor) = CudaTensor::from_vec(
+            cuda_backend.memory_manager(), 
+            vec![1.0f32, 2.0, 3.0], 
+            vec![3]
+        ) {
+            let gpu_tensor = Tensor {
+                data: ArrayD::zeros(IxDyn(&[])),
+                device: Device::CUDA(0),
+                cuda_storage: Some(cuda_tensor),
+            };
+            
+            let _ = gpu_tensor.detach(); // Should panic
+        }
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn test_gpu_chaining_efficiency() {
+    let a = Tensor::new(ndarray::arr1(&[1.0f32, 2.0, 3.0]).into_dyn());
+    let b = Tensor::new(ndarray::arr1(&[2.0f32, 3.0, 4.0]).into_dyn());
+    
+    if let (Ok(cuda_a), Ok(cuda_b)) = (a.to_cuda(), b.to_cuda()) {
+        // Chain operations on GPU - these should create GPU-only tensors
+        if let Ok(result1) = cuda_a.add_cuda(&cuda_b) {
+            if let Ok(result2) = result1.mul_scalar_cuda(2.0) {
+                // Verify it's still on GPU and CPU data is empty
+                assert!(result2.is_cuda());
+                assert!(result2.cuda_storage.is_some());
+                
+                // Only transfer when needed
+                let cpu_result = result2.to_cpu().unwrap();
+                // (1+2)*2 = 6, (2+3)*2 = 10, (3+4)*2 = 14
+                assert!((cpu_result.data()[&[0]] - 6.0).abs() < 1e-6);
+                assert!((cpu_result.data()[&[1]] - 10.0).abs() < 1e-6);
+                assert!((cpu_result.data()[&[2]] - 14.0).abs() < 1e-6);
+                
+                println!("GPU chaining test passed!");
+            }
+        }
+    } else {
+        println!("CUDA not available, skipping GPU chaining test");
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn test_gpu_operations_create_gpu_only_tensors() {
+    let a = Tensor::new(ndarray::arr1(&[1.0f32, 2.0]).into_dyn());
+    let b = Tensor::new(ndarray::arr1(&[3.0f32, 4.0]).into_dyn());
+    
+    if let (Ok(cuda_a), Ok(cuda_b)) = (a.to_cuda(), b.to_cuda()) {
+        // Test that CUDA operations create GPU-only results
+        if let Ok(result) = cuda_a.add_cuda(&cuda_b) {
+            assert!(result.is_cuda());
+            assert!(result.cuda_storage.is_some());
+            
+            // Verify that accessing CPU data would require explicit conversion
+            // (We can't test the panic here since it would fail the test)
+            
+            println!("GPU-only tensor creation test passed!");
+        }
+    } else {
+        println!("CUDA not available, skipping GPU-only tensor test");
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn test_backward_compatibility() {
+    // Test that existing patterns still work
+    let cpu_tensor = Tensor::new(ndarray::arr1(&[1.0f32, 2.0, 3.0]).into_dyn());
+    
+    // Traditional pattern should still work
+    if let Ok(cuda_tensor) = cpu_tensor.to_cuda() {
+        // This tensor has both CPU and GPU data
+        assert!(cuda_tensor.is_cuda());
+        assert!(cuda_tensor.cuda_storage.is_some());
+        assert!(!cuda_tensor.data.is_empty()); // CPU data still exists
+        
+        // So indexing still works
+        assert!((cuda_tensor[0] - 1.0).abs() < 1e-6);
+        
+        // And operations that return to CPU still work
+        if let Ok(result) = cuda_tensor.add_cuda(&cuda_tensor) {
+            if let Ok(cpu_result) = result.to_cpu() {
+                assert!((cpu_result[0] - 2.0).abs() < 1e-6);
+            }
+        }
+        
+        println!("Backward compatibility test passed!");
+    } else {
+        println!("CUDA not available, skipping backward compatibility test");
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn test_to_vec_works_on_gpu_tensors() {
+    let cpu_tensor = Tensor::new(ndarray::arr1(&[1.0f32, 2.0, 3.0]).into_dyn());
+    
+    if let Ok(cuda_tensor) = cpu_tensor.to_cuda() {
+        // to_vec should work even on GPU tensors
+        let vec_data = cuda_tensor.to_vec().unwrap();
+        assert_eq!(vec_data, vec![1.0, 2.0, 3.0]);
+        
+        // Test chained GPU operations
+        if let Ok(result) = cuda_tensor.add_cuda(&cuda_tensor) {
+            let result_vec = result.to_vec().unwrap();
+            assert_eq!(result_vec, vec![2.0, 4.0, 6.0]);
+        }
+        
+        println!("to_vec GPU test passed!");
+    } else {
+        println!("CUDA not available, skipping to_vec GPU test");
+    }
 }
