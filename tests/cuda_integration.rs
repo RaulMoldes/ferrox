@@ -10,7 +10,7 @@ use ferrox::backend::manager::get_backend;
 #[cfg(feature = "cuda")]
 use ndarray::{ArrayD, IxDyn};
 #[cfg(feature = "cuda")]
-use ferrox::backend::cuda::{CudaBackend, CudaKernels, load_all_kernels};
+use ferrox::backend::cuda::{CudaKernels, load_all_kernels};
 #[cfg(feature = "cuda")]
 use cudarc::driver::CudaDevice;
 
