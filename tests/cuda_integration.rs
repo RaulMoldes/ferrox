@@ -9,6 +9,10 @@ use ferrox::backend::cuda::{CudaBackend, CudaTensor};
 use ferrox::backend::manager::get_backend;
 #[cfg(feature = "cuda")]
 use ndarray::{ArrayD, IxDyn};
+#[cfg(feature = "cuda")]
+use ferrox::backend::cuda::{CudaBackend, CudaKernels, load_all_kernels};
+#[cfg(feature = "cuda")]
+use cudarc::driver::CudaDevice;
 
 #[cfg(feature = "cuda")]
 #[test]
@@ -214,6 +218,7 @@ fn test_concurrent_cuda_operations() {
 
     println!("All concurrent operations completed");
 }
+
 #[test]
 fn test_cuda_environment() {
     println!("=== CUDA Environment Debug ===");
@@ -359,3 +364,101 @@ fn test_to_vec_works_on_gpu_tensors() {
         println!("CUDA not available, skipping to_vec GPU test");
     }
 }
+
+// Helper function to load a single kernel with detailed error reporting
+#[cfg(feature = "cuda")]
+fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), String> {
+    use ferrox::backend::cuda::kernels::*;
+    
+    let (ptx_bytes, expected_functions) = match name {
+        "elementwise" => (ELEMENTWISE_PTX, vec![
+            "elementwise_add", "elementwise_sqrt", "elementwise_abs", "elementwise_mul"
+        ]),
+        "matmul" => (MATMUL_PTX, vec!["matmul", "matmul_f64"]),
+        "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tanh"]),
+        "reduces" => (REDUCES_PTX, vec!["sum_axis", "max_along_dim"]),
+        "transpose" => (TRANSPOSE_PTX, vec!["transpose_2d", "transpose_2d_f64"]),
+        "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign"]),
+        _ => return Err(format!("Unknown kernel: {}", name)),
+    };
+    
+    println!("  PTX size: {} bytes", ptx_bytes.len());
+    
+    // Check if PTX is valid UTF-8
+    let ptx_str = match std::str::from_utf8(ptx_bytes) {
+        Ok(s) => {
+            println!("  ✓ PTX is valid UTF-8");
+            println!("  PTX preview: {}", &s[..s.len().min(200)]);
+            s
+        },
+        Err(e) => {
+            return Err(format!("Invalid PTX UTF-8: {}", e));
+        }
+    };
+    
+    // Try to load the PTX
+    let module_name = format!("{}_module", name);
+    let functions: Vec<&str> = expected_functions.iter().take(3).cloned().collect(); // Test with fewer functions first
+    
+    println!("  Attempting to load PTX into module: {}", module_name);
+    println!("  Expected functions: {:?}", functions);
+    
+    match kernels.device().load_ptx(ptx_str.into(), &module_name, &functions) {
+        Ok(_) => {
+            println!("  ✓ PTX loaded into device successfully");
+            
+            // Check if functions are accessible
+            for func_name in &functions {
+                if let Some(_func) = kernels.device().get_func(&module_name, func_name) {
+                    println!("    ✓ Function {} found", func_name);
+                } else {
+                    println!("    ✗ Function {} NOT found", func_name);
+                }
+            }
+            Ok(())
+        },
+        Err(e) => {
+            println!("  ✗ PTX loading failed: {}", e);
+            Err(format!("Failed to load {} kernel: {}", name, e))
+        }
+    }
+}
+
+
+#[cfg(feature = "cuda")]
+#[test] 
+    fn test_detailed_kernel_loading() {
+        println!("=== Detailed Kernel Loading Debug ===");
+        
+        // Step 1: Create device (we know this works)
+        let device = CudaDevice::new(0).expect("CUDA device creation failed");
+        println!("✓ CUDA device created: {:?}", device.name());
+        
+        // Step 2: Create empty kernel manager
+        let mut kernels = CudaKernels::new(device.clone());
+        println!("✓ Empty kernel manager created");
+        
+        // Step 3: Try loading kernels one by one to find which one fails
+        let kernel_names = [
+            "elementwise",
+            "matmul", 
+            "activations",
+            "reduces",
+            "transpose",
+            "comparison"
+        ];
+        
+        for kernel_name in &kernel_names {
+            println!("Loading kernel: {}", kernel_name);
+            match load_single_kernel(&mut kernels, kernel_name) {
+                Ok(_) => println!("  ✓ {} loaded successfully", kernel_name),
+                Err(e) => {
+                    println!("  ✗ {} failed: {}", kernel_name, e);
+                    // This tells us exactly which kernel and why it failed
+                    break;
+                }
+            }
+        }
+        
+        println!("Loaded kernels: {:?}", kernels.loaded_kernels());
+    }
