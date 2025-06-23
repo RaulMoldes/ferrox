@@ -649,8 +649,7 @@ mod tests {
 // ----------------------------------------------------------
 #[cfg(all(test, feature = "cuda"))]
 mod kernel_tests {
-    use super::super::{CudaBackend, CudaKernels, load_all_kernels};
-    use crate::backend::cuda::memory::CudaTensor;
+    use super::super::CudaBackend;
     use cudarc::driver::LaunchConfig;
 
     fn setup_test_backend() -> Option<CudaBackend> {

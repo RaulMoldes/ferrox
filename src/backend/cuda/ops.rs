@@ -4,7 +4,7 @@
 
 use super::kernels::CudaKernels;
 use super::memory::{CudaMemoryManager, CudaTensor};
-use crate::backend::number::{GPUNumber, CPUNumber};
+use crate::backend::number::{CPUNumber};
 use cudarc::driver::LaunchConfig;
 
 // CudaOps provides a high-level interface for performing tensor operations on GPU

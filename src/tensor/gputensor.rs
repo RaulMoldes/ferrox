@@ -2,14 +2,13 @@ use crate::backend::manager::get_backend;
 use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
-use std::ops::{BitOr, Index};
+use std::ops::Index;
 use std::borrow::Cow;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
 
-#[cfg(feature = "cuda")]
-use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+
 
 #[cfg(feature = "cuda")]
 #[derive(Debug, Clone)]
@@ -54,7 +53,7 @@ where
     where
         F: FnOnce(&crate::backend::cuda::CudaBackend) -> Result<R, String>,
     {
-        use crate::backend::manager::get_backend;
+        
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
         f(cuda_backend)
@@ -1277,7 +1276,7 @@ where
 
         // Iterate through all elements and find maximum along the specified dimension
         for input_idx in 0..data.len() {
-            let mut coords = Self::flat_to_coords(input_idx, &input_strides, shape);
+            let mut coords = Self::flat_to_coords(input_idx, &input_strides);
             coords.remove(dim);
 
             let output_idx = Self::coords_to_flat(&coords, &output_strides);
@@ -1321,7 +1320,7 @@ where
         strides
     }
 
-    fn flat_to_coords(mut flat_idx: usize, strides: &[usize], shape: &[usize]) -> Vec<usize> {
+    fn flat_to_coords(mut flat_idx: usize, strides: &[usize]) -> Vec<usize> {
         let mut coords = vec![0; strides.len()];
         for i in 0..strides.len() {
             coords[i] = flat_idx / strides[i];
@@ -2280,6 +2279,6 @@ where
         // Access using multi-dimensional indexing
         // Aparently this t¡is not the safest way to do this, but it is the fastest.
         // This returns a reference to the element at the specified index.
-        self.data[&coords[..]]
+        &self.data[&coords[..]]
     }
 }
