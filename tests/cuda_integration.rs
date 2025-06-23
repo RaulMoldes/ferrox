@@ -388,8 +388,9 @@ fn test_gpu_only_tensor_indexing_panics() {
             let _ = gpu_tensor[0]; // Should panic
         }
     } else {
+        println!("CUDA backend not available, skipping GPU-only tensor indexing test");
         // Force panic without CUDA if backend unavailable
-        let gpu_tensor = Tensor {
+        let gpu_tensor = Tensor::<f64> {
             data: ArrayD::zeros(IxDyn(&[0])), 
             device: Device::CUDA(0),
             cuda_storage: None,
