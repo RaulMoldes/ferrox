@@ -4,6 +4,7 @@
 
 use super::kernels::CudaKernels;
 use super::memory::{CudaMemoryManager, CudaTensor};
+use crate::backend::number::{GPUNumber, CPUNumber};
 use cudarc::driver::LaunchConfig;
 
 // CudaOps provides a high-level interface for performing tensor operations on GPU
@@ -612,7 +613,7 @@ impl<'a> CudaOps<'a> {
     {
         let sum_result = self.sum_axis(input, axis, keep_dims)?;
         let axis_size = input.shape[axis];
-        let divisor = <T as GPUNumber>::from_f32(axis_size as f32);
+        let divisor = <T as CPUNumber>::from_f32(axis_size as f32);
         let divisor_tensor = self.full(&sum_result.shape, divisor)?;
         self.div(&sum_result, &divisor_tensor)
     }
@@ -624,7 +625,7 @@ impl<'a> CudaOps<'a> {
     {
         let sum_result = self.sum_all(input)?;
         let total_elements = input.size();
-        let divisor = <T as GPUNUmber>::from_f32(total_elements as f32);
+        let divisor = <T as CPUNumber>::from_f32(total_elements as f32);
         let divisor_tensor = self.full(&[], divisor)?; // Scalar tensor
         self.div(&sum_result, &divisor_tensor)
     }
