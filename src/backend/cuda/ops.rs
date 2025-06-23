@@ -608,11 +608,11 @@ impl<'a> CudaOps<'a> {
     /// Mean along axis: sum / count
     pub fn mean_axis<T>(&self, input: &CudaTensor<T>, axis: usize, keep_dims: bool) -> Result<CudaTensor<T>, String>
     where
-        T: crate::backend::number::GPUNumber + From<f32> + 'static,
+        T: crate::backend::number::GPUNumber  + 'static,
     {
         let sum_result = self.sum_axis(input, axis, keep_dims)?;
         let axis_size = input.shape[axis];
-        let divisor = T::from(axis_size as f32);
+        let divisor = <T as GPUNumber>::from_f32(axis_size as f32);
         let divisor_tensor = self.full(&sum_result.shape, divisor)?;
         self.div(&sum_result, &divisor_tensor)
     }
