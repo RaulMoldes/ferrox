@@ -381,7 +381,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
         "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tangent","relu_f64", "sigmoid_f64", "hyperbolic_tangent_f64"]),
         "reduces" => (REDUCES_PTX, vec!["sum_axis", "max_along_dim","sum_axis_f64", "max_along_dim_f64"]),
         "transpose" => (TRANSPOSE_PTX, vec!["transpose_2d", "transpose_2d_f64"]),
-        "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign","greater_equal_f64", "equal_f64", "sign_f64", "less_equal", "less_equal", "less_equal_f64"]),
+        "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign","greater_equal_f64", "equal_f64", "sign_f64", "less_equal", "less_equal_f64"]),
         _ => return Err(format!("Unknown kernel: {}", name)),
     };
     
