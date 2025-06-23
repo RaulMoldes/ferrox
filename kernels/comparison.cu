@@ -25,6 +25,23 @@ extern "C" __global__ void clamp(
     }
 }
 
+
+extern "C" __global__ void clamp_f64(
+    const double* input,
+    double* output, 
+    double min_val,
+    double max_val,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        double val = input[idx];
+        val = val < min_val ? min_val : val;
+        val = val > max_val ? max_val : val;
+        output[idx] = val;
+    }
+}
+
 extern "C" __global__ void greater_equal(
     const float* a,
     const float* b,
