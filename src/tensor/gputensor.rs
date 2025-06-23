@@ -17,7 +17,7 @@ where
     T: GPUNumber,
 {
     pub data: ArrayD<T>,
-    device: Device,
+    pub device: Device,
     pub cuda_storage: Option<CudaTensor<T>>,
 }
 
