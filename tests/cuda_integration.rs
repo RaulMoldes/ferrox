@@ -6,6 +6,8 @@ use ferrox::tensor::Tensor;
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::{CudaBackend, CudaTensor};
 #[cfg(feature = "cuda")]
+use ferrox::backend::manager::get_backend;
+#[cfg(feature = "cuda")]
 use ndarray::{ArrayD, IxDyn};
 
 #[cfg(feature = "cuda")]
@@ -217,7 +219,7 @@ fn test_concurrent_cuda_operations() {
 #[test]
 #[should_panic(expected = "Cannot index GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_indexing_panics() {
-    use crate::backend::manager::get_backend;
+    
     
     let backend = get_backend();
     if let Some(cuda_backend) = backend.cuda_backend() {
