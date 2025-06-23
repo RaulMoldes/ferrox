@@ -237,15 +237,7 @@ fn test_gpu_only_tensor_indexing_panics() {
             
             let _ = gpu_tensor[0]; // Should panic
         }
-    } else {
-        // Force panic without CUDA if backend unavailable
-        let gpu_tensor = Tensor {
-            data: ArrayD::zeros(IxDyn(&[0])), 
-            device: Device::CUDA(0),
-            cuda_storage: None,
-        };
-        let _ = gpu_tensor[0]; // Should panic
-    }
+    } 
 }
 
 #[cfg(feature = "cuda")]
