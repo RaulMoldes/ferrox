@@ -320,7 +320,7 @@ where
     }
 
     pub fn iter_mut(&mut self) -> ndarray::iter::IterMut<'_, T, ndarray::IxDyn> {
-        if self.is_cuda() && self.data.is_empty() {
+        if self.is_cuda()  {
             panic!("Cannot iter GPU tensor. Call .to_cpu() first");
         }
         self.data.iter_mut()
