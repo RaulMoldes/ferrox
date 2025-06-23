@@ -214,7 +214,44 @@ fn test_concurrent_cuda_operations() {
 
     println!("All concurrent operations completed");
 }
-
+#[test]
+fn test_cuda_environment() {
+    println!("=== CUDA Environment Debug ===");
+    
+    // Check if CUDA feature is enabled
+    #[cfg(feature = "cuda")]
+    println!("✓ CUDA feature is enabled");
+    #[cfg(not(feature = "cuda"))]
+    println!("✗ CUDA feature is NOT enabled");
+    
+    // Try direct cudarc device creation
+    #[cfg(feature = "cuda")]
+    {
+        println!("Attempting direct CUDA device creation...");
+        match cudarc::driver::CudaDevice::new(0) {
+            Ok(device) => {
+                println!("✓ Direct CUDA device creation successful");
+                println!("  Device name: {:?}", device.name());
+            },
+            Err(e) => {
+                println!("✗ Direct CUDA device creation failed: {}", e);
+            }
+        }
+        
+        // Try backend manager
+        println!("Checking backend manager...");
+        let backend = get_backend();
+        println!("Backend has CUDA: {}", backend.has_cuda());
+        
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            println!("✓ CUDA backend available in manager");
+            println!("  Device ID: {}", cuda_backend.device_id());
+            println!("  Device name: {}", cuda_backend.name());
+        } else {
+            println!("✗ CUDA backend NOT available in manager");
+        }
+    }
+}
 
 
 #[cfg(feature = "cuda")]
