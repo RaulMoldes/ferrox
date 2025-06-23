@@ -63,7 +63,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         name: "activations", 
         ptx: ACTIVATIONS_PTX, 
         module: "activations_module", 
-        functions: &["relu", "sigmoid", "hyperbolic_tanh", "relu_f64", "sigmoid_f64", "hyperbolic_tanh_f64"] 
+        functions: &["relu", "sigmoid", "hyperbolic_tangent", "relu_f64", "sigmoid_f64", "hyperbolic_tangent_f64"] 
     },
     KernelConfig { 
         name: "reduces", 
