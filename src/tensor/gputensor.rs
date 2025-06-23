@@ -229,7 +229,7 @@ where
         }
 
         Ok(Self::new_with_device(
-            self.data.as_ref() - other.data.as_ref(),
+            self_data.as_ref() - other_data.as_ref(),
             self.device.clone(),
         ))
     }
@@ -2268,7 +2268,7 @@ where
         }
 
         // Convert flat index to multi-dimensional coordinates
-        let shape = self_data.shape();
+        let shape = self.data.shape();
         let mut coords = vec![0; shape.len()];
         let mut remaining = index;
 
@@ -2280,6 +2280,6 @@ where
         // Access using multi-dimensional indexing
         // Aparently this t¡is not the safest way to do this, but it is the fastest.
         // This returns a reference to the element at the specified index.
-        self_data.as_ref()[&coords[..]]
+        self.data[&coords[..]]
     }
 }
