@@ -67,6 +67,7 @@ pub trait CPUNumber:
     
     /// Converts from f64 (may fail for integer types if there's precision loss)
     fn from_f64(value: f64) -> Option<Self>;
+
     
     /// Converts from i32 (may fail if there's precision loss)
     fn from_i32(value: i32) -> Option<Self>;
