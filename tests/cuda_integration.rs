@@ -373,7 +373,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     let (ptx_bytes, expected_functions) = match name {
         "elementwise" => (ELEMENTWISE_PTX, vec![
             "elementwise_add", "elementwise_sqrt", "elementwise_abs", "elementwise_mul",
-            "elementwise_pow", "elementwise_min", "elementwise_max", "elmentwise_min_f64", "elementwise_max_f64",
+            "elementwise_pow", "elementwise_min", "elementwise_max", "elementwise_min_f64", "elementwise_max_f64",
              "elementwise_add_f64", "elementwise_sqrt_f64", "elementwise_abs_f64", "elementwise_mul_f64",
              "elementwise_exp", "elementwise_log", "elementwise_negate", "elementwise_exp_f64", "elementwise_log_f64", "elementwise_negate_f64"
         ]),
@@ -401,7 +401,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     
     // Try to load the PTX
     let module_name = format!("{}_module", name);
-    let functions: Vec<&str> = expected_functions.iter().take(9).cloned().collect(); // Test with fewer functions first
+    let functions: Vec<&str> = expected_functions.iter().take(15).cloned().collect(); // Test with fewer functions first
     
     println!("  Attempting to load PTX into module: {}", module_name);
     println!("  Expected functions: {:?}", functions);
