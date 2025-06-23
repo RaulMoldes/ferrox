@@ -3,6 +3,7 @@ mod tests {
     use crate::backend::device::cpu;
     #[cfg(feature = "cuda")]
     use crate::backend::CudaBackend;
+    use crate::backend::get_backend;
 
     #[test]
     fn test_device_operations() {
