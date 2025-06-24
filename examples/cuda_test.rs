@@ -148,7 +148,7 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
         // Method 3: Direct cloning in a loop (shows the pattern)
         let add_kernel = backend
             .kernels()
-            .get_function_cloned("add")
+            .get_function_cloned("elementwise_add")
             .ok_or("Add kernel not found")?;
 
         unsafe {

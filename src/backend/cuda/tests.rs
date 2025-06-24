@@ -191,8 +191,8 @@ mod tests {
             let kernels = backend.kernels();
 
             // Test that cloned functions work
-            let add_kernel1 = kernels.get_function_cloned("add");
-            let add_kernel2 = kernels.get_function_cloned("add");
+            let add_kernel1 = kernels.get_function_cloned("elementwise_add");
+            let add_kernel2 = kernels.get_function_cloned("elementwise_add");
 
             assert!(add_kernel1.is_some());
             assert!(add_kernel2.is_some());
@@ -525,7 +525,7 @@ mod tests {
 
                     // Multiple threads trying to clone kernels simultaneously
                     for _ in 0..10 {
-                        let _add_kernel = kernels.get_function_cloned("add");
+                        let _add_kernel = kernels.get_function_cloned("elementwise_add");
                         let _relu_kernel = kernels.get_function_cloned("relu");
                         let _matmul_kernel = kernels.get_function_cloned("matmul");
                     }
@@ -686,7 +686,10 @@ mod kernel_tests {
             assert!(
                 (res - exp).abs() < tolerance,
                 "Mismatch at index {}: expected={}, got={}, diff={}",
-                i, exp, res, (res - exp).abs()
+                i,
+                exp,
+                res,
+                (res - exp).abs()
             );
         }
     }
@@ -697,7 +700,10 @@ mod kernel_tests {
             assert!(
                 (res - exp).abs() < tolerance,
                 "Mismatch at index {}: expected={}, got={}, diff={}",
-                i, exp, res, (res - exp).abs()
+                i,
+                exp,
+                res,
+                (res - exp).abs()
             );
         }
     }
@@ -717,7 +723,10 @@ mod kernel_tests {
             let mut c_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32)
+                .unwrap();
             println!("Add kernel launched with config: {:?}", cfg);
             println!("Waiting for synchronization...");
             backend.synchronize().unwrap();
@@ -725,7 +734,10 @@ mod kernel_tests {
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             for i in 0..size {
                 let expected = 3.0f32;
-                println!("Result at index {}: expected={}, got={}", i, expected, result[i]);
+                println!(
+                    "Result at index {}: expected={}, got={}",
+                    i, expected, result[i]
+                );
                 assert!((result[i] - expected).abs() < 1e-6);
             }
         }
@@ -741,7 +753,10 @@ mod kernel_tests {
             let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_logical_not(cfg, &input_gpu, &mut result_gpu, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_logical_not(cfg, &input_gpu, &mut result_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
@@ -762,7 +777,10 @@ mod kernel_tests {
             let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_sign(cfg, &input_gpu, &mut result_gpu, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_sign(cfg, &input_gpu, &mut result_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
@@ -781,7 +799,10 @@ mod kernel_tests {
             let mut result_gpu = backend.device().alloc_zeros::<f64>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_sign(cfg, &input_gpu, &mut result_gpu, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_sign(cfg, &input_gpu, &mut result_gpu, size as i32)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
@@ -802,12 +823,26 @@ mod kernel_tests {
             let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_in_range(cfg, &input_gpu, min_val, max_val, &mut result_gpu, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_in_range(
+                    cfg,
+                    &input_gpu,
+                    min_val,
+                    max_val,
+                    &mut result_gpu,
+                    size as i32,
+                )
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
             for i in 0..size {
-                let expected = if input[i] >= min_val && input[i] <= max_val { 1.0 } else { 0.0 };
+                let expected = if input[i] >= min_val && input[i] <= max_val {
+                    1.0
+                } else {
+                    0.0
+                };
                 assert!((result[i] - expected).abs() < 1e-6);
             }
         }
@@ -827,7 +862,17 @@ mod kernel_tests {
             let mut result_gpu = backend.device().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_clamp(cfg, &input_gpu, &mut result_gpu, min_val, max_val, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_clamp(
+                    cfg,
+                    &input_gpu,
+                    &mut result_gpu,
+                    min_val,
+                    max_val,
+                    size as i32,
+                )
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
@@ -850,7 +895,17 @@ mod kernel_tests {
             let mut result_gpu = backend.device().alloc_zeros::<f64>(size).unwrap();
 
             let cfg = create_launch_config(size);
-            backend.kernels().launch_clamp(cfg, &input_gpu, &mut result_gpu, min_val, max_val, size as i32).unwrap();
+            backend
+                .kernels()
+                .launch_clamp(
+                    cfg,
+                    &input_gpu,
+                    &mut result_gpu,
+                    min_val,
+                    max_val,
+                    size as i32,
+                )
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&result_gpu).unwrap();
@@ -874,10 +929,16 @@ mod kernel_tests {
 
             let a_gpu = backend.device().htod_copy(a_host).unwrap();
             let b_gpu = backend.device().htod_copy(b_host).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>((m * n) as usize).unwrap();
+            let mut c_gpu = backend
+                .device()
+                .alloc_zeros::<f32>((m * n) as usize)
+                .unwrap();
 
             let cfg = create_2d_launch_config(m as usize, n as usize);
-            backend.kernels().launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k).unwrap();
+            backend
+                .kernels()
+                .launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
@@ -898,10 +959,16 @@ mod kernel_tests {
 
             let a_gpu = backend.device().htod_copy(a_host.clone()).unwrap();
             let b_gpu = backend.device().htod_copy(b_host).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f32>((m * n) as usize).unwrap();
+            let mut c_gpu = backend
+                .device()
+                .alloc_zeros::<f32>((m * n) as usize)
+                .unwrap();
 
             let cfg = create_2d_launch_config(m as usize, n as usize);
-            backend.kernels().launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k).unwrap();
+            backend
+                .kernels()
+                .launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
@@ -922,10 +989,16 @@ mod kernel_tests {
 
             let a_gpu = backend.device().htod_copy(a_host).unwrap();
             let b_gpu = backend.device().htod_copy(b_host).unwrap();
-            let mut c_gpu = backend.device().alloc_zeros::<f64>((m * n) as usize).unwrap();
+            let mut c_gpu = backend
+                .device()
+                .alloc_zeros::<f64>((m * n) as usize)
+                .unwrap();
 
             let cfg = create_2d_launch_config(m as usize, n as usize);
-            backend.kernels().launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k).unwrap();
+            backend
+                .kernels()
+                .launch_matmul(cfg, &a_gpu, &b_gpu, &mut c_gpu, m, n, k)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
@@ -938,14 +1011,24 @@ mod kernel_tests {
         if let Some(backend) = setup_test_backend() {
             let rows = 3;
             let cols = 4;
-            let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
-            let expected = vec![1.0f32, 5.0, 9.0, 2.0, 6.0, 10.0, 3.0, 7.0, 11.0, 4.0, 8.0, 12.0];
+            let input = vec![
+                1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ];
+            let expected = vec![
+                1.0f32, 5.0, 9.0, 2.0, 6.0, 10.0, 3.0, 7.0, 11.0, 4.0, 8.0, 12.0,
+            ];
 
             let input_gpu = backend.device().htod_copy(input).unwrap();
-            let mut output_gpu = backend.device().alloc_zeros::<f32>((rows * cols) as usize).unwrap();
+            let mut output_gpu = backend
+                .device()
+                .alloc_zeros::<f32>((rows * cols) as usize)
+                .unwrap();
 
             let cfg = create_2d_launch_config(rows as usize, cols as usize);
-            backend.kernels().launch_transpose_2d(cfg, &input_gpu, &mut output_gpu, rows, cols).unwrap();
+            backend
+                .kernels()
+                .launch_transpose_2d(cfg, &input_gpu, &mut output_gpu, rows, cols)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
@@ -962,10 +1045,16 @@ mod kernel_tests {
             let expected = vec![1.5f64, 4.5, 2.5, 5.5, 3.5, 6.5];
 
             let input_gpu = backend.device().htod_copy(input).unwrap();
-            let mut output_gpu = backend.device().alloc_zeros::<f64>((rows * cols) as usize).unwrap();
+            let mut output_gpu = backend
+                .device()
+                .alloc_zeros::<f64>((rows * cols) as usize)
+                .unwrap();
 
             let cfg = create_2d_launch_config(rows as usize, cols as usize);
-            backend.kernels().launch_transpose_2d(cfg, &input_gpu, &mut output_gpu, rows, cols).unwrap();
+            backend
+                .kernels()
+                .launch_transpose_2d(cfg, &input_gpu, &mut output_gpu, rows, cols)
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
@@ -981,11 +1070,16 @@ mod kernel_tests {
             let outer_size = 2;
             let axis_size = 3;
             let inner_size = 2;
-            let input = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+            let input = vec![
+                1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ];
             let expected = vec![9.0f32, 12.0, 27.0, 30.0];
 
             let input_gpu = backend.device().htod_copy(input).unwrap();
-            let mut output_gpu = backend.device().alloc_zeros::<f32>((outer_size * inner_size) as usize).unwrap();
+            let mut output_gpu = backend
+                .device()
+                .alloc_zeros::<f32>((outer_size * inner_size) as usize)
+                .unwrap();
 
             let cfg = LaunchConfig {
                 grid_dim: (outer_size as u32, 1, 1),
@@ -993,7 +1087,17 @@ mod kernel_tests {
                 shared_mem_bytes: 0,
             };
 
-            backend.kernels().launch_sum_axis(cfg, &input_gpu, &mut output_gpu, outer_size, axis_size, inner_size).unwrap();
+            backend
+                .kernels()
+                .launch_sum_axis(
+                    cfg,
+                    &input_gpu,
+                    &mut output_gpu,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
@@ -1007,11 +1111,16 @@ mod kernel_tests {
             let outer_size = 2;
             let axis_size = 3;
             let inner_size = 2;
-            let input = vec![1.0f32, 2.0, 8.0, 4.0, 5.0, 9.0, 7.0, 3.0, 6.0, 10.0, 11.0, 12.0];
+            let input = vec![
+                1.0f32, 2.0, 8.0, 4.0, 5.0, 9.0, 7.0, 3.0, 6.0, 10.0, 11.0, 12.0,
+            ];
             let expected = vec![8.0f32, 9.0, 11.0, 12.0];
 
             let input_gpu = backend.device().htod_copy(input).unwrap();
-            let mut output_gpu = backend.device().alloc_zeros::<f32>((outer_size * inner_size) as usize).unwrap();
+            let mut output_gpu = backend
+                .device()
+                .alloc_zeros::<f32>((outer_size * inner_size) as usize)
+                .unwrap();
 
             let cfg = LaunchConfig {
                 grid_dim: (((outer_size * inner_size + 255) / 256) as u32, 1, 1),
@@ -1019,7 +1128,17 @@ mod kernel_tests {
                 shared_mem_bytes: 0,
             };
 
-            backend.kernels().launch_max_along_dim(cfg, &input_gpu, &mut output_gpu, outer_size, axis_size, inner_size).unwrap();
+            backend
+                .kernels()
+                .launch_max_along_dim(
+                    cfg,
+                    &input_gpu,
+                    &mut output_gpu,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )
+                .unwrap();
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&output_gpu).unwrap();
