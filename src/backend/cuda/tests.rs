@@ -504,7 +504,7 @@ mod tests {
             load_all_kernels(&mut kernels).unwrap();
 
             // Now kernels should be loaded
-            assert_eq!(kernels.loaded_kernels().len(), 3);
+            assert_eq!(kernels.loaded_kernels().len(), 52);
         }
     }
 
