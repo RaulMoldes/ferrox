@@ -147,12 +147,12 @@ mod tests {
 
             // Check that all expected kernels are loaded
             let loaded_kernels = kernels.loaded_kernels();
-            assert!(loaded_kernels.contains(&&"add".to_string()));
+            assert!(loaded_kernels.contains(&&"elementwise_add".to_string()));
             assert!(loaded_kernels.contains(&&"relu".to_string()));
             assert!(loaded_kernels.contains(&&"matmul".to_string()));
 
             // Check that functions can be retrieved
-            assert!(kernels.get_function("add").is_some());
+            assert!(kernels.get_function("elementwise_add").is_some());
             assert!(kernels.get_function("relu").is_some());
             assert!(kernels.get_function("matmul").is_some());
             assert!(kernels.get_function("nonexistent").is_none());
