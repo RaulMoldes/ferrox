@@ -161,7 +161,6 @@ pub fn default_device() -> Device {
     cpu()
 }
 /// Returns all available devices.
-
 pub fn all_devices() -> Vec<Device> {
     #[cfg(not(feature = "cuda"))]
     let devices = vec![cpu()];

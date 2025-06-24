@@ -34,7 +34,6 @@ fn compile_cuda_kernels() {
         "activations",
         "transpose",
         "comparison", // New kernel
-      
     ];
 
     println!("Compiling CUDA kernels...");

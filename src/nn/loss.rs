@@ -42,20 +42,15 @@ where
 /// Determines how to aggregate individual sample losses into a single scalar value.
 /// This matches PyTorch's reduction strategies for consistency.
 /// TODO: Probably we should add Median or Log Reduction in the future. For now, we keep it simple.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Reduction {
     /// No reduction: return the loss for each sample
     None,
     /// Mean reduction: return the average loss across all samples
+    #[default]
     Mean,
     /// Sum reduction: return the sum of all losses
     Sum,
-}
-
-impl Default for Reduction {
-    fn default() -> Self {
-        Reduction::Mean
-    }
 }
 
 /// Mean Squared Error (MSE) Loss function.
@@ -74,7 +69,6 @@ impl Default for Reduction {
 /// - None: Returns individual squared errors
 /// - Mean: `(1/N) * Σᵢ(y_pred_i - y_true_i)²`
 /// - Sum: `Σᵢ(y_pred_i - y_true_i)²`
-/// Note that it is to be used with continuous targets, not categorical ones.
 #[derive(Debug, Clone)]
 pub struct MSELoss {
     /// Reduction strategy for aggregating batch losses

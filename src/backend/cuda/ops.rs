@@ -4,7 +4,7 @@
 
 use super::kernels::CudaKernels;
 use super::memory::{CudaMemoryManager, CudaTensor};
-use crate::backend::number::{CPUNumber};
+use crate::backend::number::CPUNumber;
 use cudarc::driver::LaunchConfig;
 
 // CudaOps provides a high-level interface for performing tensor operations on GPU
@@ -28,11 +28,11 @@ impl<'a> CudaOps<'a> {
 
     /// Calculate optimal launch configuration for 1D operations
     /// Uses heuristics optimized for modern GPU architectures
-    /// 
+    ///
     /// The CUDA configuration is set up as follows:
     /// - 1D grid with blocks of 256 threads
     /// - 32 warps per block (8 threads each) for maximum occupancy)
-    /// 
+    ///
     /// Disclaimer: I know that hardcoding these values is not ideal. I still have not figured out how does cudarc provide access
     /// to device properties like warp size, max threads per block, etc (I do not ven know if it is feasible to do it on rust as of now).
     /// In C++ API this is done via [`cudaGetDeviceProperties`] struct.
@@ -64,7 +64,7 @@ impl<'a> CudaOps<'a> {
         let block_size = 16; // 16x16 = 256 threads per block.
         let grid_x = (cols + block_size - 1) / block_size;
         let grid_y = (rows + block_size - 1) / block_size;
-        
+
         LaunchConfig {
             grid_dim: (grid_x as u32, grid_y as u32, 1),
             block_dim: (block_size as u32, block_size as u32, 1),
@@ -101,8 +101,6 @@ impl<'a> CudaOps<'a> {
         let one = T::from(1);
         self.full(shape, one)
     }
-
-  
 
     /// Element-wise addition: result = a + b
     pub fn add<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
@@ -195,7 +193,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise minimum: result = min(a, b)
-    pub fn min_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    pub fn min_elementwise<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -207,13 +209,22 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_min_elementwise(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+        self.kernels.launch_min_elementwise(
+            cfg,
+            &a.data,
+            &b.data,
+            &mut result.data,
+            size as i32,
+        )?;
         Ok(result)
     }
 
     /// Element-wise maximum: result = max(a, b)
-    pub fn max_elementwise<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    pub fn max_elementwise<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -225,12 +236,15 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, a.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_max_elementwise(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+        self.kernels.launch_max_elementwise(
+            cfg,
+            &a.data,
+            &b.data,
+            &mut result.data,
+            size as i32,
+        )?;
         Ok(result)
     }
-
-   
 
     /// Scalar addition: result = tensor + scalar
     pub fn add_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
@@ -269,14 +283,17 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Scalar power: result = tensor^scalar
-    pub fn power_scalar<T>(&self, base: &CudaTensor<T>, exponent: T) -> Result<CudaTensor<T>, String>
+    pub fn power_scalar<T>(
+        &self,
+        base: &CudaTensor<T>,
+        exponent: T,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
         let exponent_tensor = self.full(&base.shape, exponent)?;
         self.power(base, &exponent_tensor)
     }
-
 
     /// Element-wise absolute value: result = |input|
     pub fn abs<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
@@ -348,7 +365,6 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-    
     /// ReLU activation: result = max(0, input)
     pub fn relu<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
@@ -372,8 +388,13 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_activation("sigmoid", cfg, &input.data, &mut result.data, size as i32)?;
+        self.kernels.launch_activation(
+            "sigmoid",
+            cfg,
+            &input.data,
+            &mut result.data,
+            size as i32,
+        )?;
         Ok(result)
     }
 
@@ -386,14 +407,23 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_activation("hyperbolic_tanh", cfg, &input.data, &mut result.data, size as i32)?;
+        self.kernels.launch_activation(
+            "hyperbolic_tanh",
+            cfg,
+            &input.data,
+            &mut result.data,
+            size as i32,
+        )?;
         Ok(result)
     }
 
-
     /// Clamp values to specified range: result = clamp(input, min_val, max_val)
-    pub fn clamp<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
+    pub fn clamp<T>(
+        &self,
+        input: &CudaTensor<T>,
+        min_val: T,
+        max_val: T,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -401,14 +431,25 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_clamp(cfg, &input.data, &mut result.data, min_val, max_val, size as i32)?;
+        self.kernels.launch_clamp(
+            cfg,
+            &input.data,
+            &mut result.data,
+            min_val,
+            max_val,
+            size as i32,
+        )?;
         Ok(result)
     }
 
     /// ReLU with configurable bounds: result = clamp(max(min_val, input), min_val, max_val)
     /// Implements Leaky ReLU when min_val > 0, bounded ReLU when max_val < inf
-    pub fn relu_clamp<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
+    pub fn relu_clamp<T>(
+        &self,
+        input: &CudaTensor<T>,
+        min_val: T,
+        max_val: T,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -416,10 +457,9 @@ impl<'a> CudaOps<'a> {
         self.clamp(&relu_result, min_val, max_val)
     }
 
-    
     /// Matrix multiplication: C = A @ B
     /// The fundamental operation of neural networks - linear transformations
-    /// 
+    ///
     /// # Requirements:
     /// - A must be [M, K], B must be [K, N] -> Result is [M, N]
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
@@ -448,15 +488,15 @@ impl<'a> CudaOps<'a> {
 
         // Use 2D launch configuration optimized for matrix multiplication
         let cfg = self.get_2d_launch_config(a_shape[0], b_shape[1]);
-        
+
         self.kernels.launch_matmul(
             cfg,
             &a.data,
             &b.data,
             &mut result.data,
-            a_shape[0] as i32,  // M
-            b_shape[1] as i32,  // N
-            a_shape[1] as i32,  // K
+            a_shape[0] as i32, // M
+            b_shape[1] as i32, // N
+            a_shape[1] as i32, // K
         )?;
         Ok(result)
     }
@@ -490,7 +530,12 @@ impl<'a> CudaOps<'a> {
     // ===== REDUCTION OPERATIONS =====
 
     /// Sum along specified axis
-    pub fn sum_axis<T>(&self, input: &CudaTensor<T>, axis: usize, keep_dims: bool) -> Result<CudaTensor<T>, String>
+    pub fn sum_axis<T>(
+        &self,
+        input: &CudaTensor<T>,
+        axis: usize,
+        keep_dims: bool,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -499,7 +544,8 @@ impl<'a> CudaOps<'a> {
         if axis >= input_shape.len() {
             return Err(format!(
                 "Axis {} out of bounds for tensor with {} dimensions",
-                axis, input_shape.len()
+                axis,
+                input_shape.len()
             ));
         }
 
@@ -535,7 +581,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Maximum along specified axis
-    pub fn max_along_dim<T>(&self, input: &CudaTensor<T>, dim: usize) -> Result<CudaTensor<T>, String>
+    pub fn max_along_dim<T>(
+        &self,
+        input: &CudaTensor<T>,
+        dim: usize,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -544,7 +594,8 @@ impl<'a> CudaOps<'a> {
         if dim >= input_shape.len() {
             return Err(format!(
                 "Dimension {} out of bounds for tensor with {} dimensions",
-                dim, input_shape.len()
+                dim,
+                input_shape.len()
             ));
         }
 
@@ -592,7 +643,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Sum along multiple axes
-    pub fn sum_axes<T>(&self, input: &CudaTensor<T>, axes: &[usize], keep_dims: bool) -> Result<CudaTensor<T>, String>
+    pub fn sum_axes<T>(
+        &self,
+        input: &CudaTensor<T>,
+        axes: &[usize],
+        keep_dims: bool,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -607,13 +663,19 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Mean along axis: sum / count
-    pub fn mean_axis<T>(&self, input: &CudaTensor<T>, axis: usize, keep_dims: bool) -> Result<CudaTensor<T>, String>
+    pub fn mean_axis<T>(
+        &self,
+        input: &CudaTensor<T>,
+        axis: usize,
+        keep_dims: bool,
+    ) -> Result<CudaTensor<T>, String>
     where
-        T: crate::backend::number::GPUNumber  + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let sum_result = self.sum_axis(input, axis, keep_dims)?;
         let axis_size = input.shape[axis];
-        let divisor = <T as CPUNumber>::from_f64(axis_size as f64).expect("Failed to convert axis size to GPU number");
+        let divisor = <T as CPUNumber>::from_f64(axis_size as f64)
+            .expect("Failed to convert axis size to GPU number");
         let divisor_tensor = self.full(&sum_result.shape, divisor)?;
         self.div(&sum_result, &divisor_tensor)
     }
@@ -621,18 +683,22 @@ impl<'a> CudaOps<'a> {
     /// Mean of all elements
     pub fn mean_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
-        T: crate::backend::number::GPUNumber  + 'static,
+        T: crate::backend::number::GPUNumber + 'static,
     {
         let sum_result = self.sum_all(input)?;
         let total_elements = input.size();
-        let divisor = <T as CPUNumber>::from_f64(total_elements as f64).expect("Failed to convert total elements to GPU number");
+        let divisor = <T as CPUNumber>::from_f64(total_elements as f64)
+            .expect("Failed to convert total elements to GPU number");
         let divisor_tensor = self.full(&[], divisor)?; // Scalar tensor
         self.div(&sum_result, &divisor_tensor)
     }
 
-
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    pub fn greater_equal<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -650,7 +716,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less_equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
+    pub fn less_equal<T>(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -715,7 +785,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Range check: result = (min_val <= input <= max_val) ? 1.0 : 0.0
-    pub fn in_range<T>(&self, input: &CudaTensor<T>, min_val: T, max_val: T) -> Result<CudaTensor<T>, String>
+    pub fn in_range<T>(
+        &self,
+        input: &CudaTensor<T>,
+        min_val: T,
+        max_val: T,
+    ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
     {
@@ -723,8 +798,14 @@ impl<'a> CudaOps<'a> {
         let mut result = CudaTensor::zeros(self.memory, input.shape.clone())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_in_range(cfg, &input.data, min_val, max_val, &mut result.data, size as i32)?;
+        self.kernels.launch_in_range(
+            cfg,
+            &input.data,
+            min_val,
+            max_val,
+            &mut result.data,
+            size as i32,
+        )?;
         Ok(result)
     }
 }

@@ -131,20 +131,8 @@ where
         };
 
         // Initialize running statistics
-        let running_mean = if track_running_stats {
-            Tensor::zeros(&[num_features])
-        } else {
-            Tensor::zeros(&[num_features])
-        };
-
-        let running_var = if track_running_stats {
-            Tensor::ones(&[num_features]) // Initialize to 1
-        } else {
-            // We don't track running stats, so we can use a dummy tensor
-            // Anyway we are not able to track running statistics currently due to the actual architecture.
-            // This must be handled in the forward pass.
-            Tensor::ones(&[num_features])
-        };
+        let running_mean = Tensor::zeros(&[num_features]);
+        let running_var = Tensor::ones(&[num_features]); // Initialize to 1
 
         Self {
             num_features,
@@ -188,6 +176,7 @@ where
     /// We are not able to track running statistics inside the forward pass currently due to the actual architecture.
     /// Rust prohibits mutable access to self during forward pass, as we already have a mutable borrow of self in the forward method.
     // As a workaroud, we can use a separate method to update running statistics after the forward pass.´
+    #[allow(dead_code)]
     fn update_running_stats(&mut self, batch_mean: &Tensor<T>, batch_var: &Tensor<T>) {
         if !self.track_running_stats || !self.training {
             return;

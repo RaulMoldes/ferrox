@@ -2,13 +2,11 @@ use crate::backend::manager::get_backend;
 use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
-use std::ops::Index;
 use std::borrow::Cow;
+use std::ops::Index;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
-
-
 
 #[cfg(feature = "cuda")]
 #[derive(Debug, Clone)]
@@ -53,7 +51,6 @@ where
     where
         F: FnOnce(&crate::backend::cuda::CudaBackend) -> Result<R, String>,
     {
-        
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
         f(cuda_backend)
@@ -62,8 +59,6 @@ where
     // Create tensor from Vec - this is the main way users will create tensors
     // Works exactly like CPUTensor but the result can be moved to GPU
     pub fn from_vec(data: Vec<T>, shape: &[usize]) -> Result<Self, String> {
-
-       
         let total_elements: usize = shape.iter().product();
         if data.len() != total_elements {
             return Err(format!(
@@ -137,6 +132,9 @@ where
     pub fn len(&self) -> usize {
         self.size()
     }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 
     /// Conditional selection: where condition is true, use true_vals, else false_vals (CPU only for now)
     pub fn where_condition(
@@ -144,8 +142,6 @@ where
         true_vals: &GPUTensor<T>,
         false_vals: &GPUTensor<T>,
     ) -> Result<GPUTensor<T>, String> {
-
-        
         let condition_vec = condition.to_vec()?;
         let true_vec = true_vals.to_vec()?;
         let false_vec = false_vals.to_vec()?;
@@ -171,13 +167,16 @@ where
     fn add_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         // Get data without unnecessary clones
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
-        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
         // Ensure shapes match before performing addition
         if self_data.shape() != other_data.shape() {
-            return Err(format!("Shape mismatch: {:?} vs {:?}", 
-                              self_data.shape(), other_data.shape()));
+            return Err(format!(
+                "Shape mismatch: {:?} vs {:?}",
+                self_data.shape(),
+                other_data.shape()
+            ));
         }
-        
+
         Ok(Self::new_with_device(
             self_data.as_ref() + other_data.as_ref(),
             Device::CPU,
@@ -186,15 +185,17 @@ where
 
     // Helper method to perform CPU multiplication
     fn mul_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-        
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
-        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
-        
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+
         if self_data.shape() != other_data.shape() {
-            return Err(format!("Shape mismatch: {:?} vs {:?}", 
-                              self_data.shape(), other_data.shape()));
+            return Err(format!(
+                "Shape mismatch: {:?} vs {:?}",
+                self_data.shape(),
+                other_data.shape()
+            ));
         }
-        
+
         Ok(Self::new_with_device(
             self_data.as_ref() * other_data.as_ref(),
             Device::CPU,
@@ -204,11 +205,14 @@ where
     // Helper method to perform CPU division
     fn div_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
-        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
-        
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+
         if self_data.shape() != other_data.shape() {
-            return Err(format!("Shape mismatch: {:?} vs {:?}", 
-                              self_data.shape(), other_data.shape()));
+            return Err(format!(
+                "Shape mismatch: {:?} vs {:?}",
+                self_data.shape(),
+                other_data.shape()
+            ));
         }
 
         Ok(Self::new_with_device(
@@ -220,11 +224,14 @@ where
     // Substraction on CPU
     fn sub_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
-        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
-        
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+
         if self_data.shape() != other_data.shape() {
-            return Err(format!("Shape mismatch: {:?} vs {:?}", 
-                              self_data.shape(), other_data.shape()));
+            return Err(format!(
+                "Shape mismatch: {:?} vs {:?}",
+                self_data.shape(),
+                other_data.shape()
+            ));
         }
 
         Ok(Self::new_with_device(
@@ -232,7 +239,6 @@ where
             self.device.clone(),
         ))
     }
-
 
     // Intelligent substraction - this is the main API users will use
     pub fn sub(&self, other: &Self) -> Result<GPUTensor<T>, String> {
@@ -305,7 +311,7 @@ where
     // Detach operation - creates a new tensor without gradient tracking
     // Useful for autograd system
     pub fn detach(&self) -> Self {
-        if self.is_cuda()  && self.data.is_empty(){
+        if self.is_cuda() && self.data.is_empty() {
             panic!("Cannot detach GPU tensor. Call .to_cpu() first");
         }
         Self::new_with_device(self.data.clone(), self.device.clone())
@@ -320,7 +326,7 @@ where
     }
 
     pub fn iter_mut(&mut self) -> ndarray::iter::IterMut<'_, T, ndarray::IxDyn> {
-        if self.is_cuda()  && self.data.is_empty() {
+        if self.is_cuda() && self.data.is_empty() {
             panic!("Cannot iter GPU tensor. Call .to_cpu() first");
         }
         self.data.iter_mut()
@@ -365,10 +371,8 @@ where
     }
 
     // Helper to avoid repeatedly calling `to_cpu()` in every method
-    fn get_data_synced(
-        &self,
-    ) -> Result<Cow<ArrayD<T>>, String> {
-        if self.is_cuda()  && self.data.is_empty() && self.cuda_storage.is_some() {
+    fn get_data_synced(&self) -> Result<Cow<ArrayD<T>>, String> {
+        if self.is_cuda() && self.data.is_empty() && self.cuda_storage.is_some() {
             // If CUDA tensor is empty, convert to CPU first
             match self.to_cpu() {
                 Ok(cpu_tensor) => Ok(Cow::Owned(cpu_tensor.data)),
@@ -392,25 +396,25 @@ where
         if self.ndim() != 2 || other.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
-    
+
         // Get data using CoW pattern
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
-        let other_data: Cow<ArrayD<T>> =other.get_data_synced()?;
-    
+        let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
+
         let a_shape = self_data.shape();
         let b_shape = other_data.shape();
-        
+
         if a_shape[1] != b_shape[0] {
             return Err(format!(
                 "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
                 a_shape[0], a_shape[1], b_shape[0], b_shape[1]
             ));
         }
-    
+
         let a: ndarray::ArrayView2<T> = self_data.view().into_dimensionality().unwrap();
         let b: ndarray::ArrayView2<T> = other_data.view().into_dimensionality().unwrap();
         let result = a.dot(&b);
-    
+
         Ok(Self::new_with_device(
             result.into_dyn(),
             Device::CPU, // Result is always CPU for CPU operations
@@ -436,7 +440,7 @@ where
     // This function performs matrix multiplication on CUDA tensors
     //----------------------------------------------------------
     fn matmul_cuda(&self, other: &Self) -> Result<GPUTensor<T>, String> {
-       // use crate::backend::manager::get_backend;
+        // use crate::backend::manager::get_backend;
 
         // Basic validation - ensure we have 2D tensors
         if self.ndim() != 2 || other.ndim() != 2 {
@@ -479,7 +483,6 @@ where
     // Summation operations for GPUTensor
     // These methods handle summation along specified axes or over the entire tensor.
     fn sum_cpu(&self, axis: Option<usize>) -> GPUTensor<T> {
-
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for sum on CPU");
         });
@@ -533,7 +536,6 @@ where
     // For mean operation, we can use the same logic as sum,
     // but we need to divide by the number of elements along the specified axis.
     pub fn mean_cpu(&self, axis: Option<usize>) -> Self {
-
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for mean on CPU");
         });
@@ -544,10 +546,7 @@ where
             }
             None => {
                 let total_mean = data.mean().unwrap();
-                Self::new_with_device(
-                    ArrayD::from_elem(IxDyn(&[]), total_mean),
-                    Device::CPU,
-                )
+                Self::new_with_device(ArrayD::from_elem(IxDyn(&[]), total_mean), Device::CPU)
             }
         }
     }
@@ -584,7 +583,6 @@ where
     // Broadcasting for gradient computation - now returns GPUTensor.
     // Note that this operation is only CPU for now. Using it is very inefficient on GPU.
     pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<Self, String> {
-        
         let data: Cow<ArrayD<T>> = self.get_data_synced()?;
 
         match data.broadcast(target_shape) {
@@ -602,7 +600,6 @@ where
 
     // Similar to tf.expand_dims, this function adds a new dimension at the specified axis.
     pub fn unsqueeze(&self, axis: usize) -> Self {
-
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for unsqueeze on CPU");
         });
@@ -612,7 +609,6 @@ where
 
     // Squeeze operation - remove dimensions of size 1
     pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
-
         let data: Cow<ArrayD<T>> = self.get_data_synced()?;
 
         match axis {
@@ -648,8 +644,6 @@ where
 
     // Reshape operation - change tensor shape while preserving total elements
     pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, String> {
-
-
         let data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let total_elements: usize = data.shape().iter().product();
         let new_total_elements: usize = new_shape.iter().product();
@@ -675,7 +669,7 @@ where
             return Err("Transpose is only supported for 2D tensors".to_string());
         }
 
-     //   use crate::backend::manager::get_backend;
+        //   use crate::backend::manager::get_backend;
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
@@ -692,8 +686,6 @@ where
     pub fn transpose(&self, axes: Option<&[usize]>) -> Result<Self, String> {
         match axes {
             Some(axes_order) => {
-                
-            
                 if axes_order.len() != self.ndim() {
                     return Err(format!(
                         "Axes length {} doesn't match tensor dimensions {}",
@@ -796,7 +788,7 @@ where
     }
 
     fn sum_axes_cuda(&self, axes: Option<&[usize]>) -> Result<GPUTensor<T>, String> {
-     //   use crate::backend::manager::get_backend;
+        //   use crate::backend::manager::get_backend;
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
@@ -883,7 +875,7 @@ where
             return Ok(self.clone());
         }
 
-       // use crate::backend::manager::get_backend;
+        // use crate::backend::manager::get_backend;
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
@@ -917,7 +909,7 @@ where
         {
             if let Some(cuda_tensor) = &self.cuda_storage {
                 // Get the memory manager from backend
-            //    use crate::backend::manager::get_backend;
+                //    use crate::backend::manager::get_backend;
                 let backend = get_backend();
                 let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
                 let memory_manager = cuda_backend.memory_manager();
@@ -1086,7 +1078,6 @@ where
 
     // CPU fallback implementations
     fn min_cpu(&self, other: &Self) -> Result<Self, String> {
-
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
         let result_data: Vec<T> = self_data
@@ -1102,7 +1093,6 @@ where
     }
 
     fn max_cpu(&self, other: &Self) -> Result<Self, String> {
-
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let other_data: Cow<ArrayD<T>> = other.get_data_synced()?;
         let result_data: Vec<T> = self_data
@@ -1254,7 +1244,6 @@ where
     }
 
     fn max_along_dim_cpu(&self, dim: usize) -> Result<Self, String> {
-
         let shape = self.shape();
         let data = self.get_data_synced()?;
 
@@ -1543,7 +1532,7 @@ where
     fn logical_not_cuda(&self) -> Result<GPUTensor<T>, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Ensure both tensors are on CUDA
-            if !self.is_cuda()  {
+            if !self.is_cuda() {
                 return Err("Tensor must be on CUDA for logical not operation".to_string());
             }
 
@@ -1582,7 +1571,7 @@ where
     fn in_range_cuda(&self, min_val: T, max_val: T) -> Result<GPUTensor<T>, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Ensure both tensors are on CUDA
-            if !self.is_cuda()  {
+            if !self.is_cuda() {
                 return Err("Tensor must be on CUDA for in range operation".to_string());
             }
 
@@ -1620,7 +1609,6 @@ where
     }
 
     fn sign_cpu(&self) -> GPUTensor<T> {
-
         let data = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for sign on CPU");
         });
@@ -1660,7 +1648,7 @@ where
         &self,
         cuda_result: crate::backend::cuda::CudaTensor<T>,
     ) -> Result<Self, String> {
-     //   use crate::backend::manager::get_backend;
+        //   use crate::backend::manager::get_backend;
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
@@ -1675,7 +1663,7 @@ where
             .map_err(|e| format!("Failed to create array from CUDA result: {}", e))?;
         Ok(GPUTensor::new_with_device(result_array, Device::CPU))
     }
-    
+
     /// Create a new GPUTensor from a CUDA result
     /// This method DOES NOT transfer the CUDA result back to CPU.
     /// You should manually call the to_cpu() method if you need the result on CPU.
@@ -1683,10 +1671,9 @@ where
         &self,
         cuda_result: crate::backend::cuda::CudaTensor<T>,
     ) -> Result<Self, String> {
-        
         let shape = cuda_result.shape();
         Ok(Self {
-            data: ArrayD::zeros(IxDyn(shape)), 
+            data: ArrayD::zeros(IxDyn(shape)),
             device: Device::CUDA(0),
             cuda_storage: Some(cuda_result),
         })
@@ -1959,7 +1946,7 @@ where
         let self_data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for log on CPU");
         });
-        
+
         Self::new_with_device(self_data.mapv(|x| x.ln()), Device::CPU)
     }
 
@@ -2112,7 +2099,6 @@ where
 
     // CPU fallback implementations
     fn sqrt_cpu(&self) -> Result<Self, String> {
-
         let self_data: Cow<ArrayD<T>> = self.get_data_synced()?;
         // Check for negative values first
         let has_negative = self_data.iter().any(|&x| x < <T as CPUFloat>::zero());
@@ -2150,11 +2136,10 @@ where
 impl<T> GPUTensor<T>
 where
     T: GPUNumber,
-{    
-    
+{
     // Read-only access - warns if data might be stale
     pub fn data(&self) -> &ArrayD<T> {
-        if self.is_cuda() && self.cuda_storage.is_some() && self.data.is_empty()  {
+        if self.is_cuda() && self.cuda_storage.is_some() && self.data.is_empty() {
             panic!("GPU tensor data not synced to CPU. Call .to_cpu() first or use .to_vec()");
         }
         &self.data
@@ -2170,11 +2155,11 @@ where
         let backend = crate::backend::manager::get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
         let memory_manager = cuda_backend.memory_manager();
-        
+
         let cpu_data = cuda_tensor.to_cpu(memory_manager)?;
         self.data = ArrayD::from_shape_vec(IxDyn(cuda_tensor.shape()), cpu_data)
             .map_err(|e| format!("Failed to create ArrayD: {}", e))?;
-        
+
         Ok(())
     }
 
@@ -2262,7 +2247,7 @@ where
         }
 
         // Can't use get_data_synced() here - need actual data
-        if self.is_cuda()  && self.data.is_empty(){
+        if self.is_cuda() && self.data.is_empty() {
             panic!("Cannot index GPU tensor. Call .to_cpu() first");
         }
 

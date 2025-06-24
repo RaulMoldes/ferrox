@@ -25,6 +25,15 @@ where
     pub gradients: HashMap<NodeId, Tensor<T>>, // To store gradients for each node
 }
 
+impl<T> Default for Engine<T>
+where
+    T: GPUNumber,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> Engine<T>
 where
     T: GPUNumber,
@@ -63,12 +72,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUNumber
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::Zero, // T must implement Clone and Debug traits
+    T: GPUNumber, // T must implement Clone and Debug traits
 {
     // Create zeros tensor
     pub fn zeros(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
@@ -166,7 +170,7 @@ where
                         if self.nodes[&input_id].borrow().requires_grad {
                             node_to_output_grads_list
                                 .entry(input_id)
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(input_grads[i].clone());
                         }
                     }

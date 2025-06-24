@@ -234,10 +234,9 @@ where
                 };
 
                 // Initialize momentum buffer if it doesn't exist
-                if !self.momentum_buffers.contains_key(&param_node) {
-                    self.momentum_buffers
-                        .insert(param_node, Tensor::zeros(current_params.shape()));
-                }
+                self.momentum_buffers
+                    .entry(param_node)
+                    .or_insert_with(|| Tensor::zeros(current_params.shape()));
 
                 let momentum_buffer = self.momentum_buffers.get_mut(&param_node).unwrap();
 
@@ -479,17 +478,19 @@ where
 
                 // Initialize moment estimates if they don't exist
                 if !self.first_moments.contains_key(&param_node) {
-                    self.first_moments
-                        .insert(param_node, Tensor::zeros(current_params.shape()));
-                    self.second_moments
-                        .insert(param_node, Tensor::zeros(current_params.shape()));
-
-                    if self.amsgrad {
-                        self.max_second_moments
+                    if let std::collections::hash_map::Entry::Vacant(e) =
+                        self.first_moments.entry(param_node)
+                    {
+                        e.insert(Tensor::zeros(current_params.shape()));
+                        self.second_moments
                             .insert(param_node, Tensor::zeros(current_params.shape()));
+
+                        if self.amsgrad {
+                            self.max_second_moments
+                                .insert(param_node, Tensor::zeros(current_params.shape()));
+                        }
                     }
                 }
-
                 let first_moment = self.first_moments.get_mut(&param_node).unwrap();
                 let second_moment = self.second_moments.get_mut(&param_node).unwrap();
 

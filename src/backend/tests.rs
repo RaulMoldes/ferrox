@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::backend::device::cpu;
     #[cfg(feature = "cuda")]
     use crate::backend::CudaBackend;
+    use crate::backend::device::cpu;
     #[cfg(feature = "cuda")]
     use crate::backend::manager::get_backend;
 
@@ -27,7 +27,7 @@ mod tests {
     #[cfg(feature = "cuda")]
     fn test_backend_manager_initialization() {
         println!("=== Backend Manager Initialization Debug ===");
-        
+
         // Test direct CUDA backend creation (we know this works)
         println!("1. Testing direct CudaBackend::new(0)...");
         match CudaBackend::new(0) {
@@ -35,18 +35,18 @@ mod tests {
                 println!("  ✓ Direct CudaBackend creation SUCCESS");
                 println!("    Device ID: {}", backend.device_id());
                 println!("    Name: {}", backend.name());
-            },
+            }
             Err(e) => {
                 println!("  ✗ Direct CudaBackend creation FAILED: {}", e);
                 return; // No point continuing if this fails
             }
         }
-        
+
         // Test backend manager
         println!("2. Testing backend manager...");
         let backend = get_backend();
         println!("  Backend has CUDA: {}", backend.has_cuda());
-        
+
         if let Some(cuda_backend) = backend.cuda_backend() {
             println!("  ✓ Backend manager has CUDA backend");
             println!("    Device ID: {}", cuda_backend.device_id());

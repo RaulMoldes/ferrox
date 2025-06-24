@@ -12,6 +12,12 @@ pub struct BackendManager {
     cuda_backend: Option<CudaBackend>,
 }
 
+impl Default for BackendManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BackendManager {
     /// Create new backend manager
     pub fn new() -> Self {
@@ -93,6 +99,7 @@ use std::sync::OnceLock;
 static GLOBAL_BACKEND: OnceLock<BackendManager> = OnceLock::new();
 
 /// Get the global backend manager
+#[allow(clippy::redundant_closure)]
 pub fn get_backend() -> &'static BackendManager {
     GLOBAL_BACKEND.get_or_init(|| BackendManager::init())
 }

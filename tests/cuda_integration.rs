@@ -1,18 +1,18 @@
 #![cfg(test)]
 #[cfg(feature = "cuda")]
-use ferrox::backend::Device;
+use cudarc::driver::CudaDevice;
 #[cfg(feature = "cuda")]
-use ferrox::tensor::Tensor;
+use ferrox::backend::Device;
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::{CudaBackend, CudaTensor};
 #[cfg(feature = "cuda")]
-use ferrox::backend::manager::get_backend;
-#[cfg(feature = "cuda")]
-use ndarray::{ArrayD, IxDyn};
-#[cfg(feature = "cuda")]
 use ferrox::backend::cuda::{CudaKernels, load_all_kernels};
 #[cfg(feature = "cuda")]
-use cudarc::driver::CudaDevice;
+use ferrox::backend::manager::get_backend;
+#[cfg(feature = "cuda")]
+use ferrox::tensor::Tensor;
+#[cfg(feature = "cuda")]
+use ndarray::{ArrayD, IxDyn};
 
 #[cfg(feature = "cuda")]
 #[test]
@@ -222,13 +222,13 @@ fn test_concurrent_cuda_operations() {
 #[test]
 fn test_cuda_environment() {
     println!("=== CUDA Environment Debug ===");
-    
+
     // Check if CUDA feature is enabled
     #[cfg(feature = "cuda")]
     println!("✓ CUDA feature is enabled");
     #[cfg(not(feature = "cuda"))]
     println!("✗ CUDA feature is NOT enabled");
-    
+
     // Try direct cudarc device creation
     #[cfg(feature = "cuda")]
     {
@@ -237,17 +237,17 @@ fn test_cuda_environment() {
             Ok(device) => {
                 println!("✓ Direct CUDA device creation successful");
                 println!("  Device name: {:?}", device.name());
-            },
+            }
             Err(e) => {
                 println!("✗ Direct CUDA device creation failed: {}", e);
             }
         }
-        
+
         // Try backend manager
         println!("Checking backend manager...");
         let backend = get_backend();
         println!("Backend has CUDA: {}", backend.has_cuda());
-        
+
         if let Some(cuda_backend) = backend.cuda_backend() {
             println!("✓ CUDA backend available in manager");
             println!("  Device ID: {}", cuda_backend.device_id());
@@ -258,13 +258,12 @@ fn test_cuda_environment() {
     }
 }
 
-
 #[cfg(feature = "cuda")]
 #[test]
 fn test_gpu_chaining_efficiency() {
     let a = Tensor::new(ndarray::arr1(&[1.0f32, 2.0, 3.0]).into_dyn());
     let b = Tensor::new(ndarray::arr1(&[2.0f32, 3.0, 4.0]).into_dyn());
-    
+
     if let (Ok(cuda_a), Ok(cuda_b)) = (a.to_cuda(), b.to_cuda()) {
         // Chain operations on GPU - these should create GPU-only tensors
         if let Ok(result1) = cuda_a.add_cuda(&cuda_b) {
@@ -272,19 +271,19 @@ fn test_gpu_chaining_efficiency() {
                 // Verify it's still on GPU and CPU data is empty
                 assert!(result2.is_cuda());
                 assert!(result2.cuda_storage.is_some());
-                
+
                 // Only transfer when needed
                 let cpu_result = result2.to_cpu().unwrap();
                 // (1+2)*2 = 6, (2+3)*2 = 10, (3+4)*2 = 14
                 assert!((cpu_result.data()[[0]] - 6.0).abs() < 1e-6);
                 assert!((cpu_result.data()[[1]] - 10.0).abs() < 1e-6);
                 assert!((cpu_result.data()[[2]] - 14.0).abs() < 1e-6);
-                
+
                 println!("GPU chaining test passed!");
             } else {
                 panic!("GPU chaining failed: could not multiply by scalar");
             }
-        }else {
+        } else {
             panic!("GPU chaining failed: could not add tensors");
         }
     } else {
@@ -297,16 +296,16 @@ fn test_gpu_chaining_efficiency() {
 fn test_gpu_operations_create_gpu_only_tensors() {
     let a = Tensor::new(ndarray::arr1(&[1.0f32, 2.0]).into_dyn());
     let b = Tensor::new(ndarray::arr1(&[3.0f32, 4.0]).into_dyn());
-    
+
     if let (Ok(cuda_a), Ok(cuda_b)) = (a.to_cuda(), b.to_cuda()) {
         // Test that CUDA operations create GPU-only results
         if let Ok(result) = cuda_a.add_cuda(&cuda_b) {
             assert!(result.is_cuda());
             assert!(result.cuda_storage.is_some());
-            
+
             // Verify that accessing CPU data would require explicit conversion
             // (We can't test the panic here since it would fail the test)
-            
+
             println!("GPU-only tensor creation test passed!");
         }
     } else {
@@ -319,24 +318,24 @@ fn test_gpu_operations_create_gpu_only_tensors() {
 fn test_backward_compatibility() {
     // Test that existing patterns still work
     let cpu_tensor = Tensor::new(ndarray::arr1(&[1.0f32, 2.0, 3.0]).into_dyn());
-    
+
     // Traditional pattern should still work
     if let Ok(cuda_tensor) = cpu_tensor.to_cuda() {
         // This tensor has both CPU and GPU data
         assert!(cuda_tensor.is_cuda());
         assert!(cuda_tensor.cuda_storage.is_some());
         assert!(!cuda_tensor.data.is_empty()); // CPU data still exists
-        
+
         // So indexing still works
         assert!((cuda_tensor[0] - 1.0).abs() < 1e-6);
-        
+
         // And operations that return to CPU still work
         if let Ok(result) = cuda_tensor.add_cuda(&cuda_tensor) {
             if let Ok(cpu_result) = result.to_cpu() {
                 assert!((cpu_result[0] - 2.0).abs() < 1e-6);
             }
         }
-        
+
         println!("Backward compatibility test passed!");
     } else {
         println!("CUDA not available, skipping backward compatibility test");
@@ -347,18 +346,18 @@ fn test_backward_compatibility() {
 #[test]
 fn test_to_vec_works_on_gpu_tensors() {
     let cpu_tensor = Tensor::new(ndarray::arr1(&[1.0f32, 2.0, 3.0]).into_dyn());
-    
+
     if let Ok(cuda_tensor) = cpu_tensor.to_cuda() {
         // to_vec should work even on GPU tensors
         let vec_data = cuda_tensor.to_vec().unwrap();
         assert_eq!(vec_data, vec![1.0, 2.0, 3.0]);
-        
+
         // Test chained GPU operations
         if let Ok(result) = cuda_tensor.add_cuda(&cuda_tensor) {
             let result_vec = result.to_vec().unwrap();
             assert_eq!(result_vec, vec![2.0, 4.0, 6.0]);
         }
-        
+
         println!("to_vec GPU test passed!");
     } else {
         println!("CUDA not available, skipping to_vec GPU test");
@@ -369,14 +368,12 @@ fn test_to_vec_works_on_gpu_tensors() {
 #[test]
 #[should_panic(expected = "Cannot index GPU tensor. Call .to_cpu() first")]
 fn test_gpu_only_tensor_indexing_panics() {
-  
-    
     let backend = get_backend();
     if let Some(cuda_backend) = backend.cuda_backend() {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
             cuda_backend.memory_manager(),
             vec![1.0f32, 2.0, 3.0],
-            vec![3]
+            vec![3],
         ) {
             // Create GPU-only tensor
             let gpu_tensor = Tensor {
@@ -384,14 +381,14 @@ fn test_gpu_only_tensor_indexing_panics() {
                 device: Device::CUDA(0),
                 cuda_storage: Some(cuda_tensor),
             };
-            
+
             let _ = gpu_tensor[0]; // Should panic
         }
     } else {
         println!("CUDA backend not available, skipping GPU-only tensor indexing test");
         // Force panic without CUDA if backend unavailable
         let gpu_tensor = Tensor::<f64> {
-            data: ArrayD::zeros(IxDyn(&[0])), 
+            data: ArrayD::zeros(IxDyn(&[0])),
             device: Device::CUDA(0),
             cuda_storage: None,
         };
@@ -403,51 +400,107 @@ fn test_gpu_only_tensor_indexing_panics() {
 #[cfg(feature = "cuda")]
 fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), String> {
     use ferrox::backend::cuda::kernels::*;
-    
+
     let (ptx_bytes, expected_functions) = match name {
-        "elementwise" => (ELEMENTWISE_PTX, vec![
-            // f32 versions
-            "elementwise_add", "elementwise_sqrt", "elementwise_abs", "elementwise_mul",
-            "elementwise_div", "elementwise_sub", "elementwise_pow", "elementwise_min", 
-            "elementwise_max", "elementwise_exp", "elementwise_log", "elementwise_negate",
-            // f64 versions
-            "elementwise_add_f64", "elementwise_sqrt_f64", "elementwise_abs_f64", "elementwise_mul_f64",
-            "elementwise_div_f64", "elementwise_sub_f64", "elementwise_pow_f64", "elementwise_min_f64", 
-            "elementwise_max_f64", "elementwise_exp_f64", "elementwise_log_f64", "elementwise_negate_f64"
-        ]),
+        "elementwise" => (
+            ELEMENTWISE_PTX,
+            vec![
+                // f32 versions
+                "elementwise_add",
+                "elementwise_sqrt",
+                "elementwise_abs",
+                "elementwise_mul",
+                "elementwise_div",
+                "elementwise_sub",
+                "elementwise_pow",
+                "elementwise_min",
+                "elementwise_max",
+                "elementwise_exp",
+                "elementwise_log",
+                "elementwise_negate",
+                // f64 versions
+                "elementwise_add_f64",
+                "elementwise_sqrt_f64",
+                "elementwise_abs_f64",
+                "elementwise_mul_f64",
+                "elementwise_div_f64",
+                "elementwise_sub_f64",
+                "elementwise_pow_f64",
+                "elementwise_min_f64",
+                "elementwise_max_f64",
+                "elementwise_exp_f64",
+                "elementwise_log_f64",
+                "elementwise_negate_f64",
+            ],
+        ),
         "matmul" => (MATMUL_PTX, vec!["matmul", "matmul_f64"]),
-        "activations" => (ACTIVATIONS_PTX, vec!["relu", "sigmoid", "hyperbolic_tangent","relu_f64", "sigmoid_f64", "hyperbolic_tangent_f64"]),
-        "reduces" => (REDUCES_PTX, vec!["sum_axis", "max_along_dim","sum_axis_f64", "max_along_dim_f64"]),
+        "activations" => (
+            ACTIVATIONS_PTX,
+            vec![
+                "relu",
+                "sigmoid",
+                "hyperbolic_tangent",
+                "relu_f64",
+                "sigmoid_f64",
+                "hyperbolic_tangent_f64",
+            ],
+        ),
+        "reduces" => (
+            REDUCES_PTX,
+            vec![
+                "sum_axis",
+                "max_along_dim",
+                "sum_axis_f64",
+                "max_along_dim_f64",
+            ],
+        ),
         "transpose" => (TRANSPOSE_PTX, vec!["transpose_2d", "transpose_2d_f64"]),
-        "comparison" => (COMPARISON_PTX, vec!["greater_equal", "equal", "sign","greater_equal_f64", "equal_f64", "sign_f64", "less_equal", "less_equal_f64", "clamp", "clamp_f64"]),
+        "comparison" => (
+            COMPARISON_PTX,
+            vec![
+                "greater_equal",
+                "equal",
+                "sign",
+                "greater_equal_f64",
+                "equal_f64",
+                "sign_f64",
+                "less_equal",
+                "less_equal_f64",
+                "clamp",
+                "clamp_f64",
+            ],
+        ),
         _ => return Err(format!("Unknown kernel: {}", name)),
     };
-    
+
     println!("  PTX size: {} bytes", ptx_bytes.len());
-    
+
     // Check if PTX is valid UTF-8
     let ptx_str = match std::str::from_utf8(ptx_bytes) {
         Ok(s) => {
             println!("  ✓ PTX is valid UTF-8");
             println!("  PTX preview: {}", &s[..s.len().min(200)]);
             s
-        },
+        }
         Err(e) => {
             return Err(format!("Invalid PTX UTF-8: {}", e));
         }
     };
-    
+
     // Try to load the PTX
     let module_name = format!("{}_module", name);
     let functions: Vec<&str> = expected_functions.iter().take(25).cloned().collect(); // Test with fewer functions first
-    
+
     println!("  Attempting to load PTX into module: {}", module_name);
     println!("  Expected functions: {:?}", functions);
-    
-    match kernels.device().load_ptx(ptx_str.into(), &module_name, &functions) {
+
+    match kernels
+        .device()
+        .load_ptx(ptx_str.into(), &module_name, &functions)
+    {
         Ok(_) => {
             println!("  ✓ PTX loaded into device successfully");
-            
+
             // Check if functions are accessible
             for func_name in &functions {
                 if let Some(_func) = kernels.device().get_func(&module_name, func_name) {
@@ -457,7 +510,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
                 }
             }
             Ok(())
-        },
+        }
         Err(e) => {
             println!("  ✗ PTX loading failed: {}", e);
             Err(format!("Failed to load {} kernel: {}", name, e))
@@ -465,41 +518,40 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     }
 }
 
-
 #[cfg(feature = "cuda")]
-#[test] 
-    fn test_detailed_kernel_loading() {
-        println!("=== Detailed Kernel Loading Debug ===");
-        
-        // Step 1: Create device (we know this works)
-        let device = CudaDevice::new(0).expect("CUDA device creation failed");
-        println!("✓ CUDA device created: {:?}", device.name());
-        
-        // Step 2: Create empty kernel manager
-        let mut kernels = CudaKernels::new(device.clone());
-        println!("✓ Empty kernel manager created");
-        
-        // Step 3: Try loading kernels one by one to find which one fails
-        let kernel_names = [
-            "elementwise",
-            "matmul", 
-            "activations",
-            "reduces",
-            "transpose",
-            "comparison"
-        ];
-        
-        for kernel_name in &kernel_names {
-            println!("Loading kernel: {}", kernel_name);
-            match load_single_kernel(&mut kernels, kernel_name) {
-                Ok(_) => println!("  ✓ {} loaded successfully", kernel_name),
-                Err(e) => {
-                    println!("  ✗ {} failed: {}", kernel_name, e);
-                    // This tells us exactly which kernel and why it failed
-                    break;
-                }
+#[test]
+fn test_detailed_kernel_loading() {
+    println!("=== Detailed Kernel Loading Debug ===");
+
+    // Step 1: Create device (we know this works)
+    let device = CudaDevice::new(0).expect("CUDA device creation failed");
+    println!("✓ CUDA device created: {:?}", device.name());
+
+    // Step 2: Create empty kernel manager
+    let mut kernels = CudaKernels::new(device.clone());
+    println!("✓ Empty kernel manager created");
+
+    // Step 3: Try loading kernels one by one to find which one fails
+    let kernel_names = [
+        "elementwise",
+        "matmul",
+        "activations",
+        "reduces",
+        "transpose",
+        "comparison",
+    ];
+
+    for kernel_name in &kernel_names {
+        println!("Loading kernel: {}", kernel_name);
+        match load_single_kernel(&mut kernels, kernel_name) {
+            Ok(_) => println!("  ✓ {} loaded successfully", kernel_name),
+            Err(e) => {
+                println!("  ✗ {} failed: {}", kernel_name, e);
+                // This tells us exactly which kernel and why it failed
+                break;
             }
         }
-        
-        println!("Loaded kernels: {:?}", kernels.loaded_kernels());
     }
+
+    println!("Loaded kernels: {:?}", kernels.loaded_kernels());
+}

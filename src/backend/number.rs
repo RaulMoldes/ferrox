@@ -86,7 +86,6 @@ pub trait CPUNumber:
 }
 
 /// Additional trait for floating-point CPUNumber types
-
 pub trait CPUFloat: CPUNumber {
     fn zero() -> Self {
         <Self as CPUNumber>::from_f64(0.0).expect("Failed to convert 0.0 to CPUFloat type")
@@ -351,9 +350,7 @@ impl CPUNumber for i32 {
     }
     fn powi(self, exp: i32) -> Self {
         if exp < 0 {
-            if self == 1 {
-                1
-            } else if self == -1 && exp % 2 == 0 {
+            if (self == 1) || (self == -1 && exp % 2 == 0) {
                 1
             } else if self == -1 {
                 -1
@@ -415,9 +412,7 @@ impl CPUNumber for i64 {
     }
     fn powi(self, exp: i32) -> Self {
         if exp < 0 {
-            if self == 1 {
-                1
-            } else if self == -1 && exp % 2 == 0 {
+            if (self == 1) || (self == -1 && exp % 2 == 0) {
                 1
             } else if self == -1 {
                 -1
@@ -441,7 +436,7 @@ impl CPUNumber for i64 {
     }
 
     fn from_i64(value: i64) -> Option<Self> {
-        if value >= i64::MIN && value <= i64::MAX {
+        if (i64::MIN..=i64::MAX).contains(&value) {
             Some(value)
         } else {
             None

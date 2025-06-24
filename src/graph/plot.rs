@@ -14,6 +14,11 @@ pub struct GraphVisualizer {
     pub config: VisualizationConfig,
 }
 
+impl Default for GraphVisualizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 /// Configuration for graph visualization
 #[derive(Debug, Clone)]
 pub struct VisualizationConfig {
@@ -112,6 +117,7 @@ impl GraphVisualizer {
     }
 
     /// DFS to collect all nodes in the computation graph
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_nodes_dfs<T>(
         &self,
         engine: &Engine<T>,
@@ -137,18 +143,13 @@ impl GraphVisualizer {
     /// Create a descriptive label for a node
     fn create_node_label<T>(&self, engine: &Engine<T>, node_id: NodeId, node: &Node<T>) -> String
     where
-        T: GPUNumber
-            + Clone
-            + std::fmt::Debug
-            + ndarray::LinalgScalar
-            + ndarray::ScalarOperand
-            + rand_distr::num_traits::FromPrimitive,
+        T: GPUNumber,
     {
         let mut label = String::new();
 
         // Node ID and type
         if let Some(ref op) = node.op {
-            write!(label, "{}\\n{}", node_id, self.get_op_name(op)).unwrap();
+            write!(label, "{}\\n{}", node_id, self.get_op_name(op.as_ref())).unwrap();
         } else {
             write!(label, "{}\\nTensor", node_id).unwrap();
         }
@@ -193,7 +194,7 @@ impl GraphVisualizer {
     }
 
     /// Get a human-readable name for an operation
-    fn get_op_name<T>(&self, op: &Box<dyn super::op::Operator<T>>) -> String
+    fn get_op_name<T>(&self, op: &dyn super::op::Operator<T>) -> String
     where
         T: GPUNumber,
     {
@@ -291,7 +292,7 @@ impl GraphVisualizer {
                 print!("Node {}: ", node_id);
 
                 if let Some(ref op) = node.op {
-                    print!("{} ", self.get_op_name(op));
+                    print!("{} ", self.get_op_name(op.as_ref()));
                 } else {
                     print!("Tensor ");
                 }
