@@ -718,11 +718,14 @@ mod kernel_tests {
 
             let cfg = create_launch_config(size);
             backend.kernels().launch_add(cfg, &a_gpu, &b_gpu, &mut c_gpu, size as i32).unwrap();
+            println!("Add kernel launched with config: {:?}", cfg);
+            println!("Waiting for synchronization...");
             backend.synchronize().unwrap();
 
             let result = backend.device().dtoh_sync_copy(&c_gpu).unwrap();
             for i in 0..size {
                 let expected = if a[i] == b[i] { 1.0 } else { 0.0 };
+                println!("Result at index {}: expected={}, got={}", i, expected, result[i]);
                 assert!((result[i] - expected).abs() < 1e-6);
             }
         }
