@@ -90,7 +90,7 @@ impl CudaMemoryManager {
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
-        self.device
+        self.default_stream
         .memcpy_dtoh(gpu_data)
             .map_err(|e| format!("Failed to copy device to host: {}", e))
     }
@@ -106,7 +106,7 @@ impl CudaMemoryManager {
     where
         T: cudarc::driver::DeviceRepr,
     {
-        self.device
+        self.default_stream
         .memcpy_dtod(src, dst)
             .map_err(|e| format!("Failed to copy device to device: {}", e))
     }
