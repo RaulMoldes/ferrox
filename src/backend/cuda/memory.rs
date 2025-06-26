@@ -117,7 +117,7 @@ impl CudaMemoryManager {
 
     /// Synchronizes the device to ensure all operations complete
     pub fn synchronize(&self) -> Result<(), String> {
-        self.device
+        self.ctx
             .synchronize()
             .map_err(|e| format!("Failed to synchronize device: {}", e))
     }
@@ -241,7 +241,7 @@ impl CudaMemoryManager {
 
     /// Returns reference to the underlying CUDA device
     pub fn device(&self) -> &Arc<CudaContext> {
-        &self.device
+        &self.ctx
     }
 }
 
