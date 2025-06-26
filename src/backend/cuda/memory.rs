@@ -180,6 +180,11 @@ impl CudaMemoryManager {
         }
     }
 
+    pub fn stream_names(&self) -> Vec<String> {
+        let streams = self.streams.lock().unwrap();
+        streams.keys().cloned().collect()
+    }
+
     /// Synchronize specific stream
     pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
         let streams = self.streams.lock().unwrap();
