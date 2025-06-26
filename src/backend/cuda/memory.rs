@@ -4,6 +4,7 @@ use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::Mutex;
 ///
 /// This module provides high-level abstractions for:
 /// - Allocating GPU memory buffers

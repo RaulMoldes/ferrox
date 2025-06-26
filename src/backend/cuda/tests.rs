@@ -1,6 +1,8 @@
 // src/backend/cuda/tests.rs
 #[cfg(all(test, feature = "cuda"))]
 mod tests {
+
+    use std::time::{Duration, Instant};
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
@@ -1163,6 +1165,19 @@ mod kernel_tests {
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
+}
+
+
+
+mod stream_tests {
+
+    use std::time::{Duration, Instant};
+    use super::super::{CudaBackend, CudaKernels, load_all_kernels};
+    use crate::backend::cuda::memory::CudaMemoryManager;
+    use crate::backend::cuda::memory::CudaTensor;
+    use crate::backend::cuda::memory::compute_strides;
+    use crate::backend::cuda::ops::CudaOps;
+    use cudarc::driver::{CudaContext, LaunchConfig};
 
     // ===== STREAMS TESTS =====
     /// Helper to create memory manager with streams
@@ -1179,6 +1194,23 @@ mod kernel_tests {
                 Err(_) => None,
             },
             Err(_) => None,
+        }
+    }
+
+
+    
+     /// Helper function to verify results with tolerance
+     fn assert_float_eq(actual: &[f32], expected: &[f32], tolerance: f32) {
+        assert_eq!(actual.len(), expected.len(), "Length mismatch");
+        for (i, (&a, &e)) in actual.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (a - e).abs() < tolerance,
+                "Mismatch at index {}: expected {}, got {}, diff: {}",
+                i,
+                e,
+                a,
+                (a - e).abs()
+            );
         }
     }
 

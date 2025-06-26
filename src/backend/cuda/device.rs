@@ -35,7 +35,7 @@ impl CudaBackend {
 
     pub fn default_stream(&self) -> &cudarc::driver::CudaStream {
         self.context.default_stream()
-    }   
+    }
 
     /// Returns reference to the CUDA context
     pub fn context(&self) -> &Arc<CudaContext> {
@@ -72,7 +72,7 @@ impl CudaBackend {
         shape: Vec<usize>,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::contextRepr
+        T: cudarc::driver::DeviceRepr
             + Clone
             + cudarc::driver::ValidAsZeroBits
             + std::marker::Unpin,

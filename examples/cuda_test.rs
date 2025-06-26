@@ -1,6 +1,6 @@
 // examples/cuda_test.rs
 #[cfg(feature = "cuda")]
-use cudarc::driver::{LaunchAsync, LaunchConfig};
+use cudarc::driver::{ LaunchConfig};
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::CudaBackend;
 
