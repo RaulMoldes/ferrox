@@ -387,7 +387,7 @@ where
             |&acc, &x| if acc > x { acc } else { x },
         );
 
-        let result_tensor = Tensor::new_with_device(result_data, input_data.context().clone());
+        let result_tensor = Tensor::new_with_device(result_data, input_data.device().clone());
 
         // Create operation for gradient computation
         let op = Box::new(MaxAlongDimOp::new(dim));

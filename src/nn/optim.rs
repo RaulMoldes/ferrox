@@ -529,7 +529,7 @@ where
                         ndarray::Zip::from(max_second_moment.data())
                             .and(second_moment_corrected.data())
                             .map_collect(|&a, &b| if a > b { a } else { b }),
-                        max_second_moment.context().clone(),
+                        max_second_moment.device().clone(),
                     );
 
                     *max_second_moment = updated_max.clone();
@@ -539,7 +539,7 @@ where
                 // Compute parameter update: p_t = p_t - lr * m_hat_t / (sqrt(v_hat_t) + eps)
                 let denominator = Tensor::new_with_device(
                     second_moment_corrected.data().mapv(|x| x.sqrt() + self.eps),
-                    second_moment_corrected.context().clone(),
+                    second_moment_corrected.device().clone(),
                 );
 
                 let update = first_moment_corrected
