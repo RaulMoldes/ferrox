@@ -240,7 +240,7 @@ mod tests {
             backend.synchronize().unwrap();
 
             // Get results and verify
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             let expected: Vec<f32> = a_host
                 .iter()
                 .zip(b_host.iter())
@@ -280,7 +280,7 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             let expected: Vec<f32> = a_host
                 .iter()
                 .zip(b_host.iter())
@@ -315,7 +315,10 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
             let expected: Vec<f32> = input.iter().map(|&x| x.max(0.0)).collect();
 
             assert_float_eq(&result, &expected, 1e-6);
@@ -346,7 +349,10 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
             let expected: Vec<f32> = input.iter().map(|&x| x.max(0.0)).collect();
 
             assert_float_eq(&result, &expected, 1e-6);
@@ -400,7 +406,7 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             assert_float_eq(&result, &expected, 1e-5);
         }
     }
@@ -440,7 +446,7 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             assert_float_eq(&result, &expected, 1e-5);
         }
     }
@@ -508,7 +514,10 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
 
             // Expected: ReLU(input) * 2
             let expected: Vec<f32> = input.iter().map(|&x| x.max(0.0) * 2.0).collect();
@@ -757,7 +766,7 @@ mod kernel_tests {
             println!("Waiting for synchronization...");
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             for i in 0..size {
                 let expected = 3.0f32;
                 println!(
@@ -788,7 +797,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&result_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&result_gpu)
+                .unwrap();
             for i in 0..size {
                 let expected = if input[i] == 0.0 { 1.0 } else { 0.0 };
                 assert!((result[i] - expected).abs() < 1e-6);
@@ -815,7 +827,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&result_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&result_gpu)
+                .unwrap();
             let expected = vec![-1.0f32, -1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0];
             assert_f32_eq(&result, &expected, 1e-6);
         }
@@ -840,7 +855,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&result_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&result_gpu)
+                .unwrap();
             let expected = vec![-1.0f64, -1.0, 0.0, 1.0, 1.0, 0.0];
             assert_f64_eq(&result, &expected, 1e-10);
         }
@@ -874,7 +892,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&result_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&result_gpu)
+                .unwrap();
             for i in 0..size {
                 let expected = if input[i] >= min_val && input[i] <= max_val {
                     1.0
@@ -916,7 +937,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&result_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&result_gpu)
+                .unwrap();
             for i in 0..size {
                 let expected = input[i].max(min_val).min(max_val);
                 assert!((result[i] - expected).abs() < 1e-6);
@@ -952,7 +976,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&result_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&result_gpu)
+                .unwrap();
             let expected = vec![-2.0f64, -2.0, -1.0, 0.0, 1.0, 5.0, 8.0, 8.0];
             assert_f64_eq(&result, &expected, 1e-10);
         }
@@ -985,7 +1012,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             assert_f32_eq(&result, &expected, 1e-5);
         }
     }
@@ -1018,7 +1045,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             assert_f32_eq(&result, &a_host, 1e-5);
         }
     }
@@ -1048,7 +1075,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&c_gpu).unwrap();
+            let result = backend.memory_manager().device_to_host(&c_gpu).unwrap();
             assert_f64_eq(&result, &expected, 1e-10);
         }
     }
@@ -1078,7 +1105,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
@@ -1104,7 +1134,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
             assert_f64_eq(&result, &expected, 1e-10);
         }
     }
@@ -1147,7 +1180,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
@@ -1188,7 +1224,10 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend.memory_manager().memcpy_dtoh(&output_gpu).unwrap();
+            let result = backend
+                .memory_manager()
+                .device_to_host(&output_gpu)
+                .unwrap();
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
