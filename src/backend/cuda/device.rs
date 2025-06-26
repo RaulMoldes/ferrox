@@ -34,7 +34,7 @@ impl CudaBackend {
         })
     }
 
-    pub fn default_stream(&self) -> &cudarc::driver::CudaStream {
+    pub fn default_stream(&self) -> Arc<cudarc::driver::CudaStream> {
         self.context.default_stream()
     }
 
