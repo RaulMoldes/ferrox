@@ -81,7 +81,7 @@ impl CudaMemoryManager {
         T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
     {
         self.default_stream
-            .host_to_device(data)
+            .memcpy_htod(data)
             .map_err(|e| format!("Failed to copy host to device: {}", e))
     }
 
@@ -91,7 +91,7 @@ impl CudaMemoryManager {
         T: cudarc::driver::DeviceRepr + Clone,
     {
         self.default_stream
-        .device_to_host(gpu_data)
+        .memcpy_dtoh(gpu_data)
             .map_err(|e| format!("Failed to copy device to host: {}", e))
     }
 
@@ -148,7 +148,7 @@ impl CudaMemoryManager {
             .ok_or_else(|| "Stream not found".to_string())?;
         
         stream
-            .host_to_device(data)
+            .memcpy_htod(data)
             .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))
     }
 
@@ -165,7 +165,7 @@ impl CudaMemoryManager {
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
         stream
-            .device_to_host(gpu_data)
+            .memcpy_dtoh(gpu_data)
             .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))
     }
 
@@ -173,7 +173,7 @@ impl CudaMemoryManager {
 
     /// Check if stream exists (simplified since we can't query CUDA stream status)
     pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
-        let streams = self.streams.lock().unwrap();
+        let streams = self.streams.lock()?.map_err(|e| format!("Failed to lock streams: {}", e))?;
         if streams.contains_key(stream_name) {
             Ok(true) // Assume ready since we can't query
         } else {
@@ -188,7 +188,7 @@ impl CudaMemoryManager {
 
     /// Synchronize specific stream
     pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
-        let streams = self.streams.lock().unwrap();
+        let streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
         let stream = streams
             .get(stream_name)
             .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
@@ -236,7 +236,7 @@ impl CudaMemoryManager {
 
     /// Get stream reference for kernel launches
     pub fn get_stream(&self, stream_name: &str) -> Option<&CudaStream> {
-        self.streams.get(stream_name)
+        self.streams.lock().unwrap().get(stream_name)
     }
 
     /// Returns reference to the underlying CUDA device
