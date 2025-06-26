@@ -33,7 +33,7 @@ mod tests {
         match CudaBackend::new(0) {
             Ok(backend) => {
                 println!("  ✓ Direct CudaBackend creation SUCCESS");
-                println!("    Device ID: {}", backend.device_id());
+                println!("    Device ID: {}", backend.id());
                 println!("    Name: {}", backend.name());
             }
             Err(e) => {
@@ -49,7 +49,7 @@ mod tests {
 
         if let Some(cuda_backend) = backend.cuda_backend() {
             println!("  ✓ Backend manager has CUDA backend");
-            println!("    Device ID: {}", cuda_backend.device_id());
+            println!("    Device ID: {}", cuda_backend.id());
         } else {
             println!("  ✗ Backend manager does NOT have CUDA backend");
             println!("  This means BackendManager::init() failed to create CudaBackend");

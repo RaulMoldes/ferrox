@@ -250,7 +250,7 @@ fn test_cuda_environment() {
 
         if let Some(cuda_backend) = backend.cuda_backend() {
             println!("✓ CUDA backend available in manager");
-            println!("  Device ID: {}", cuda_backend.device_id());
+            println!("  Device ID: {}", cuda_backend.id());
             println!("  Device name: {}", cuda_backend.name());
         } else {
             println!("✗ CUDA backend NOT available in manager");

@@ -43,6 +43,10 @@ impl CudaBackend {
         &self.context
     }
 
+    pub fn id(&self) -> usize {
+        self.context_id
+    }
+
     /// Returns reference to the kernel manager
     pub fn kernels(&self) -> &CudaKernels {
         &self.kernels

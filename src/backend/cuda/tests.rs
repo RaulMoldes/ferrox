@@ -2,13 +2,13 @@
 #[cfg(all(test, feature = "cuda"))]
 mod tests {
 
-    use std::time::{Duration, Instant};
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
     use crate::backend::cuda::ops::CudaOps;
     use cudarc::driver::{CudaContext, LaunchConfig};
+    use std::time::{Duration, Instant};
     //use std::sync::Arc;
 
     /// Helper function to create a test CUDA backend
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn test_cuda_backend_initialization() {
         if let Some(backend) = setup_cuda_backend() {
-            assert_eq!(backend.device_id(), 0);
+            assert_eq!(backend.id(), 0);
             assert!(backend.name().contains("CUDA Device"));
 
             // Test device synchronization
@@ -1167,17 +1167,15 @@ mod kernel_tests {
     }
 }
 
-
-
 mod stream_tests {
 
-    use std::time::{Duration, Instant};
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
     use crate::backend::cuda::ops::CudaOps;
     use cudarc::driver::{CudaContext, LaunchConfig};
+    use std::time::{Duration, Instant};
 
     // ===== STREAMS TESTS =====
     /// Helper to create memory manager with streams
@@ -1197,10 +1195,8 @@ mod stream_tests {
         }
     }
 
-
-    
-     /// Helper function to verify results with tolerance
-     fn assert_float_eq(actual: &[f32], expected: &[f32], tolerance: f32) {
+    /// Helper function to verify results with tolerance
+    fn assert_float_eq(actual: &[f32], expected: &[f32], tolerance: f32) {
         assert_eq!(actual.len(), expected.len(), "Length mismatch");
         for (i, (&a, &e)) in actual.iter().zip(expected.iter()).enumerate() {
             assert!(
