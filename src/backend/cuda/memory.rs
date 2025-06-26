@@ -75,13 +75,13 @@ impl CudaMemoryManager {
     // memory transfers with kernel execution, improving performance.
 
     /// Copies data from host to device
-    /// `memcpy_htod` is a synchronous operation that blocks until the copy is complete.
+    /// `host_to_device` is a synchronous operation that blocks until the copy is complete.
     pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
     {
         self.default_stream
-            .memcpy_htod(data)
+            .host_to_device(data)
             .map_err(|e| format!("Failed to copy host to device: {}", e))
     }
 
@@ -91,7 +91,7 @@ impl CudaMemoryManager {
         T: cudarc::driver::DeviceRepr + Clone,
     {
         self.default_stream
-        .memcpy_dtoh(gpu_data)
+        .device_to_host(gpu_data)
             .map_err(|e| format!("Failed to copy device to host: {}", e))
     }
 
@@ -148,7 +148,7 @@ impl CudaMemoryManager {
             .ok_or_else(|| "Stream not found".to_string())?;
         
         stream
-            .memcpy_htod(data)
+            .host_to_device(data)
             .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))
     }
 
@@ -165,7 +165,7 @@ impl CudaMemoryManager {
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
         stream
-            .memcpy_dtoh(gpu_data)
+            .device_to_host(gpu_data)
             .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))
     }
 

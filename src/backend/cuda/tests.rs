@@ -217,11 +217,11 @@ mod tests {
             // Allocate GPU memory
             let a_gpu = backend
                 .memory_manager()
-                .memcpy_htod(a_host.clone())
+                .host_to_device(a_host.clone())
                 .unwrap();
             let b_gpu = backend
                 .memory_manager()
-                .memcpy_htod(b_host.clone())
+                .host_to_device(b_host.clone())
                 .unwrap();
             let mut c_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
@@ -259,11 +259,11 @@ mod tests {
 
             let a_gpu = backend
                 .memory_manager()
-                .memcpy_htod(a_host.clone())
+                .host_to_device(a_host.clone())
                 .unwrap();
             let b_gpu = backend
                 .memory_manager()
-                .memcpy_htod(b_host.clone())
+                .host_to_device(b_host.clone())
                 .unwrap();
             let mut c_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
@@ -430,7 +430,7 @@ mod tests {
             let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
             let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f32>((m * n) as usize)
                 .unwrap();
 
@@ -1001,7 +1001,7 @@ mod kernel_tests {
             let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
             let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f32>((m * n) as usize)
                 .unwrap();
 
@@ -1030,7 +1030,7 @@ mod kernel_tests {
 
             let a_gpu = backend
                 .memory_manager()
-                .memcpy_htod(a_host.clone())
+                .host_to_device(a_host.clone())
                 .unwrap();
             let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
@@ -1064,7 +1064,7 @@ mod kernel_tests {
             let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
             let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f64>((m * n) as usize)
                 .unwrap();
 
