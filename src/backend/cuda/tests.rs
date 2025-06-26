@@ -297,7 +297,10 @@ mod tests {
             let size = 256;
             let input: Vec<f32> = (0..size).map(|i| i as f32).collect(); // All positive
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut output_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = LaunchConfig {
@@ -325,7 +328,10 @@ mod tests {
             let size = 512;
             let input: Vec<f32> = (0..size).map(|i| i as f32 - 256.0).collect(); // Mix of pos/neg
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut output_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = LaunchConfig {
@@ -375,8 +381,8 @@ mod tests {
             // Expected C: [[19, 22], [43, 50]]
             let expected = vec![19.0, 22.0, 43.0, 50.0];
 
-            let a_gpu = backend.memory_manager().memcpy_htod(a_host).unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b_host).unwrap();
+            let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
                 .memory_manager()
                 .alloc_zeros::<f32>((m * n) as usize)
@@ -415,8 +421,8 @@ mod tests {
             // Result should be A itself
             let expected = a_host.clone();
 
-            let a_gpu = backend.memory_manager().memcpy_htod(a_host).unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b_host).unwrap();
+            let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
                 .defaul_stream()
                 .alloc_zeros::<f32>((m * n) as usize)
@@ -445,8 +451,8 @@ mod tests {
             let size = 16;
             let (a_host, b_host) = create_test_vectors(size);
 
-            let a_gpu = backend.memory_manager().memcpy_htod(a_host).unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b_host).unwrap();
+            let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             // Test with invalid grid configuration (should still work with CUDA's error handling)
@@ -476,7 +482,10 @@ mod tests {
             let size = 128;
             let input: Vec<f32> = (0..size).map(|i| i as f32 - 64.0).collect();
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut temp_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
             let mut output_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
@@ -735,8 +744,8 @@ mod kernel_tests {
             let b = vec![2.0f32; size];
             let expected = vec![3.0f32; size];
 
-            let a_gpu = backend.memory_manager().memcpy_htod(a.clone()).unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b.clone()).unwrap();
+            let a_gpu = backend.memory_manager().host_to_device(a.clone()).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b.clone()).unwrap();
             let mut c_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -766,7 +775,10 @@ mod kernel_tests {
             let size = 8;
             let input = vec![0.0f32, 1.0, -1.0, 2.5, 0.0, -0.0, 100.0, -50.0];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut result_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -790,7 +802,10 @@ mod kernel_tests {
             let size = 9;
             let input = vec![-5.0f32, -1.0, -0.1, 0.0, 0.1, 1.0, 5.0, -0.0, 100.0];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut result_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -812,7 +827,10 @@ mod kernel_tests {
             let size = 6;
             let input = vec![-10.5f64, -0.001, 0.0, 0.001, 10.5, -0.0];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut result_gpu = backend.memory_manager().alloc_zeros::<f64>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -836,7 +854,10 @@ mod kernel_tests {
             let min_val = 3.0f32;
             let max_val = 7.0f32;
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut result_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -875,7 +896,10 @@ mod kernel_tests {
             let min_val = -5.0f32;
             let max_val = 5.0f32;
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut result_gpu = backend.memory_manager().alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -908,7 +932,10 @@ mod kernel_tests {
             let min_val = -2.0f64;
             let max_val = 8.0f64;
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input.clone()).unwrap();
+            let input_gpu = backend
+                .memory_manager()
+                .host_to_device(input.clone())
+                .unwrap();
             let mut result_gpu = backend.memory_manager().alloc_zeros::<f64>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -944,8 +971,8 @@ mod kernel_tests {
             let b_host = vec![5.0f32, 6.0, 7.0, 8.0];
             let expected = vec![19.0f32, 22.0, 43.0, 50.0];
 
-            let a_gpu = backend.memory_manager().memcpy_htod(a_host).unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b_host).unwrap();
+            let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
                 .defaul_stream()
                 .alloc_zeros::<f32>((m * n) as usize)
@@ -978,7 +1005,7 @@ mod kernel_tests {
                 .memory_manager()
                 .memcpy_htod(a_host.clone())
                 .unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b_host).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
                 .memory_manager()
                 .alloc_zeros::<f32>((m * n) as usize)
@@ -1007,8 +1034,8 @@ mod kernel_tests {
             let b_host = vec![2.0f64, 1.0, 0.5, 3.0, 2.0, 1.5];
             let expected = vec![10.5f64, 6.5, 4.5, 20.5, 12.5, 8.5];
 
-            let a_gpu = backend.memory_manager().memcpy_htod(a_host).unwrap();
-            let b_gpu = backend.memory_manager().memcpy_htod(b_host).unwrap();
+            let a_gpu = backend.memory_manager().host_to_device(a_host).unwrap();
+            let b_gpu = backend.memory_manager().host_to_device(b_host).unwrap();
             let mut c_gpu = backend
                 .defaul_stream()
                 .alloc_zeros::<f64>((m * n) as usize)
@@ -1038,7 +1065,7 @@ mod kernel_tests {
                 1.0f32, 5.0, 9.0, 2.0, 6.0, 10.0, 3.0, 7.0, 11.0, 4.0, 8.0, 12.0,
             ];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input).unwrap();
+            let input_gpu = backend.memory_manager().host_to_device(input).unwrap();
             let mut output_gpu = backend
                 .memory_manager()
                 .alloc_zeros::<f32>((rows * cols) as usize)
@@ -1064,7 +1091,7 @@ mod kernel_tests {
             let input = vec![1.5f64, 2.5, 3.5, 4.5, 5.5, 6.5];
             let expected = vec![1.5f64, 4.5, 2.5, 5.5, 3.5, 6.5];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input).unwrap();
+            let input_gpu = backend.memory_manager().host_to_device(input).unwrap();
             let mut output_gpu = backend
                 .memory_manager()
                 .alloc_zeros::<f64>((rows * cols) as usize)
@@ -1095,7 +1122,7 @@ mod kernel_tests {
             ];
             let expected = vec![9.0f32, 12.0, 27.0, 30.0];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input).unwrap();
+            let input_gpu = backend.memory_manager().host_to_device(input).unwrap();
             let mut output_gpu = backend
                 .context()
                 .alloc_zeros::<f32>((outer_size * inner_size) as usize)
@@ -1136,7 +1163,7 @@ mod kernel_tests {
             ];
             let expected = vec![8.0f32, 9.0, 11.0, 12.0];
 
-            let input_gpu = backend.memory_manager().memcpy_htod(input).unwrap();
+            let input_gpu = backend.memory_manager().host_to_device(input).unwrap();
             let mut output_gpu = backend
                 .memory_manager()
                 .alloc_zeros::<f32>((outer_size * inner_size) as usize)
