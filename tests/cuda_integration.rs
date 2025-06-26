@@ -496,7 +496,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
 
     match kernels
         .context()
-        .load_ptx(ptx_str.into(), &module_name, &functions)
+        .load_module(ptx_str.into(), &module_name, &functions)
     {
         Ok(_) => {
             println!("  ✓ PTX loaded into device successfully");
