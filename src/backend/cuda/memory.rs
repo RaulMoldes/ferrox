@@ -46,7 +46,7 @@ impl CudaMemoryManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        self.ctx
+        self.default_stream
             .alloc_zeros(size)
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
     }
@@ -61,7 +61,7 @@ impl CudaMemoryManager {
         // Use with caution, as it may lead to undefined behavior if the data is not initialized.
         // It is the user's responsibility to ensure the memory is initialized before use.
         unsafe {
-            self.ctx
+            self.default_stream
                 .alloc(size)
                 .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
         }
