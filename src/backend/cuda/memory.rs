@@ -1,7 +1,7 @@
 // src/backend/cuda/memory.rs
 use cudarc::driver::DeviceSlice;
-use cudarc::driver::{CudaDevice, CudaSlice};
-use cudarc::driver::{CudaStream, StreamQuery};
+use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
+
 use std::fmt::Debug;
 use std::sync::Arc;
 ///
@@ -11,28 +11,31 @@ use std::sync::Arc;
 /// - Device-to-host transfers
 /// - Memory copying between GPU buffers
 /// - Memory pool management for better performance
+/// - Stream management for asynchronous operations
 pub struct CudaMemoryManager {
-    device: Arc<CudaDevice>,
-
-    streams: HashMap<String, CudaStream>,
+    device: Arc<CudaContext>,
+    // Uses a HashMap to manage multiple CUDA streams by name
+    // This allows for flexible stream management, where each stream can be identified by a unique name
+    streams: Arc<Mutex<HashMap<String, CudaStream>>>,
     default_stream: CudaStream,
 }
 
+unsafe impl Send for CudaMemoryManager {}
+unsafe impl Sync for CudaMemoryManager {}
+
 impl CudaMemoryManager {
-    
     /// Creates a new CUDA memory manager for the specified device
-    pub fn new(device: Arc<CudaDevice>) -> Result<Self, String> {
-        let default_stream = device.fork_default_stream()
+    pub fn new(device: Arc<CudaContext>) -> Result<Self, String> {
+        let default_stream = device
+            .default_stream()
             .map_err(|e| format!("Failed to create default stream: {}", e))?;
-        
+
         Ok(Self {
             device,
             streams: HashMap::new(),
             default_stream,
         })
     }
-
-
 
     /// Allocates zeroed memory on the GPU. In C++ API, you would do this with
     /// `cudaMalloc` + `cudaMemset`.
@@ -63,7 +66,6 @@ impl CudaMemoryManager {
                 .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
         }
     }
-
 
     /// SYNCHRONOUS memory transfers between host and device
     // -------- `cudaMemcpy` equivalents for host to device transfers  -------- //
@@ -121,75 +123,83 @@ impl CudaMemoryManager {
 
     // -------- ASYNC MEMORY TRANSFERS -------- //
 
-
     /// ASYNC operations using streams
     /// These methods allow overlapping memory transfers with kernel execution,
     /// improving performance by utilizing the GPU's capabilities.
     /// NVIDIA docs: https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__STREAM.html
     /// A stream is basically a GPU-based pipelining of the memory transfers with kernel execution.
-    /// Async host to device copy
+    ///
+    ///
+    //
+    // Note: I was going to implement this when I realized that
+    // cudarc 0.12.1 doesn't expose async API directly, so I decided to upgrade to 0.16.5
+    // which has better async support.
     pub fn host_to_device_async<T>(
-        &self, 
+        &self,
         data: Vec<T>,
-        stream_name: Option<&str>
+        _stream_name: Option<&str>,
     ) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin,
     {
-        let stream = match stream_name {
-            Some(name) => self.streams.get(name)
-                .ok_or_else(|| format!("Stream '{}' not found", name))?,
-            None => &self.default_stream,
-        };
-
-        self.device.htod_copy_async(data, stream)
-            .map_err(|e| format!("Failed async host to device copy: {}", e))
+        let stream = self
+            .get_stream(stream_name.unwrap_or("default"))
+            .ok_or_else(|| "Stream not found".to_string())?;
+        
+        stream
+            .memcpy_htod(data)
+            .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))
     }
 
-    /// Async device to host copy
+    /// Stream-aware device to host copy (currently synchronous but stream-scheduled)
     pub fn device_to_host_async<T>(
         &self,
         gpu_data: &CudaSlice<T>,
-        stream_name: Option<&str>
+        stream_name: Option<&str>,
     ) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
-        let stream = match stream_name {
-            Some(name) => self.streams.get(name)
-                .ok_or_else(|| format!("Stream '{}' not found", name))?,
-            None => &self.default_stream,
-        };
-
-        self.device.dtoh_async_copy(gpu_data, stream)
-            .map_err(|e| format!("Failed async device to host copy: {}", e))
+        let stream = self
+            .get_stream(stream_name.unwrap_or("default"))
+            .ok_or_else(|| "Stream not found".to_string())?;
+        stream
+            .memcpy_dtoh(gpu_data)
+            .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))
     }
-
 
     // -------- STREAM MANAGEMENT -------- //
 
-    /// Check if stream operations are complete
+    /// Check if stream exists (simplified since we can't query CUDA stream status)
     pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
-        let stream = self.streams.get(stream_name)
-            .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
-        
-        match stream.query() {
-            StreamQuery::Ready => Ok(true),
-            StreamQuery::NotReady => Ok(false),
+        let streams = self.streams.lock().unwrap();
+        if streams.contains_key(stream_name) {
+            Ok(true) // Assume ready since we can't query
+        } else {
+            Err(format!("Stream '{}' not found", stream_name))
         }
     }
 
+    /// Synchronize specific stream
+    pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
+        let streams = self.streams.lock().unwrap();
+        let stream = streams
+            .get(stream_name)
+            .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
 
+        stream
+            .synchronize()
+            .map_err(|e| format!("Failed to sync stream '{}': {}", stream_name, e))
+    }
 
     /// -------------------------------------------------
     // -------- PARALLEL OPERATION PATTERN -------- //
-
 
     /// Parallel transfer and compute pattern
     pub fn parallel_operation<T, F, R>(
         &self,
         input_data: Vec<T>,
-        kernel_fn: F
+        kernel_fn: F,
     ) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + std::marker::Unpin,
@@ -198,32 +208,24 @@ impl CudaMemoryManager {
     {
         // Start async H2D transfer
         let gpu_input = self.host_to_device_async(input_data, Some("copy_h2d"))?;
-        
+
         // Wait for transfer to complete
         self.sync_stream("copy_h2d")?;
-        
+
         // Launch kernel on compute stream
-        let compute_stream = self.get_stream("compute")
+        let compute_stream = self
+            .get_stream("compute")
             .ok_or("Compute stream not found")?;
         let gpu_output = kernel_fn(&gpu_input, compute_stream)?;
-        
+
         // Start async D2H transfer
         let result = self.device_to_host_async(gpu_output.as_ref(), Some("copy_d2h"))?;
-        
+
         // Sync all streams
         self.sync_stream("compute")?;
         self.sync_stream("copy_d2h")?;
-        
-        Ok(result)
-    }
 
-    /// Synchronize specific stream
-    pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
-        let stream = self.streams.get(stream_name)
-            .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
-        
-        stream.synchronize()
-            .map_err(|e| format!("Failed to sync stream '{}': {}", stream_name, e))
+        Ok(result)
     }
 
     /// Get stream reference for kernel launches
@@ -232,7 +234,7 @@ impl CudaMemoryManager {
     }
 
     /// Returns reference to the underlying CUDA device
-    pub fn device(&self) -> &Arc<CudaDevice> {
+    pub fn device(&self) -> &Arc<CudaContext> {
         &self.device
     }
 }
@@ -298,7 +300,9 @@ where
         if data.len() != expected_size {
             return Err(format!(
                 "Data length {} doesn't match shape {:?} (expected {})",
-                data.len(), shape, expected_size
+                data.len(),
+                shape,
+                expected_size
             ));
         }
 
@@ -316,11 +320,11 @@ where
         memory_manager.device_to_host(&self.data)
     }
 
-     /// Transfer tensor data back to CPU asynchronously
-     pub fn to_cpu_async(
-        &self, 
+    /// Transfer tensor data back to CPU asynchronously
+    pub fn to_cpu_async(
+        &self,
         memory_manager: &CudaMemoryManager,
-        stream_name: Option<&str>
+        stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
         memory_manager.device_to_host_async(&self.data, stream_name)
     }

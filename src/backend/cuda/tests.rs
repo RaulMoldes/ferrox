@@ -6,7 +6,7 @@ mod tests {
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
     use crate::backend::cuda::ops::CudaOps;
-    use cudarc::driver::{CudaDevice, LaunchConfig};
+    use cudarc::driver::{CudaContextt, LaunchConfig};
     //use std::sync::Arc;
 
     /// Helper function to create a test CUDA backend
@@ -43,18 +43,15 @@ mod tests {
         }
     }
 
-    
-fn setup_memory_manager() -> Option<CudaMemoryManager> {
-    match CudaDevice::new(0) {
-        Ok(device) => {
-            match CudaMemoryManager::new(device) {
+    fn setup_memory_manager() -> Option<CudaMemoryManager> {
+        match CudaContext::new(0) {
+          Ok(device) => match CudaMemoryManager::new(device) {
                 Ok(manager) => Some(manager),
                 Err(_) => None,
-            }
-        },
-        Err(_) => None,
+            },
+            Err(_) => None,
+        }
     }
-}
 
     #[test]
     fn test_memory_allocation() {
@@ -499,7 +496,7 @@ fn setup_memory_manager() -> Option<CudaMemoryManager> {
     #[test]
     fn test_kernel_manager_creation() {
         if let Some(backend) = setup_cuda_backend() {
-            let device = CudaDevice::new(0).unwrap();
+            let device = CudaContext::new(0).unwrap();
 
             let mut kernels = CudaKernels::new(device.clone());
 
@@ -1152,279 +1149,304 @@ mod kernel_tests {
         }
     }
 
-
     // ===== STREAMS TESTS =====
-        /// Helper to create memory manager with streams
-        fn setup_stream_manager() -> Option<CudaMemoryManager> {
-            match CudaDevice::new(0) {
-                Ok(device) => {
-                    match CudaMemoryManager::new(device) {
-                        Ok(mut manager) => {
-                            if manager.setup_parallel_streams().is_ok() {
-                                Some(manager)
-                            } else {
-                                None
-                            }
-                        },
-                        Err(_) => None,
+    /// Helper to create memory manager with streams
+    fn setup_stream_manager() -> Option<CudaMemoryManager> {
+        match CudaDevice::new(0) {
+            Ok(device) => match CudaMemoryManager::new(device) {
+                Ok(mut manager) => {
+                    if manager.setup_parallel_streams().is_ok() {
+                        Some(manager)
+                    } else {
+                        None
                     }
-                },
+                }
                 Err(_) => None,
-            }
+            },
+            Err(_) => None,
         }
-    
-        #[test]
-        fn test_stream_creation() {
-            if let Some(mut manager) = setup_memory_manager() {
-                // Test creating individual streams
-                assert!(manager.create_stream("test_stream").is_ok());
-                assert!(manager.create_stream("another_stream").is_ok());
-                
-                // Test duplicate stream creation (should succeed)
-                assert!(manager.create_stream("test_stream").is_ok());
-                
-                // Check stream names
-                let stream_names = manager.stream_names();
-                assert!(stream_names.contains(&&"test_stream".to_string()));
-                assert!(stream_names.contains(&&"another_stream".to_string()));
-            }
+    }
+
+    #[test]
+    fn test_stream_creation() {
+        if let Some(mut manager) = setup_memory_manager() {
+            // Test creating individual streams
+            assert!(manager.create_stream("test_stream").is_ok());
+            assert!(manager.create_stream("another_stream").is_ok());
+
+            // Test duplicate stream creation (should succeed)
+            assert!(manager.create_stream("test_stream").is_ok());
+
+            // Check stream names
+            let stream_names = manager.stream_names();
+            assert!(stream_names.contains(&&"test_stream".to_string()));
+            assert!(stream_names.contains(&&"another_stream".to_string()));
         }
-    
-        #[test]
-        fn test_parallel_streams_setup() {
-            if let Some(manager) = setup_stream_manager() {
-                let stream_names = manager.stream_names();
-                
-                // Check that all parallel streams were created
-                assert!(stream_names.contains(&&"copy_h2d".to_string()));
-                assert!(stream_names.contains(&&"copy_d2h".to_string()));
-                assert!(stream_names.contains(&&"compute".to_string()));
-                assert_eq!(stream_names.len(), 3);
-            }
+    }
+
+    #[test]
+    fn test_parallel_streams_setup() {
+        if let Some(manager) = setup_stream_manager() {
+            let stream_names = manager.stream_names();
+
+            // Check that all parallel streams were created
+            assert!(stream_names.contains(&&"copy_h2d".to_string()));
+            assert!(stream_names.contains(&&"copy_d2h".to_string()));
+            assert!(stream_names.contains(&&"compute".to_string()));
+            assert_eq!(stream_names.len(), 3);
         }
-    
-        #[test]
-        fn test_async_host_to_device() {
-            if let Some(manager) = setup_stream_manager() {
-                let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
-                let original_data = data.clone();
-    
-                // Test async H2D transfer
-                let gpu_data = manager.host_to_device_async(data, Some("copy_h2d"));
-                assert!(gpu_data.is_ok());
-    
-                if let Ok(gpu_buffer) = gpu_data {
-                    // Sync the stream
-                    assert!(manager.sync_stream("copy_h2d").is_ok());
-                    
-                    // Transfer back to verify
-                    let retrieved_data = manager.device_to_host(&gpu_buffer);
-                    assert!(retrieved_data.is_ok());
-                    
-                    if let Ok(host_data) = retrieved_data {
-                        assert_eq!(host_data, original_data);
-                    }
+    }
+
+    #[test]
+    fn test_async_host_to_device() {
+        if let Some(manager) = setup_stream_manager() {
+            let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+            let original_data = data.clone();
+
+            // Test async H2D transfer
+            let gpu_data = manager.host_to_device_async(data, Some("copy_h2d"));
+            assert!(gpu_data.is_ok());
+
+            if let Ok(gpu_buffer) = gpu_data {
+                // Sync the stream
+                assert!(manager.sync_stream("copy_h2d").is_ok());
+
+                // Transfer back to verify
+                let retrieved_data = manager.device_to_host(&gpu_buffer);
+                assert!(retrieved_data.is_ok());
+
+                if let Ok(host_data) = retrieved_data {
+                    assert_eq!(host_data, original_data);
                 }
             }
         }
-    
-        #[test]
-        fn test_async_device_to_host() {
-            if let Some(manager) = setup_stream_manager() {
-                let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
-                let original_data = data.clone();
-    
-                // First transfer to device synchronously
-                let gpu_data = manager.host_to_device(data).unwrap();
-    
-                // Test async D2H transfer
-                let host_data = manager.device_to_host_async(&gpu_data, Some("copy_d2h"));
-                assert!(host_data.is_ok());
-    
-                if let Ok(result) = host_data {
-                    // Sync the stream
+    }
+
+    #[test]
+    fn test_async_device_to_host() {
+        if let Some(manager) = setup_stream_manager() {
+            let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+            let original_data = data.clone();
+
+            // First transfer to device synchronously
+            let gpu_data = manager.host_to_device(data).unwrap();
+
+            // Test async D2H transfer
+            let host_data = manager.device_to_host_async(&gpu_data, Some("copy_d2h"));
+            assert!(host_data.is_ok());
+
+            if let Ok(result) = host_data {
+                // Sync the stream
+                assert!(manager.sync_stream("copy_d2h").is_ok());
+                assert_eq!(result, original_data);
+            }
+        }
+    }
+
+    #[test]
+    fn test_stream_query() {
+        if let Some(manager) = setup_stream_manager() {
+            // Start an async operation
+            let data = vec![1.0f32; 1000000]; // Large data to take some time
+            let _gpu_data = manager
+                .host_to_device_async(data, Some("copy_h2d"))
+                .unwrap();
+
+            // Query stream status (might be ready or not ready)
+            let is_ready = manager.is_stream_ready("copy_h2d");
+            assert!(is_ready.is_ok());
+
+            // Synchronize and check again
+            assert!(manager.sync_stream("copy_h2d").is_ok());
+            let is_ready_after_sync = manager.is_stream_ready("copy_h2d").unwrap();
+            assert!(is_ready_after_sync); // Should be ready after sync
+        }
+    }
+
+    #[test]
+    fn test_stream_not_found_errors() {
+        if let Some(manager) = setup_stream_manager() {
+            let data = vec![1.0f32, 2.0, 3.0];
+
+            // Test with non-existent stream
+            let result = manager.host_to_device_async(data, Some("nonexistent"));
+            assert!(result.is_err());
+            assert!(
+                result
+                    .unwrap_err()
+                    .contains("Stream 'nonexistent' not found")
+            );
+
+            // Test sync with non-existent stream
+            let sync_result = manager.sync_stream("nonexistent");
+            assert!(sync_result.is_err());
+
+            // Test query with non-existent stream
+            let query_result = manager.is_stream_ready("nonexistent");
+            assert!(query_result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_sync_all_streams() {
+        if let Some(manager) = setup_stream_manager() {
+            let data1 = vec![1.0f32; 1000];
+            let data2 = vec![2.0f32; 1000];
+            let data3 = vec![3.0f32; 1000];
+
+            // Start multiple async operations
+            let _gpu1 = manager
+                .host_to_device_async(data1, Some("copy_h2d"))
+                .unwrap();
+            let gpu2 = manager.host_to_device_async(data2, None).unwrap(); // Default stream
+            let gpu3 = manager
+                .host_to_device_async(data3, Some("copy_d2h"))
+                .unwrap();
+
+            // Start async D2H on another stream
+            let _result = manager
+                .device_to_host_async(&gpu2, Some("compute"))
+                .unwrap();
+
+            // Sync all streams at once
+            assert!(manager.sync_all_streams().is_ok());
+
+            // All operations should be complete now
+            assert!(manager.is_stream_ready("copy_h2d").unwrap());
+            assert!(manager.is_stream_ready("copy_d2h").unwrap());
+            assert!(manager.is_stream_ready("compute").unwrap());
+        }
+    }
+
+    #[test]
+    fn test_tensor_async_operations() {
+        if let Some(manager) = setup_stream_manager() {
+            let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+            let shape = vec![2, 3];
+            let original_data = data.clone();
+
+            // Create tensor with async transfer
+            let tensor =
+                CudaTensor::from_vec_async(&manager, data, shape.clone(), Some("copy_h2d"));
+            assert!(tensor.is_ok());
+
+            if let Ok(cuda_tensor) = tensor {
+                assert_eq!(cuda_tensor.shape(), &shape);
+                assert_eq!(cuda_tensor.size(), 6);
+
+                // Sync the stream
+                assert!(manager.sync_stream("copy_h2d").is_ok());
+
+                // Transfer back asynchronously
+                let cpu_data = cuda_tensor.to_cpu_async(&manager, Some("copy_d2h"));
+                assert!(cpu_data.is_ok());
+
+                if let Ok(result) = cpu_data {
+                    // Sync and verify
                     assert!(manager.sync_stream("copy_d2h").is_ok());
                     assert_eq!(result, original_data);
                 }
             }
         }
-    
-        #[test]
-        fn test_stream_query() {
-            if let Some(manager) = setup_stream_manager() {
-                // Start an async operation
-                let data = vec![1.0f32; 1000000]; // Large data to take some time
-                let _gpu_data = manager.host_to_device_async(data, Some("copy_h2d")).unwrap();
-    
-                // Query stream status (might be ready or not ready)
-                let is_ready = manager.is_stream_ready("copy_h2d");
-                assert!(is_ready.is_ok());
-    
-                // Synchronize and check again
-                assert!(manager.sync_stream("copy_h2d").is_ok());
-                let is_ready_after_sync = manager.is_stream_ready("copy_h2d").unwrap();
-                assert!(is_ready_after_sync); // Should be ready after sync
-            }
+    }
+
+    #[test]
+    fn test_overlapped_transfers() {
+        if let Some(manager) = setup_stream_manager() {
+            let size = 1000000; // Large enough to see timing differences
+            let data1: Vec<f32> = (0..size).map(|i| i as f32).collect();
+            let data2: Vec<f32> = (0..size).map(|i| (i * 2) as f32).collect();
+
+            let start_time = Instant::now();
+
+            // Sequential transfers (baseline)
+            let gpu1 = manager.host_to_device(data1.clone()).unwrap();
+            let gpu2 = manager.host_to_device(data2.clone()).unwrap();
+            let _result1 = manager.device_to_host(&gpu1).unwrap();
+            let _result2 = manager.device_to_host(&gpu2).unwrap();
+
+            let sequential_time = start_time.elapsed();
+
+            let start_time = Instant::now();
+
+            // Overlapped transfers using different streams
+            let gpu1_async = manager
+                .host_to_device_async(data1, Some("copy_h2d"))
+                .unwrap();
+            let gpu2_async = manager
+                .host_to_device_async(data2, Some("compute"))
+                .unwrap();
+
+            // Start D2H transfers on different streams
+            let _result1_async = manager
+                .device_to_host_async(&gpu1_async, Some("copy_d2h"))
+                .unwrap();
+            let _result2_async = manager
+                .device_to_host_async(&gpu2_async, Some("copy_h2d"))
+                .unwrap();
+
+            // Sync all
+            manager.sync_all_streams().unwrap();
+
+            let parallel_time = start_time.elapsed();
+
+            println!("Sequential time: {:?}", sequential_time);
+            println!("Parallel time: {:?}", parallel_time);
+
+            // Note: Parallel should be faster, but this depends on hardware
+            // We just verify that both approaches work correctly
+            assert!(parallel_time > Duration::from_nanos(0));
+            assert!(sequential_time > Duration::from_nanos(0));
         }
-    
-        #[test]
-        fn test_stream_not_found_errors() {
-            if let Some(manager) = setup_stream_manager() {
-                let data = vec![1.0f32, 2.0, 3.0];
-    
-                // Test with non-existent stream
-                let result = manager.host_to_device_async(data, Some("nonexistent"));
-                assert!(result.is_err());
-                assert!(result.unwrap_err().contains("Stream 'nonexistent' not found"));
-    
-                // Test sync with non-existent stream
-                let sync_result = manager.sync_stream("nonexistent");
-                assert!(sync_result.is_err());
-    
-                // Test query with non-existent stream
-                let query_result = manager.is_stream_ready("nonexistent");
-                assert!(query_result.is_err());
-            }
+    }
+
+    #[test]
+    fn test_stream_with_kernel_execution() {
+        if let Some(backend) = setup_cuda_backend() {
+            // This test requires integration with your kernel system
+            let size = 1024;
+            let data: Vec<f32> = (0..size).map(|i| i as f32).collect();
+
+            let memory = backend.memory_manager();
+
+            // Create additional streams for this test
+            let mut temp_manager = setup_stream_manager().unwrap();
+
+            // Transfer data asynchronously
+            let gpu_data = temp_manager
+                .host_to_device_async(data.clone(), Some("copy_h2d"))
+                .unwrap();
+            let mut output_gpu = temp_manager.alloc_zeros::<f32>(size).unwrap();
+
+            // Wait for transfer
+            temp_manager.sync_stream("copy_h2d").unwrap();
+
+            // Launch kernel on compute stream (if your kernels support stream parameter)
+            let cfg = LaunchConfig {
+                block_dim: (256, 1, 1),
+                grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            // Note: This assumes your kernels can accept streams
+            // You might need to modify your kernel launch methods
+            backend
+                .kernels()
+                .launch_relu(cfg, &gpu_data, &mut output_gpu, size as i32)
+                .unwrap();
+
+            // Start async transfer back while potentially overlapping with kernel
+            let result = temp_manager
+                .device_to_host_async(&output_gpu, Some("copy_d2h"))
+                .unwrap();
+
+            // Sync everything
+            backend.synchronize().unwrap();
+            temp_manager.sync_stream("copy_d2h").unwrap();
+
+            // Verify results
+            let expected: Vec<f32> = data.iter().map(|&x| x.max(0.0)).collect();
+            assert_float_eq(&result, &expected, 1e-6);
         }
-    
-        #[test]
-        fn test_sync_all_streams() {
-            if let Some(manager) = setup_stream_manager() {
-                let data1 = vec![1.0f32; 1000];
-                let data2 = vec![2.0f32; 1000];
-                let data3 = vec![3.0f32; 1000];
-    
-                // Start multiple async operations
-                let _gpu1 = manager.host_to_device_async(data1, Some("copy_h2d")).unwrap();
-                let gpu2 = manager.host_to_device_async(data2, None).unwrap(); // Default stream
-                let gpu3 = manager.host_to_device_async(data3, Some("copy_d2h")).unwrap();
-    
-                // Start async D2H on another stream
-                let _result = manager.device_to_host_async(&gpu2, Some("compute")).unwrap();
-    
-                // Sync all streams at once
-                assert!(manager.sync_all_streams().is_ok());
-    
-                // All operations should be complete now
-                assert!(manager.is_stream_ready("copy_h2d").unwrap());
-                assert!(manager.is_stream_ready("copy_d2h").unwrap());
-                assert!(manager.is_stream_ready("compute").unwrap());
-            }
-        }
-    
-        #[test]
-        fn test_tensor_async_operations() {
-            if let Some(manager) = setup_stream_manager() {
-                let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-                let shape = vec![2, 3];
-                let original_data = data.clone();
-    
-                // Create tensor with async transfer
-                let tensor = CudaTensor::from_vec_async(&manager, data, shape.clone(), Some("copy_h2d"));
-                assert!(tensor.is_ok());
-    
-                if let Ok(cuda_tensor) = tensor {
-                    assert_eq!(cuda_tensor.shape(), &shape);
-                    assert_eq!(cuda_tensor.size(), 6);
-    
-                    // Sync the stream
-                    assert!(manager.sync_stream("copy_h2d").is_ok());
-    
-                    // Transfer back asynchronously
-                    let cpu_data = cuda_tensor.to_cpu_async(&manager, Some("copy_d2h"));
-                    assert!(cpu_data.is_ok());
-    
-                    if let Ok(result) = cpu_data {
-                        // Sync and verify
-                        assert!(manager.sync_stream("copy_d2h").is_ok());
-                        assert_eq!(result, original_data);
-                    }
-                }
-            }
-        }
-    
-        #[test]
-        fn test_overlapped_transfers() {
-            if let Some(manager) = setup_stream_manager() {
-                let size = 1000000; // Large enough to see timing differences
-                let data1: Vec<f32> = (0..size).map(|i| i as f32).collect();
-                let data2: Vec<f32> = (0..size).map(|i| (i * 2) as f32).collect();
-    
-                let start_time = Instant::now();
-    
-                // Sequential transfers (baseline)
-                let gpu1 = manager.host_to_device(data1.clone()).unwrap();
-                let gpu2 = manager.host_to_device(data2.clone()).unwrap();
-                let _result1 = manager.device_to_host(&gpu1).unwrap();
-                let _result2 = manager.device_to_host(&gpu2).unwrap();
-    
-                let sequential_time = start_time.elapsed();
-    
-                let start_time = Instant::now();
-    
-                // Overlapped transfers using different streams
-                let gpu1_async = manager.host_to_device_async(data1, Some("copy_h2d")).unwrap();
-                let gpu2_async = manager.host_to_device_async(data2, Some("compute")).unwrap();
-    
-                // Start D2H transfers on different streams
-                let _result1_async = manager.device_to_host_async(&gpu1_async, Some("copy_d2h")).unwrap();
-                let _result2_async = manager.device_to_host_async(&gpu2_async, Some("copy_h2d")).unwrap();
-    
-                // Sync all
-                manager.sync_all_streams().unwrap();
-    
-                let parallel_time = start_time.elapsed();
-    
-                println!("Sequential time: {:?}", sequential_time);
-                println!("Parallel time: {:?}", parallel_time);
-    
-                // Note: Parallel should be faster, but this depends on hardware
-                // We just verify that both approaches work correctly
-                assert!(parallel_time > Duration::from_nanos(0));
-                assert!(sequential_time > Duration::from_nanos(0));
-            }
-        }
-    
-        #[test]
-        fn test_stream_with_kernel_execution() {
-            if let Some(backend) = setup_cuda_backend() {
-                // This test requires integration with your kernel system
-                let size = 1024;
-                let data: Vec<f32> = (0..size).map(|i| i as f32).collect();
-    
-                let memory = backend.memory_manager();
-    
-                // Create additional streams for this test
-                let mut temp_manager = setup_stream_manager().unwrap();
-    
-                // Transfer data asynchronously
-                let gpu_data = temp_manager.host_to_device_async(data.clone(), Some("copy_h2d")).unwrap();
-                let mut output_gpu = temp_manager.alloc_zeros::<f32>(size).unwrap();
-    
-                // Wait for transfer
-                temp_manager.sync_stream("copy_h2d").unwrap();
-    
-                // Launch kernel on compute stream (if your kernels support stream parameter)
-                let cfg = LaunchConfig {
-                    block_dim: (256, 1, 1),
-                    grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
-                    shared_mem_bytes: 0,
-                };
-    
-                // Note: This assumes your kernels can accept streams
-                // You might need to modify your kernel launch methods
-                backend.kernels().launch_relu(cfg, &gpu_data, &mut output_gpu, size as i32).unwrap();
-    
-                // Start async transfer back while potentially overlapping with kernel
-                let result = temp_manager.device_to_host_async(&output_gpu, Some("copy_d2h")).unwrap();
-                
-                // Sync everything
-                backend.synchronize().unwrap();
-                temp_manager.sync_stream("copy_d2h").unwrap();
-    
-                // Verify results
-                let expected: Vec<f32> = data.iter().map(|&x| x.max(0.0)).collect();
-                assert_float_eq(&result, &expected, 1e-6);
-            }
-        }
+    }
 }

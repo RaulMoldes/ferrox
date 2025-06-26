@@ -1,6 +1,6 @@
 #![cfg(test)]
 #[cfg(feature = "cuda")]
-use cudarc::driver::CudaDevice;
+use cudarc::driver::CudaContext;
 #[cfg(feature = "cuda")]
 use ferrox::backend::Device;
 #[cfg(feature = "cuda")]
@@ -233,7 +233,7 @@ fn test_cuda_environment() {
     #[cfg(feature = "cuda")]
     {
         println!("Attempting direct CUDA device creation...");
-        match cudarc::driver::CudaDevice::new(0) {
+        match cudarc::driver::CudaContext::new(0) {
             Ok(device) => {
                 println!("✓ Direct CUDA device creation successful");
                 println!("  Device name: {:?}", device.name());
@@ -524,7 +524,7 @@ fn test_detailed_kernel_loading() {
     println!("=== Detailed Kernel Loading Debug ===");
 
     // Step 1: Create device (we know this works)
-    let device = CudaDevice::new(0).expect("CUDA device creation failed");
+    let device = CudaContext::new(0).expect("CUDA device creation failed");
     println!("✓ CUDA device created: {:?}", device.name());
 
     // Step 2: Create empty kernel manager

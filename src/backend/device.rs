@@ -172,7 +172,7 @@ pub fn all_devices() -> Vec<Device> {
     {
         // Try to detect available CUDA devices
         // In a real implementation, you'd query the number of available GPUs
-        if let Ok(_) = cudarc::driver::CudaDevice::new(0) {
+        if let Ok(_) = cudarc::driver::CudaContext::new(0) {
             devices.push(cuda(0));
         }
     }

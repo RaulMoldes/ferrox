@@ -2,12 +2,12 @@
 use super::kernels::{CudaKernels, load_all_kernels};
 use super::memory::{CudaMemoryManager, CudaTensor};
 use super::ops::CudaOps;
-use cudarc::driver::CudaDevice;
+use cudarc::driver::CudaContext;
 use std::sync::Arc;
 
 /// Main CUDA backend that manages device and kernels
 pub struct CudaBackend {
-    device: Arc<CudaDevice>, // CudaDevice::new() returns this type directly
+    device: Arc<CudaContext>, // CudaContext::new() returns this type directly
     kernels: CudaKernels,
     device_id: usize,
     memory_manager: CudaMemoryManager,
@@ -16,11 +16,11 @@ pub struct CudaBackend {
 impl CudaBackend {
     /// Creates a new CUDA backend for the specified device
     pub fn new(device_id: usize) -> Result<Self, String> {
-        // CudaDevice::new() returns Arc<CudaDevice> already, not CudaDevice
-        let device = CudaDevice::new(device_id)
+        // CudaContext::new() returns Arc<CudaContext> already, not CudaContext
+        let device = CudaContext::new(device_id)
             .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?;
 
-        // device is already Arc<CudaDevice>, so we can clone it directly
+        // device is already Arc<CudaContext>, so we can clone it directly
         let mut kernels = CudaKernels::new(device.clone());
         let memory_manager = CudaMemoryManager::new(device.clone());
         // Load all kernels during initialization
@@ -40,7 +40,7 @@ impl CudaBackend {
     }
 
     /// Returns reference to the CUDA device
-    pub fn device(&self) -> &Arc<CudaDevice> {
+    pub fn device(&self) -> &Arc<CudaContext> {
         &self.device
     }
 

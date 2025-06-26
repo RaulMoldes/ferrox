@@ -1,5 +1,7 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{
+    CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -130,12 +132,12 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
 
 /// CUDA kernel manager
 pub struct CudaKernels {
-    device: Arc<CudaDevice>,
+    device: Arc<CudaContext>,
     functions: HashMap<String, CudaFunction>,
 }
 
 impl CudaKernels {
-    pub fn new(device: Arc<CudaDevice>) -> Self {
+    pub fn new(device: Arc<CudaContext>) -> Self {
         Self {
             device,
             functions: HashMap::new(),
@@ -152,7 +154,7 @@ impl CudaKernels {
             std::str::from_utf8(ptx_bytes).map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
 
         self.device
-            .load_ptx(ptx_str.into(), config.module, config.functions)
+            .load_module(ptx_str.into(), config.module, config.functions)
             .map_err(|e| format!("Failed to load {} kernel: {}", name, e))?;
 
         // Store the function on the stack
@@ -699,7 +701,7 @@ impl CudaKernels {
         launch_kernel!(self, kernel_name, cfg, (input, output, size))
     }
 
-    pub fn device(&self) -> &Arc<CudaDevice> {
+    pub fn device(&self) -> &Arc<CudaContext> {
         &self.device
     }
 
