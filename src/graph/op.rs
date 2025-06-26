@@ -1038,7 +1038,7 @@ where
                         zero // x == 0, gradient undefined, use 0 by convention
                     }
                 }),
-            inputs[0].device().clone(),
+            inputs[0].context().clone(),
         );
 
         Ok(vec![grad])

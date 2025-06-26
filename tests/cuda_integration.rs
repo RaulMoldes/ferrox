@@ -495,7 +495,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     println!("  Expected functions: {:?}", functions);
 
     match kernels
-        .device()
+        .context()
         .load_ptx(ptx_str.into(), &module_name, &functions)
     {
         Ok(_) => {
@@ -503,7 +503,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
 
             // Check if functions are accessible
             for func_name in &functions {
-                if let Some(_func) = kernels.device().get_func(&module_name, func_name) {
+                if let Some(_func) = kernels.context().get_func(&module_name, func_name) {
                     println!("    ✓ Function {} found", func_name);
                 } else {
                     println!("    ✗ Function {} NOT found", func_name);

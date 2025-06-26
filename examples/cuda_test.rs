@@ -1,6 +1,6 @@
 // examples/cuda_test.rs
 #[cfg(feature = "cuda")]
-use cudarc::driver::{ LaunchConfig};
+use cudarc::driver::LaunchConfig;
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::CudaBackend;
 
@@ -8,7 +8,7 @@ use ferrox::backend::cuda::CudaBackend;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize CUDA backend
     let mut cuda_backend = CudaBackend::new(0)?;
-    let device = cuda_backend.device().clone();
+    let device = cuda_backend.context().clone();
 
     // Test vector addition
     test_vector_addition(&cuda_backend)?;

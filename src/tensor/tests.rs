@@ -8,7 +8,7 @@ mod tests {
         let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(tensor.len(), 4);
-        assert_eq!(tensor.device(), &cpu());
+        assert_eq!(tensor.context(), &cpu());
 
         let zeros = Tensor::<f64>::zeros_with_device(&[3, 3], cpu());
         assert_eq!(zeros.shape(), &[3, 3]);
