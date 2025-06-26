@@ -1,7 +1,7 @@
 // src/backend/cuda/memory.rs
 use cudarc::driver::DeviceSlice;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
-
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 ///
@@ -137,7 +137,7 @@ impl CudaMemoryManager {
     pub fn host_to_device_async<T>(
         &self,
         data: Vec<T>,
-        _stream_name: Option<&str>,
+        stream_name: Option<&str>,
     ) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin,
