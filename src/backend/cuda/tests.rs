@@ -6,7 +6,7 @@ mod tests {
     use crate::backend::cuda::memory::CudaTensor;
     use crate::backend::cuda::memory::compute_strides;
     use crate::backend::cuda::ops::CudaOps;
-    use cudarc::driver::{CudaContextt, LaunchConfig};
+    use cudarc::driver::{CudaContext, LaunchConfig};
     //use std::sync::Arc;
 
     /// Helper function to create a test CUDA backend
