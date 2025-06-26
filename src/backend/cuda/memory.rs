@@ -18,7 +18,7 @@ pub struct CudaMemoryManager {
     // Uses a HashMap to manage multiple CUDA streams by name
     // This allows for flexible stream management, where each stream can be identified by a unique name
     streams: Arc<Mutex<HashMap<String, CudaStream>>>,
-    default_stream: CudaStream,
+    default_stream: Arc<CudaStream>,
 }
 
 unsafe impl Send for CudaMemoryManager {}
@@ -34,7 +34,7 @@ impl CudaMemoryManager {
         Ok(Self {
             ctx,
             streams: HashMap::new(),
-            default_stream,
+            Arc::new(default_stream),
         })
     }
 
