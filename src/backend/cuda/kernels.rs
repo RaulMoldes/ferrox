@@ -1,7 +1,5 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{
-    CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig,
-};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -153,13 +151,14 @@ impl CudaKernels {
         let ptx_str =
             std::str::from_utf8(ptx_bytes).map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
 
-        let module = self.device
+        let module = self
+            .device
             .load_module(ptx_str.into())
             .map_err(|e| format!("Failed to load {} kernel: {}", name, e))?;
 
         // Store the function on the stack
         for &func_name in config.functions {
-            if let Some(func) = module.load_func(func_name) {
+            if let Some(func) = module.load_function(func_name) {
                 self.functions.insert(func_name.to_string(), func);
             }
         }

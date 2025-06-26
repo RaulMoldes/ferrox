@@ -22,7 +22,7 @@ impl CudaBackend {
 
         // context is already Arc<CudaContext>, so we can clone it directly
         let mut kernels = CudaKernels::new(context.clone());
-        let memory_manager = CudaMemoryManager::new(context.clone());
+        let memory_manager = CudaMemoryManager::new(context.clone())?;
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
 
@@ -97,7 +97,7 @@ impl CudaBackend {
         let memory_manager = self.memory_manager();
 
         // Transfer data from host to context
-        let cuda_data = memory_manager.host_to_context(data)?;
+        let cuda_data = memory_manager.host_to_device(data)?;
 
         // Create and return the CUDA tensor
         Ok(CudaTensor::new(cuda_data, shape))
