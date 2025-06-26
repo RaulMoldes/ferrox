@@ -33,7 +33,7 @@ impl CudaMemoryManager {
 
         Ok(Self {
             ctx,
-            streams: HashMap::new(),
+            streams: Arc::new(Mutex::new(HashMap::new())),
             Arc::new(default_stream),
         })
     }

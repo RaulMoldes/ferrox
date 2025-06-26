@@ -32,9 +32,9 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     let b: Vec<f32> = (0..size).map(|i| (i * 2) as f32).collect();
 
     // Allocate GPU memory
-    let a_gpu = backend.default_stream().memcpy_htod(a.clone())?;
-    let b_gpu = backend.default_stream().memcpy_htod(b.clone())?;
-    let mut c_gpu = backend.default_stream().alloc_zeros::<f32>(size)?;
+    let a_gpu = backend.memcpy_htod(a.clone())?;
+    let b_gpu = backend.memcpy_htod(b.clone())?;
+    let mut c_gpu = backend.alloc_zeros::<f32>(size)?;
 
     // Launch configuration
     let cfg = LaunchConfig {
@@ -50,7 +50,7 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
 
     // Synchronize and get results
     backend.synchronize()?;
-    let result = backend.default_stream().memcpy_dtoh(&c_gpu)?;
+    let result = backend.memcpy_dtoh(&c_gpu)?;
 
     // Verify results
     for i in 0..size.min(10) {
@@ -78,8 +78,8 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     let input: Vec<f32> = (0..size).map(|i| i as f32 - 512.0).collect(); // Mix of positive and negative
 
     // Allocate GPU memory
-    let input_gpu = backend.default_stream().memcpy_htod(input.clone())?;
-    let mut output_gpu = backend.default_stream().alloc_zeros::<f32>(size)?;
+    let input_gpu = backend.memcpy_htod(input.clone())?;
+    let mut output_gpu = backend.alloc_zeros::<f32>(size)?;
 
     // Launch configuration
     let cfg = LaunchConfig {
@@ -95,7 +95,7 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
 
     // Synchronize and get results
     backend.synchronize()?;
-    let result = backend.default_stream().memcpy_dtoh(&output_gpu)?;
+    let result = backend.memcpy_dtoh(&output_gpu)?;
 
     // Verify results (ReLU should clamp negative values to 0)
     for i in 0..size.min(10) {
@@ -126,9 +126,9 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
     let a: Vec<f32> = (0..size).map(|i| i as f32).collect();
     let b: Vec<f32> = (0..size).map(|i| (i * 2) as f32).collect();
 
-    let a_gpu = backend.default_stream().memcpy_htod(a)?;
-    let b_gpu = backend.default_stream().memcpy_htod(b)?;
-    let mut c_gpu = backend.default_stream().alloc_zeros::<f32>(size)?;
+    let a_gpu = backend.memcpy_htod(a)?;
+    let b_gpu = backend.memcpy_htod(b)?;
+    let mut c_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
