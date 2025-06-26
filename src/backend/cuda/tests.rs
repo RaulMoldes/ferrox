@@ -418,7 +418,7 @@ mod tests {
             let a_gpu = backend.default_stream().memcpy_htod(a_host).unwrap();
             let b_gpu = backend.default_stream().memcpy_htod(b_host).unwrap();
             let mut c_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f32>((m * n) as usize)
                 .unwrap();
 
@@ -947,7 +947,7 @@ mod kernel_tests {
             let a_gpu = backend.default_stream().memcpy_htod(a_host).unwrap();
             let b_gpu = backend.default_stream().memcpy_htod(b_host).unwrap();
             let mut c_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f32>((m * n) as usize)
                 .unwrap();
 
@@ -1010,7 +1010,7 @@ mod kernel_tests {
             let a_gpu = backend.default_stream().memcpy_htod(a_host).unwrap();
             let b_gpu = backend.default_stream().memcpy_htod(b_host).unwrap();
             let mut c_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f64>((m * n) as usize)
                 .unwrap();
 
@@ -1138,7 +1138,7 @@ mod kernel_tests {
 
             let input_gpu = backend.default_stream().memcpy_htod(input).unwrap();
             let mut output_gpu = backend
-                .defaul_stream()
+                .default_stream()
                 .alloc_zeros::<f32>((outer_size * inner_size) as usize)
                 .unwrap();
 
