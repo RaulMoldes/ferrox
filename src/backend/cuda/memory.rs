@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// - Memory pool management for better performance
 /// - Stream management for asynchronous operations
 pub struct CudaMemoryManager {
-    device: Arc<CudaContext>,
+    ctx: Arc<CudaContext>,
     // Uses a HashMap to manage multiple CUDA streams by name
     // This allows for flexible stream management, where each stream can be identified by a unique name
     streams: Arc<Mutex<HashMap<String, CudaStream>>>,
@@ -25,13 +25,13 @@ unsafe impl Sync for CudaMemoryManager {}
 
 impl CudaMemoryManager {
     /// Creates a new CUDA memory manager for the specified device
-    pub fn new(device: Arc<CudaContext>) -> Result<Self, String> {
-        let default_stream = device
+    pub fn new(ctx: Arc<CudaContext>) -> Result<Self, String> {
+        let default_stream = ctx
             .default_stream()
             .map_err(|e| format!("Failed to create default stream: {}", e))?;
 
         Ok(Self {
-            device,
+            ctx,
             streams: HashMap::new(),
             default_stream,
         })
@@ -46,7 +46,7 @@ impl CudaMemoryManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        self.device
+        self.ctx
             .alloc_zeros(size)
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
     }
@@ -61,7 +61,7 @@ impl CudaMemoryManager {
         // Use with caution, as it may lead to undefined behavior if the data is not initialized.
         // It is the user's responsibility to ensure the memory is initialized before use.
         unsafe {
-            self.device
+            self.ctx
                 .alloc(size)
                 .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
         }
@@ -74,13 +74,13 @@ impl CudaMemoryManager {
     // memory transfers with kernel execution, improving performance.
 
     /// Copies data from host to device
-    /// `htod_copy` is a synchronous operation that blocks until the copy is complete.
+    /// `memcpy_htod` is a synchronous operation that blocks until the copy is complete.
     pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
     {
-        self.device
-            .htod_copy(data)
+        self.default_stream
+            .memcpy_htod(data)
             .map_err(|e| format!("Failed to copy host to device: {}", e))
     }
 
@@ -90,7 +90,7 @@ impl CudaMemoryManager {
         T: cudarc::driver::DeviceRepr + Clone,
     {
         self.device
-            .dtoh_sync_copy(gpu_data)
+        .memcpy_dtoh(gpu_data)
             .map_err(|e| format!("Failed to copy device to host: {}", e))
     }
 
@@ -106,7 +106,7 @@ impl CudaMemoryManager {
         T: cudarc::driver::DeviceRepr,
     {
         self.device
-            .dtod_copy(src, dst)
+        .memcpy_dtod(src, dst)
             .map_err(|e| format!("Failed to copy device to device: {}", e))
     }
 
