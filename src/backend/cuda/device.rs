@@ -9,6 +9,7 @@ use std::sync::Arc;
 pub struct CudaBackend {
     context: Arc<CudaContext>, // CudaContext::new() returns this type directly, // Default stream for memory operations
     kernels: CudaKernels,
+    context_id: usize, // Unique identifier for the CUDA context
     memory_manager: CudaMemoryManager,
 }
 
