@@ -1152,7 +1152,7 @@ mod kernel_tests {
     // ===== STREAMS TESTS =====
     /// Helper to create memory manager with streams
     fn setup_stream_manager() -> Option<CudaMemoryManager> {
-        match CudaDevice::new(0) {
+        match CudaContext::new(0) {
             Ok(device) => match CudaMemoryManager::new(device) {
                 Ok(mut manager) => {
                     if manager.setup_parallel_streams().is_ok() {
