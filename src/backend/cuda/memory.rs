@@ -34,7 +34,7 @@ impl CudaMemoryManager {
         Ok(Self {
             ctx,
             streams: Arc::new(Mutex::new(HashMap::new())),
-            Arc::new(default_stream),
+            default_stream,
         })
     }
 
@@ -79,20 +79,26 @@ impl CudaMemoryManager {
     pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
-    {
+    {   let gpu_mem = self.default_stream.alloc::<T>(data.len())
+        .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
+
         self.default_stream
-            .memcpy_htod(data)
-            .map_err(|e| format!("Failed to copy host to device: {}", e))
+            .memcpy_htod(&data, &gpu_mem)
+            .map_err(|e| format!("Failed to copy host to device: {}", e))?;
+        Ok(gpu_mem)
     }
 
     /// Copies data from device to host synchronously
     pub fn device_to_host<T>(&self, gpu_data: &CudaSlice<T>) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
-    {
+    {   
+        let mut host_data = vec![T::default(); gpu_data.len()];
+
         self.default_stream
-        .memcpy_dtoh(gpu_data)
-            .map_err(|e| format!("Failed to copy device to host: {}", e))
+        .memcpy_dtoh(&gpu_data, &mut host_data)
+            .map_err(|e| format!("Failed to copy device to host: {}", e))?;
+        Ok(host_data)
     }
 
     /// Copies data between GPU buffers.
@@ -146,10 +152,14 @@ impl CudaMemoryManager {
         let stream = self
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
+
+        let gpu_mem = stream.alloc::<T>(data.len())
+            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
         
         stream
-            .memcpy_htod(data)
-            .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))
+            .memcpy_htod(&data, &gpu_mem)
+            .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))?;
+        Ok(gpu_mem)
     }
 
     /// Stream-aware device to host copy (currently synchronous but stream-scheduled)
@@ -164,16 +174,20 @@ impl CudaMemoryManager {
         let stream = self
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
+
+        let mut host_data = vec![T::default(); gpu_data.len()];
+
         stream
-            .memcpy_dtoh(gpu_data)
-            .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))
+            .memcpy_dtoh(&gpu_data, &mut host_data)
+            .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))?;
+        Ok(host_data)
     }
 
     // -------- STREAM MANAGEMENT -------- //
 
     /// Check if stream exists (simplified since we can't query CUDA stream status)
     pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
-        let streams = self.streams.lock()?.map_err(|e| format!("Failed to lock streams: {}", e))?;
+        let streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
         if streams.contains_key(stream_name) {
             Ok(true) // Assume ready since we can't query
         } else {
