@@ -1,5 +1,5 @@
 // src/backend/cuda/kernels.rs
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig};
+use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg};
 use std::collections::HashMap;
 use std::sync::Arc;
 
