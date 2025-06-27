@@ -251,7 +251,7 @@ impl CudaMemoryManager {
             "copy_h2d", // Host to device copy stream
             "copy_d2h", // Device to host copy stream
         ];
-        for &name in stream_names {
+        for name in stream_names {
             if streams.contains_key(&name) {
                 return Err(format!("Stream '{}' already exists", name));
             }
@@ -259,9 +259,30 @@ impl CudaMemoryManager {
                 .ctx
                 .new_stream()
                 .map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
-            streams.insert(name.to_string(), Arc::new(stream));
+            let stream = Arc::new(stream);
+            streams.insert(name.to_string(), stream.clone());
         }
         Ok(())
+    }
+
+    pub fn create_stream(
+        &self,
+        stream_name: &str,
+    ) -> Result<Arc<CudaStream>, String> {
+        let mut streams = self
+            .streams
+            .lock()
+            .map_err(|e| format!("Failed to lock streams: {}", e))?;
+        if streams.contains_key(stream_name) {
+            return Err(format!("Stream '{}' already exists", stream_name));
+        }
+        let stream = self
+            .ctx
+            .new_stream()
+            .map_err(|e| format!("Failed to create stream '{}': {}", stream_name, e))?;
+        let arc_stream = Arc::new(stream);
+        streams.insert(stream_name.to_string(), arc_stream.clone());
+        Ok(arc_stream)
     }
 
     /// Parallel transfer and compute pattern
