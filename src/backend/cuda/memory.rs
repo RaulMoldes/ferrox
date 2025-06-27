@@ -153,7 +153,7 @@ impl CudaMemoryManager {
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
 
-        let mut gpu_mem = stream.alloc::<T>(data.len())
+        let mut gpu_mem = unsafe {stream.alloc::<T>(data.len())}
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
         
         stream
