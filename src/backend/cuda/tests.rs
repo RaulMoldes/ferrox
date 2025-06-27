@@ -3,9 +3,9 @@
 mod tests {
 
     use super::super::{CudaBackend, CudaKernels, load_all_kernels};
-    use crate::backend::cuda::memory::CudaContextManager;
-    use crate::backend::cuda::memory::CudaTensor;
-    use crate::backend::cuda::memory::compute_strides;
+    use crate::backend::cuda::context::CudaContextManager;
+    use crate::backend::cuda::context::CudaTensor;
+    use crate::backend::cuda::context::compute_strides;
     use crate::backend::cuda::ops::CudaOps;
     use cudarc::driver::{CudaContext, LaunchConfig};
     //use std::time::{Duration, Instant};
@@ -1236,8 +1236,8 @@ mod kernel_tests {
 mod stream_tests {
 
     use super::super::CudaBackend;
-    use crate::backend::cuda::memory::CudaContextManager;
-    use crate::backend::cuda::memory::CudaTensor;
+    use crate::backend::cuda::context::CudaContextManager;
+    use crate::backend::cuda::context::CudaTensor;
     use cudarc::driver::{CudaContext, LaunchConfig};
     use std::time::{Duration, Instant};
 
