@@ -251,7 +251,7 @@ impl CudaMemoryManager {
 
     /// Get stream reference for kernel launches
     pub fn get_stream(&self, stream_name: &str) -> Option<Arc<CudaStream>> {
-        self.streams.lock().unwrap().get(stream_name)
+        self.streams.lock().unwrap().get(stream_name).cloned()
     }
 
     /// Returns reference to the underlying CUDA device
