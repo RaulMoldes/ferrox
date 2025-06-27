@@ -1,8 +1,8 @@
 // src/backend/cuda/memory.rs
 use cudarc::driver::DeviceSlice;
-use std::default::Default;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
 use std::collections::HashMap;
+use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -28,8 +28,7 @@ unsafe impl Sync for CudaMemoryManager {}
 impl CudaMemoryManager {
     /// Creates a new CUDA memory manager for the specified device
     pub fn new(ctx: Arc<CudaContext>) -> Result<Self, String> {
-        let default_stream = ctx
-            .default_stream();
+        let default_stream = ctx.default_stream();
 
         Ok(Self {
             ctx,
@@ -79,9 +78,9 @@ impl CudaMemoryManager {
     pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
-    {   let mut gpu_mem = unsafe { self.default_stream.alloc::<T>(data.len())}
-            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?; 
-        
+    {
+        let mut gpu_mem = unsafe { self.default_stream.alloc::<T>(data.len()) }
+            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
 
         self.default_stream
             .memcpy_htod(&data, &mut gpu_mem)
@@ -92,12 +91,12 @@ impl CudaMemoryManager {
     /// Copies data from device to host synchronously
     pub fn device_to_host<T>(&self, gpu_data: &CudaSlice<T>) -> Result<Vec<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone +std::default::Default,
-    {   
+        T: cudarc::driver::DeviceRepr + Clone + std::default::Default,
+    {
         let mut host_data = vec![T::default(); gpu_data.len()];
 
         self.default_stream
-        .memcpy_dtoh(gpu_data, &mut host_data)
+            .memcpy_dtoh(gpu_data, &mut host_data)
             .map_err(|e| format!("Failed to copy device to host: {}", e))?;
         Ok(host_data)
     }
@@ -114,7 +113,7 @@ impl CudaMemoryManager {
         T: cudarc::driver::DeviceRepr,
     {
         self.default_stream
-        .memcpy_dtod(src, dst)
+            .memcpy_dtod(src, dst)
             .map_err(|e| format!("Failed to copy device to device: {}", e))
     }
 
@@ -154,9 +153,9 @@ impl CudaMemoryManager {
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
 
-        let mut gpu_mem = unsafe {stream.alloc::<T>(data.len())}
+        let mut gpu_mem = unsafe { stream.alloc::<T>(data.len()) }
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
-        
+
         stream
             .memcpy_htod(&data, &mut gpu_mem)
             .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))?;
@@ -188,7 +187,10 @@ impl CudaMemoryManager {
 
     /// Check if stream exists (simplified since we can't query CUDA stream status)
     pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
-        let streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
+        let streams = self
+            .streams
+            .lock()
+            .map_err(|e| format!("Failed to lock streams: {}", e))?;
         if streams.contains_key(stream_name) {
             Ok(true) // Assume ready since we can't query
         } else {
@@ -203,7 +205,10 @@ impl CudaMemoryManager {
 
     /// Synchronize specific stream
     pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
-        let streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
+        let streams = self
+            .streams
+            .lock()
+            .map_err(|e| format!("Failed to lock streams: {}", e))?;
         let stream = streams
             .get(stream_name)
             .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
@@ -215,7 +220,10 @@ impl CudaMemoryManager {
 
     /// Synchronizes all streams
     pub fn sync_all_streams(&self) -> Result<(), String> {
-        let streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
+        let streams = self
+            .streams
+            .lock()
+            .map_err(|e| format!("Failed to lock streams: {}", e))?;
         for (name, stream) in streams.iter() {
             stream
                 .synchronize()
@@ -231,12 +239,15 @@ impl CudaMemoryManager {
     /// ---------------------------------------------------
     pub fn setup_parallel_streams(
         &mut self,
-     //   stream_names: &[&str],
+        //   stream_names: &[&str],
     ) -> Result<(), String> {
-        let mut streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
-       //Default value for testing
+        let mut streams = self
+            .streams
+            .lock()
+            .map_err(|e| format!("Failed to lock streams: {}", e))?;
+        //Default value for testing
         let stream_names = vec![
-            "compute", // Main compute stream
+            "compute",  // Main compute stream
             "copy_h2d", // Host to device copy stream
             "copy_d2h", // Device to host copy stream
         ];
@@ -244,14 +255,14 @@ impl CudaMemoryManager {
             if streams.contains_key(&name) {
                 return Err(format!("Stream '{}' already exists", name));
             }
-            let stream = self.ctx.create_stream().map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
+            let stream = self
+                .ctx
+                .new_stream()
+                .map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
             streams.insert(name.to_string(), Arc::new(stream));
         }
         Ok(())
     }
-
-
-
 
     /// Parallel transfer and compute pattern
     pub fn parallel_operation<T, F, R>(
@@ -295,8 +306,6 @@ impl CudaMemoryManager {
     pub fn device(&self) -> &Arc<CudaContext> {
         &self.ctx
     }
-
-    
 }
 
 /// Convenience struct for managing tensors on GPU
@@ -310,9 +319,13 @@ pub struct CudaTensor<T> {
 
 impl<T> CudaTensor<T>
 where
-    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin + Default, // `DeviceRepr` is required for CUDA compatibility
-    // `ValidAsZeroBits` ensures that the type can be safely zeroed out
-    // `Unpin` is required for safe memory operations in cudarc
+    T: cudarc::driver::DeviceRepr
+        + Clone
+        + cudarc::driver::ValidAsZeroBits
+        + std::marker::Unpin
+        + Default, // `DeviceRepr` is required for CUDA compatibility
+                   // `ValidAsZeroBits` ensures that the type can be safely zeroed out
+                   // `Unpin` is required for safe memory operations in cudarc
 {
     /// Creates a new CUDA tensor with the given data and shape
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
