@@ -213,8 +213,45 @@ impl CudaMemoryManager {
             .map_err(|e| format!("Failed to sync stream '{}': {}", stream_name, e))
     }
 
+    /// Synchronizes all streams
+    pub fn sync_all_streams(&self) -> Result<(), String> {
+        let streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
+        for (name, stream) in streams.iter() {
+            stream
+                .synchronize()
+                .map_err(|e| format!("Failed to sync stream '{}': {}", name, e))?;
+        }
+        Ok(())
+    }
+
     /// -------------------------------------------------
     // -------- PARALLEL OPERATION PATTERN -------- //
+    /// This method allows you to perform parallel operations on the GPU
+    /// using a provided kernel function. It requires the `setup_parallel_streams` to be called before.
+    /// ---------------------------------------------------
+    pub fn setup_parallel_streams(
+        &mut self,
+     //   stream_names: &[&str],
+    ) -> Result<(), String> {
+        let mut streams = self.streams.lock().map_err(|e| format!("Failed to lock streams: {}", e))?;
+       //Default value for testing
+        let stream_names = vec![
+            "compute", // Main compute stream
+            "copy_h2d", // Host to device copy stream
+            "copy_d2h", // Device to host copy stream
+        ];
+        for &name in stream_names {
+            if streams.contains_key(name) {
+                return Err(format!("Stream '{}' already exists", name));
+            }
+            let stream = self.ctx.create_stream().map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
+            streams.insert(name.to_string(), Arc::new(stream));
+        }
+        Ok(())
+    }
+
+
+
 
     /// Parallel transfer and compute pattern
     pub fn parallel_operation<T, F, R>(
@@ -258,6 +295,8 @@ impl CudaMemoryManager {
     pub fn device(&self) -> &Arc<CudaContext> {
         &self.ctx
     }
+
+    
 }
 
 /// Convenience struct for managing tensors on GPU
