@@ -5,13 +5,13 @@ pub mod device;
 pub mod kernels;
 
 #[cfg(feature = "cuda")]
-pub mod memory;
+pub mod context;
 
 #[cfg(feature = "cuda")]
 pub mod ops;
 
 #[cfg(feature = "cuda")]
-pub use context::{CudaTensor, CudaContextManager};
+pub use context::{CudaContextManager, CudaTensor};
 
 #[cfg(all(test, feature = "cuda"))]
 mod tests;
