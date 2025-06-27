@@ -241,7 +241,7 @@ impl CudaMemoryManager {
             "copy_d2h", // Device to host copy stream
         ];
         for &name in stream_names {
-            if streams.contains_key(name) {
+            if streams.contains_key(&name) {
                 return Err(format!("Stream '{}' already exists", name));
             }
             let stream = self.ctx.create_stream().map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
