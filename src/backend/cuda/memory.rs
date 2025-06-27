@@ -17,7 +17,7 @@ pub struct CudaMemoryManager {
     ctx: Arc<CudaContext>,
     // Uses a HashMap to manage multiple CUDA streams by name
     // This allows for flexible stream management, where each stream can be identified by a unique name
-    streams: Arc<Mutex<HashMap<String, CudaStream>>>,
+    streams: Arc<Mutex<HashMap<String, Arc<CudaStream>>>>,
     default_stream: Arc<CudaStream>,
 }
 
@@ -249,7 +249,7 @@ impl CudaMemoryManager {
     }
 
     /// Get stream reference for kernel launches
-    pub fn get_stream(&self, stream_name: &str) -> Option<&CudaStream> {
+    pub fn get_stream(&self, stream_name: &str) -> Option<Arc<CudaStream>> {
         self.streams.lock().unwrap().get(stream_name)
     }
 
