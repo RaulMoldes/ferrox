@@ -1,6 +1,6 @@
 //! Example CUDA test suite for the Ferrox backend
 #[cfg(feature = "cuda")]
-use cudarc::driver::LaunchConfig;
+use cudarc::driver::{LaunchConfig, PushKernelArg};
 #[cfg(feature = "cuda")]
 use ferrox::backend::CudaBackend;
 
