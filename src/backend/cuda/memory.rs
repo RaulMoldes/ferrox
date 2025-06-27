@@ -1,5 +1,6 @@
 // src/backend/cuda/memory.rs
 use cudarc::driver::DeviceSlice;
+use std::default::Default;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -270,7 +271,7 @@ pub struct CudaTensor<T> {
 
 impl<T> CudaTensor<T>
 where
-    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin + T::std::default::Default, // `DeviceRepr` is required for CUDA compatibility
+    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin + Default, // `DeviceRepr` is required for CUDA compatibility
     // `ValidAsZeroBits` ensures that the type can be safely zeroed out
     // `Unpin` is required for safe memory operations in cudarc
 {
