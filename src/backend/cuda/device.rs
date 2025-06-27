@@ -1,17 +1,16 @@
 // src/backend/cuda/context.rs
 use super::kernels::{CudaKernels, load_all_kernels};
-use super::memory::{CudaMemoryManager, CudaTensor};
+use super::memory::{CudaContextManager, CudaTensor};
 use super::ops::CudaOps;
 use cudarc::driver::CudaContext;
 use std::sync::Arc;
-use std::default::Default;
 
 /// Main CUDA backend that manages context and kernels
 pub struct CudaBackend {
     context: Arc<CudaContext>, // CudaContext::new() returns this type directly, // Default stream for memory operations
     kernels: CudaKernels,
     context_id: usize, // Unique identifier for the CUDA context
-    memory_manager: CudaMemoryManager,
+    context_manager: CudaContextManager,
 }
 
 impl CudaBackend {
@@ -23,7 +22,7 @@ impl CudaBackend {
 
         // context is already Arc<CudaContext>, so we can clone it directly
         let mut kernels = CudaKernels::new(context.clone());
-        let memory_manager = CudaMemoryManager::new(context.clone())?;
+        let context_manager = CudaContextManager::new(context.clone())?;
         // Load all kernels during initialization
         load_all_kernels(&mut kernels)?;
 
@@ -31,7 +30,7 @@ impl CudaBackend {
             context,
             kernels,
             context_id,
-            memory_manager,
+            context_manager,
         })
     }
 
@@ -81,7 +80,7 @@ impl CudaBackend {
         T: cudarc::driver::DeviceRepr
             + Clone
             + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin + Default,
+            + std::marker::Unpin,
     {
         // Validate that data size matches shape
         let size = shape.iter().product::<usize>();
@@ -95,10 +94,10 @@ impl CudaBackend {
         }
 
         // Create memory manager for this context
-        let memory_manager = self.memory_manager();
+        let context_manager = self.context_manager();
 
         // Transfer data from host to context
-        let cuda_data = memory_manager.host_to_device(data)?;
+        let cuda_data = context_manager.host_to_device(data)?;
 
         // Create and return the CUDA tensor
         Ok(CudaTensor::new(cuda_data, shape))
@@ -106,14 +105,14 @@ impl CudaBackend {
 
     /// Returns reference to memory manager
     /// This method provides access to the memory manager for external use
-    pub fn memory_manager(&self) -> &CudaMemoryManager {
-        &self.memory_manager
+    pub fn context_manager(&self) -> &CudaContextManager {
+        &self.context_manager
     }
 
     /// Returns reference to operations interface
     /// This method provides access to CUDA operations for tensor computations
     pub fn ops(&self) -> CudaOps<'_> {
-        let memory = self.memory_manager();
+        let memory = self.context_manager();
         CudaOps::new(&self.kernels, memory)
     }
 }

@@ -15,7 +15,7 @@ use std::sync::Mutex;
 /// - Memory copying between GPU buffers
 /// - Memory pool management for better performance
 /// - Stream management for asynchronous operations
-pub struct CudaMemoryManager {
+pub struct CudaContextManager {
     ctx: Arc<CudaContext>,
     // Uses a HashMap to manage multiple CUDA streams by name
     // This allows for flexible stream management, where each stream can be identified by a unique name
@@ -23,10 +23,10 @@ pub struct CudaMemoryManager {
     default_stream: Arc<CudaStream>,
 }
 
-unsafe impl Send for CudaMemoryManager {}
-unsafe impl Sync for CudaMemoryManager {}
+unsafe impl Send for CudaContextManager {}
+unsafe impl Sync for CudaContextManager {}
 
-impl CudaMemoryManager {
+impl CudaContextManager {
     /// Creates a new CUDA memory manager for the specified device
     pub fn new(ctx: Arc<CudaContext>) -> Result<Self, String> {
         let default_stream = ctx.default_stream();
@@ -260,16 +260,13 @@ impl CudaMemoryManager {
                 .ctx
                 .new_stream()
                 .map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
-            
+
             streams.insert(name.to_string(), stream.clone());
         }
         Ok(())
     }
 
-    pub fn create_stream(
-        &self,
-        stream_name: &str,
-    ) -> Result<Arc<CudaStream>, String> {
+    pub fn create_stream(&self, stream_name: &str) -> Result<Arc<CudaStream>, String> {
         let mut streams = self
             .streams
             .lock()
@@ -281,7 +278,7 @@ impl CudaMemoryManager {
             .ctx
             .new_stream()
             .map_err(|e| format!("Failed to create stream '{}': {}", stream_name, e))?;
-        
+
         streams.insert(stream_name.to_string(), stream.clone());
         Ok(stream)
     }
@@ -333,6 +330,7 @@ impl CudaMemoryManager {
 /// Convenience struct for managing tensors on GPU
 ///
 /// Wraps CudaSlice with additional metadata for tensor operations
+#[repr(C)] // Better memory layout for CUDA compatibility
 pub struct CudaTensor<T> {
     pub data: CudaSlice<T>,
     pub shape: Vec<usize>,
@@ -362,7 +360,7 @@ where
     /// Creates a CUDA tensor from host data vector
     /// This is a convenience method that combines memory allocation and data transfer
     pub fn from_vec(
-        memory_manager: &CudaMemoryManager,
+        context_manager: &CudaContextManager,
         data: Vec<T>,
         shape: Vec<usize>,
     ) -> Result<Self, String> {
@@ -378,7 +376,7 @@ where
         }
 
         // Transfer data from host to device using the memory manager
-        let cuda_data = memory_manager.host_to_device(data)?;
+        let cuda_data = context_manager.host_to_device(data)?;
 
         // Create and return tensor
         Ok(Self::new(cuda_data, shape))
@@ -386,7 +384,7 @@ where
 
     // Creates a CUDA tensor from host data using async transfer
     pub fn from_vec_async(
-        memory_manager: &CudaMemoryManager,
+        context_manager: &CudaContextManager,
         data: Vec<T>,
         shape: Vec<usize>,
         stream_name: Option<&str>,
@@ -401,39 +399,39 @@ where
             ));
         }
 
-        let cuda_data = memory_manager.host_to_device_async(data, stream_name)?;
+        let cuda_data = context_manager.host_to_device_async(data, stream_name)?;
         Ok(Self::new(cuda_data, shape))
     }
 
     /// Transfers CUDA tensor data back to CPU as a vector
     /// This method copies data from GPU to host memory using the memory manager
-    pub fn to_cpu(&self, memory_manager: &CudaMemoryManager) -> Result<Vec<T>, String>
+    pub fn to_cpu(&self, context_manager: &CudaContextManager) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
         // Use the memory manager to perform the device-to-host transfer
-        memory_manager.device_to_host(&self.data)
+        context_manager.device_to_host(&self.data)
     }
 
     /// Transfer tensor data back to CPU asynchronously
     pub fn to_cpu_async(
         &self,
-        memory_manager: &CudaMemoryManager,
+        context_manager: &CudaContextManager,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
-        memory_manager.device_to_host_async(&self.data, stream_name)
+        context_manager.device_to_host_async(&self.data, stream_name)
     }
 
     // Same as `to_cpu`, but returns a vector of the data
     /// Transfers CUDA tensor data back to CPU as a vector
-    pub fn to_vec(&self, memory: &CudaMemoryManager) -> Result<Vec<T>, String> {
+    pub fn to_vec(&self, memory: &CudaContextManager) -> Result<Vec<T>, String> {
         memory.device_to_host(&self.data)
     }
 
     /// Creates a new zeroed CUDA tensor with the given shape
-    pub fn zeros(memory_manager: &CudaMemoryManager, shape: Vec<usize>) -> Result<Self, String> {
+    pub fn zeros(context_manager: &CudaContextManager, shape: Vec<usize>) -> Result<Self, String> {
         let size = shape.iter().product();
-        let data = memory_manager.alloc_zeros(size)?;
+        let data = context_manager.alloc_zeros(size)?;
         Ok(Self::new(data, shape))
     }
 
@@ -476,15 +474,15 @@ where
 
     // Safer clone implementation
     /// Clones the tensor data to a new CudaTensor
-    pub fn deep_clone(&self, memory_manager: &CudaMemoryManager) -> Result<Self, String> {
+    pub fn deep_clone(&self, context_manager: &CudaContextManager) -> Result<Self, String> {
         // 1. Allocate new device memory
         let num_elements = self.data.len();
-        let mut new_data: CudaSlice<T> = memory_manager
+        let mut new_data: CudaSlice<T> = context_manager
             .alloc_zeros(num_elements) // ENSURE THE MEMORY IS ZEROED
             .map_err(|e| format!("Failed to allocate new GPU memory: {}", e))?;
 
         // 2. Copy data from old slice to new slice
-        memory_manager
+        context_manager
             .device_to_device(&self.data, &mut new_data)
             .map_err(|e| format!("Failed to copy data to new GPU memory: {}", e))?;
 

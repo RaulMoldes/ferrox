@@ -11,7 +11,7 @@ pub mod memory;
 pub mod ops;
 
 #[cfg(feature = "cuda")]
-pub use memory::{CudaMemoryManager, CudaTensor};
+pub use context::{CudaTensor, CudaContextManager};
 
 #[cfg(all(test, feature = "cuda"))]
 mod tests;

@@ -371,7 +371,7 @@ fn test_gpu_only_tensor_indexing_panics() {
     let backend = get_backend();
     if let Some(cuda_backend) = backend.cuda_backend() {
         if let Ok(cuda_tensor) = CudaTensor::from_vec(
-            cuda_backend.memory_manager(),
+            cuda_backend.context_manager(),
             vec![1.0f32, 2.0, 3.0],
             vec![3],
         ) {

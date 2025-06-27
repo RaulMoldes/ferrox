@@ -119,8 +119,8 @@ where
             // Priority: use CUDA data if available
             let backend = crate::backend::manager::get_backend();
             let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-            let memory_manager = cuda_backend.memory_manager();
-            memory_manager.device_to_host(&cuda_tensor.data)
+            let context_manager = cuda_backend.context_manager();
+            context_manager.device_to_host(&cuda_tensor.data)
         } else if !self.data.is_empty() {
             // Fallback to CPU data
             Ok(self.data.iter().cloned().collect())
@@ -365,7 +365,7 @@ where
             // Convert CPU data to CUDA
             let host_data: Vec<T> = self.data.iter().cloned().collect();
             let shape: Vec<usize> = self.shape().to_vec();
-            let cuda_data = cuda_backend.memory_manager().host_to_device(host_data)?;
+            let cuda_data = cuda_backend.context_manager().host_to_device(host_data)?;
             Ok(crate::backend::cuda::CudaTensor::new(cuda_data, shape))
         }
     }
@@ -881,7 +881,7 @@ where
 
         let shape: Vec<usize> = self.shape().to_vec();
         let host_data: Vec<T> = self.data.iter().cloned().collect();
-        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.memory_manager(), host_data, shape)?;
+        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.context_manager(), host_data, shape)?;
 
         Ok(Self {
             data: self.data.clone(),
@@ -912,10 +912,10 @@ where
                 //    use crate::backend::manager::get_backend;
                 let backend = get_backend();
                 let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-                let memory_manager = cuda_backend.memory_manager();
+                let context_manager = cuda_backend.context_manager();
 
                 // Pass memory manager to to_vec()
-                let host_data = cuda_tensor.to_vec(&memory_manager)?;
+                let host_data = cuda_tensor.to_vec(&context_manager)?;
 
                 let cpu_array = ArrayD::from_shape_vec(IxDyn(cuda_tensor.shape()), host_data)
                     .map_err(|e| format!("Failed to create CPU array: {}", e))?;
@@ -1652,10 +1652,10 @@ where
 
         let backend = get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        let memory_manager = cuda_backend.memory_manager();
+        let context_manager = cuda_backend.context_manager();
 
         // Transfer CUDA result back to CPU
-        let result_cpu = cuda_result.to_cpu(&memory_manager)?;
+        let result_cpu = cuda_result.to_cpu(&context_manager)?;
         let shape = cuda_result.shape();
 
         // Create a new ArrayD from the CPU result
@@ -2154,9 +2154,9 @@ where
         let cuda_tensor = self.cuda_storage.as_ref().unwrap();
         let backend = crate::backend::manager::get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        let memory_manager = cuda_backend.memory_manager();
+        let context_manager = cuda_backend.context_manager();
 
-        let cpu_data = cuda_tensor.to_cpu(memory_manager)?;
+        let cpu_data = cuda_tensor.to_cpu(context_manager)?;
         self.data = ArrayD::from_shape_vec(IxDyn(cuda_tensor.shape()), cpu_data)
             .map_err(|e| format!("Failed to create ArrayD: {}", e))?;
 

@@ -3,7 +3,7 @@
 // This module provides the user-facing API for neural network operations on GPU
 
 use super::kernels::CudaKernels;
-use super::memory::{CudaMemoryManager, CudaTensor};
+use super::memory::{CudaContextManager, CudaTensor};
 use crate::backend::number::CPUNumber;
 use cudarc::driver::LaunchConfig;
 
@@ -12,11 +12,11 @@ use cudarc::driver::LaunchConfig;
 /// The lifetime parameter ensures operations don't outlive the underlying CUDA resources
 pub struct CudaOps<'a> {
     kernels: &'a CudaKernels,
-    memory: &'a CudaMemoryManager,
+    memory: &'a CudaContextManager,
 }
 
 impl<'a> CudaOps<'a> {
-    pub fn new(kernels: &'a CudaKernels, memory: &'a CudaMemoryManager) -> Self {
+    pub fn new(kernels: &'a CudaKernels, memory: &'a CudaContextManager) -> Self {
         Self { kernels, memory }
     }
 
