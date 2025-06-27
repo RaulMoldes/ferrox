@@ -281,7 +281,7 @@ impl CudaMemoryManager {
             .new_stream()
             .map_err(|e| format!("Failed to create stream '{}': {}", stream_name, e))?;
         
-        streams.insert(stream_name.to_string(), stream);
+        streams.insert(stream_name.to_string(), stream.clone());
         Ok(stream)
     }
 
