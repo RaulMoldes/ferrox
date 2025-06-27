@@ -28,8 +28,7 @@ impl CudaMemoryManager {
     /// Creates a new CUDA memory manager for the specified device
     pub fn new(ctx: Arc<CudaContext>) -> Result<Self, String> {
         let default_stream = ctx
-            .default_stream()
-            .map_err(|e| format!("Failed to create default stream: {}", e))?;
+            .default_stream();
 
         Ok(Self {
             ctx,
@@ -79,11 +78,12 @@ impl CudaMemoryManager {
     pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
-    {   let gpu_mem = self.default_stream.alloc::<T>(data.len())
-        .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
+    {   let mut gpu_mem = unsafe { self.default_stream.alloc::<T>(data.len())}
+            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?; 
+        
 
         self.default_stream
-            .memcpy_htod(&data, &gpu_mem)
+            .memcpy_htod(&data, &mut gpu_mem)
             .map_err(|e| format!("Failed to copy host to device: {}", e))?;
         Ok(gpu_mem)
     }
@@ -91,12 +91,12 @@ impl CudaMemoryManager {
     /// Copies data from device to host synchronously
     pub fn device_to_host<T>(&self, gpu_data: &CudaSlice<T>) -> Result<Vec<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone,
+        T: cudarc::driver::DeviceRepr + Clone +std::default::Default,
     {   
         let mut host_data = vec![T::default(); gpu_data.len()];
 
         self.default_stream
-        .memcpy_dtoh(&gpu_data, &mut host_data)
+        .memcpy_dtoh(gpu_data, &mut host_data)
             .map_err(|e| format!("Failed to copy device to host: {}", e))?;
         Ok(host_data)
     }
@@ -153,11 +153,11 @@ impl CudaMemoryManager {
             .get_stream(stream_name.unwrap_or("default"))
             .ok_or_else(|| "Stream not found".to_string())?;
 
-        let gpu_mem = stream.alloc::<T>(data.len())
+        let mut gpu_mem = stream.alloc::<T>(data.len())
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
         
         stream
-            .memcpy_htod(&data, &gpu_mem)
+            .memcpy_htod(&data, &mut gpu_mem)
             .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))?;
         Ok(gpu_mem)
     }
@@ -169,7 +169,7 @@ impl CudaMemoryManager {
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone,
+        T: cudarc::driver::DeviceRepr + Clone + std::default::Default,
     {
         let stream = self
             .get_stream(stream_name.unwrap_or("default"))
@@ -178,7 +178,7 @@ impl CudaMemoryManager {
         let mut host_data = vec![T::default(); gpu_data.len()];
 
         stream
-            .memcpy_dtoh(&gpu_data, &mut host_data)
+            .memcpy_dtoh(gpu_data, &mut host_data)
             .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))?;
         Ok(host_data)
     }
