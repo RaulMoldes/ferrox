@@ -80,7 +80,7 @@ impl CudaBackend {
         T: cudarc::driver::DeviceRepr
             + Clone
             + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin,
+            + std::marker::Unpin + Default,
     {
         // Validate that data size matches shape
         let size = shape.iter().product::<usize>();
