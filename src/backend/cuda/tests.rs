@@ -1157,7 +1157,7 @@ mod kernel_tests {
 
             let input_gpu = backend.memory_manager().host_to_device(input).unwrap();
             let mut output_gpu = backend
-                .context()
+                .memory_manager()
                 .alloc_zeros::<f32>((outer_size * inner_size) as usize)
                 .unwrap();
 
