@@ -8,7 +8,7 @@ mod tests {
     use crate::backend::cuda::memory::compute_strides;
     use crate::backend::cuda::ops::CudaOps;
     use cudarc::driver::{CudaContext, LaunchConfig};
-    use std::time::{Duration, Instant};
+    //use std::time::{Duration, Instant};
     //use std::sync::Arc;
 
     /// Helper function to create a test CUDA backend
@@ -1235,11 +1235,9 @@ mod kernel_tests {
 
 mod stream_tests {
 
-    use super::super::{CudaBackend, CudaKernels, load_all_kernels};
+    use super::super::CudaBackend;
     use crate::backend::cuda::memory::CudaMemoryManager;
     use crate::backend::cuda::memory::CudaTensor;
-    use crate::backend::cuda::memory::compute_strides;
-    use crate::backend::cuda::ops::CudaOps;
     use cudarc::driver::{CudaContext, LaunchConfig};
     use std::time::{Duration, Instant};
 

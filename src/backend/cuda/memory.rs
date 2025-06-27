@@ -1,4 +1,5 @@
 // src/backend/cuda/memory.rs
+#[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
 use std::collections::HashMap;

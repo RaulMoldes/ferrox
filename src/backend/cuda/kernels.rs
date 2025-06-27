@@ -1,4 +1,5 @@
 // src/backend/cuda/kernels.rs
+#[allow(unused_imports)]
 use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,25 +13,23 @@ pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx"
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 
 // Generic kernel launch macro
+// En kernels.rs línea 17-35, reemplaza el macro completo:
 macro_rules! launch_kernel {
     ($self:expr, $kernel_name:expr, $cfg:expr, $( $arg:expr ),* $(,)? ) => {{
-
         let ctx = $self.device();
         let kernel = $self
             .get_function_cloned($kernel_name)
             .ok_or_else(|| format!("{} kernel not found", $kernel_name))?;
 
-        let builder = ctx.default_stream().launch_builder(&kernel);
-        let builder = unsafe {
-            builder
-                $( .arg($arg) )*
-        };
-
         unsafe {
-            builder
+            ctx.default_stream()
+                .launch_builder(&kernel)
+                $( .arg(&$arg) )*  // Añadir & aquí
                 .launch($cfg)
-                .map_err(|e| format!("Failed to launch {} kernel: {}", $kernel_name, e))
+                .map_err(|e| format!("Failed to launch {} kernel: {}", $kernel_name, e))?;
         }
+        
+        Ok(())  // Devolver Ok(()) en lugar del resultado de launch
     }};
 }
 
