@@ -144,6 +144,8 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
 
     // Benchmark
     let start = std::time::Instant::now();
+    let default_stream = backend.context().default_stream();
+   
     for _ in 0..iterations {
         // Method 3: Direct cloning in a loop (shows the pattern)
         let add_kernel = backend
@@ -151,9 +153,17 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
             .get_function_cloned("elementwise_add")
             .ok_or("Add kernel not found")?;
 
+        let _ = default_stream.synchronize();
+        
+
+        
         unsafe {
-            add_kernel.launch(cfg, (&a_gpu, &b_gpu, &mut c_gpu, size as i32))?;
-        }
+            default.stream.launch_builder(add_kernel).arg(
+                &a_gpu).arg(b_gpu).arg(
+                &mut c_gpu).arg(
+                size as i32
+            ).launch();
+        }?
     }
     backend.synchronize()?;
     let elapsed = start.elapsed();
