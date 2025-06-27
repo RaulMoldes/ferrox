@@ -5,6 +5,7 @@ use rand_distr::num_traits::{FromPrimitive, One, Zero};
 use std::cmp::{PartialEq, PartialOrd};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
+use std::default::Default;
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
@@ -29,6 +30,7 @@ pub trait CPUNumber:
     PartialOrd + PartialEq +
     // Essential traits
     Clone + Copy + Debug + Display + PartialOrd + PartialEq +
+    Default +
     // Only conversions that always work without loss
     From<i8> +
     Sized 
