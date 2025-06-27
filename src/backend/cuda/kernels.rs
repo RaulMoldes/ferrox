@@ -221,7 +221,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
-        launch_kernel!(self, &kernel_name, cfg, (a, b, result, size))
+        launch_kernel!(self, &kernel_name, cfg, a, b, result, size)
     }
 
     /// Generic launcher for unary elementwise operations (f(input) = output)
@@ -238,7 +238,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
-        launch_kernel!(self, &kernel_name, cfg, (input, output, size))
+        launch_kernel!(self, &kernel_name, cfg, input, output, size)
     }
 
     /// Generic launcher for reduction operations along tensor dimensions
@@ -261,7 +261,7 @@ impl CudaKernels {
             self,
             &kernel_name,
             cfg,
-            (input, output, outer_size, axis_size, inner_size)
+            input, output, outer_size, axis_size, inner_size
         )
     }
 
@@ -530,7 +530,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("matmul");
-        launch_kernel!(self, &kernel_name, cfg, (a, b, c, m, n, k))
+        launch_kernel!(self, &kernel_name, cfg, a, b, c, m, n, k)
     }
 
     pub fn launch_transpose_2d<T>(
@@ -545,7 +545,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("transpose_2d");
-        launch_kernel!(self, &kernel_name, cfg, (input, output, rows, cols))
+        launch_kernel!(self, &kernel_name, cfg, input, output, rows, cols)
     }
 
     // ===== COMPARISON OPERATIONS =====
@@ -566,7 +566,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
-        launch_kernel!(self, &kernel_name, cfg, (a, b, result, size))
+        launch_kernel!(self, &kernel_name, cfg, a, b, result, size)
     }
 
     /// Generic unary comparison launcher for operations like logical_not, sign
@@ -583,7 +583,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
-        launch_kernel!(self, &kernel_name, cfg, (input, result, size))
+        launch_kernel!(self, &kernel_name, cfg, input, result, size)
     }
 
     /// Element-wise greater-than-or-equal comparison: result[i] = (a[i] >= b[i]) ? 1.0 : 0.0
@@ -689,7 +689,7 @@ impl CudaKernels {
             self,
             &kernel_name,
             cfg,
-            (input, min_val, max_val, result, size)
+            input, min_val, max_val, result, size
         )
     }
 
@@ -705,7 +705,7 @@ impl CudaKernels {
     where
         T: crate::backend::number::GPUNumber,
     {
-        launch_kernel!(self, kernel_name, cfg, (input, output, size))
+        launch_kernel!(self, kernel_name, cfg, input, output, size)
     }
 
     pub fn device(&self) -> &Arc<CudaContext> {

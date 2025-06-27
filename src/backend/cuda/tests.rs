@@ -1261,6 +1261,18 @@ mod stream_tests {
         }
     }
 
+     /// Helper function to create a test CUDA backend
+    /// Skips test if CUDA is not available on the system
+    fn setup_cuda_backend() -> Option<CudaBackend> {
+        match CudaBackend::new(0) {
+            Ok(backend) => Some(backend),
+            Err(_) => {
+                println!("CUDA not available, skipping CUDA tests");
+                None
+            }
+        }
+    }
+
     /// Helper function to verify results with tolerance
     fn assert_float_eq(actual: &[f32], expected: &[f32], tolerance: f32) {
         assert_eq!(actual.len(), expected.len(), "Length mismatch");
@@ -1278,7 +1290,7 @@ mod stream_tests {
 
     #[test]
     fn test_stream_creation() {
-        if let Some(mut manager) = setup_memory_manager() {
+        if let Some(mut manager) = setup_stream_manager() {
             // Test creating individual streams
             assert!(manager.create_stream("test_stream").is_ok());
             assert!(manager.create_stream("another_stream").is_ok());
