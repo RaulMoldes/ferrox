@@ -464,7 +464,7 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_reduction(
-            "sum_axis", cfg, input, output, &outer_size, &axis_size, inner_size,
+            "sum_axis", cfg, input, output, outer_size, axis_size, inner_size,
         )
     }
 
