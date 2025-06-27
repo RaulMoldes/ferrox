@@ -158,7 +158,7 @@ impl CudaKernels {
 
         // Store the function on the stack
         for &func_name in config.functions {
-            if let Some(func) = module.load_function(func_name) {
+            if let Ok(func) = module.load_function(func_name) {
                 self.functions.insert(func_name.to_string(), func);
             }
         }
