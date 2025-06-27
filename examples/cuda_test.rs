@@ -3,6 +3,7 @@
 use cudarc::driver::LaunchConfig;
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::CudaBackend;
+#[cfg(feature = "cuda")]
 use cudarc::driver::PushKernelArg;
 
 #[cfg(feature = "cuda")]
