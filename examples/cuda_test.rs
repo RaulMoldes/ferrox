@@ -1,3 +1,9 @@
+//! Example CUDA test suite for the Ferrox backend
+#[cfg(feature = "cuda")]
+use cudarc::driver::LaunchConfig;
+#[cfg(feature = "cuda")]
+use ferrox::backend::CudaBackend;
+
 #[cfg(feature = "cuda")]
 /// Comprehensive CUDA benchmark with multiple kernel tests and performance metrics
 fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Error>> {
