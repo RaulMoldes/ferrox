@@ -13,14 +13,22 @@ pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.pt
 
 // Generic kernel launch macro
 macro_rules! launch_kernel {
-    ($self:expr, $kernel_name:expr, $cfg:expr, $params:expr) => {{
+    ($self:expr, $kernel_name:expr, $cfg:expr, $( $arg:expr ),* $(,)? ) => {{
+
+        let ctx = $self.device();
         let kernel = $self
             .get_function_cloned($kernel_name)
             .ok_or_else(|| format!("{} kernel not found", $kernel_name))?;
 
+        let builder = ctx.default_stream().launch_builder(&kernel);
+        let builder = unsafe {
+            builder
+                $( .arg($arg) )*
+        };
+
         unsafe {
-            kernel
-                .launch($cfg, $params)
+            builder
+                .launch($cfg)
                 .map_err(|e| format!("Failed to launch {} kernel: {}", $kernel_name, e))
         }
     }};
