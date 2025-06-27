@@ -1,6 +1,6 @@
 // src/backend/cuda/context.rs
+use super::context::{CudaContextManager, CudaTensor};
 use super::kernels::{CudaKernels, load_all_kernels};
-use super::memory::{CudaContextManager, CudaTensor};
 use super::ops::CudaOps;
 use cudarc::driver::CudaContext;
 use std::sync::Arc;

@@ -2,8 +2,8 @@
 // High-level CUDA tensor operations that mirror CPU tensor operations
 // This module provides the user-facing API for neural network operations on GPU
 
+use super::context::{CudaContextManager, CudaTensor};
 use super::kernels::CudaKernels;
-use super::memory::{CudaContextManager, CudaTensor};
 use crate::backend::number::CPUNumber;
 use cudarc::driver::LaunchConfig;
 
