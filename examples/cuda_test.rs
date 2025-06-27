@@ -3,6 +3,7 @@
 use cudarc::driver::LaunchConfig;
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::CudaBackend;
+use cudarc::driver::PushKernelArg;
 
 #[cfg(feature = "cuda")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
