@@ -686,7 +686,7 @@ impl CudaKernels {
             self,
             &kernel_name,
             cfg,
-            input, min_val, max_val, result, &size
+            input, &min_val, &max_val, result, &size
         )
     }
 
