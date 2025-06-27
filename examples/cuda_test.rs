@@ -158,12 +158,14 @@ fn benchmark_kernels(backend: &CudaBackend) -> Result<(), Box<dyn std::error::Er
 
         
         unsafe {
-            default.stream.launch_builder(add_kernel).arg(
+            default_stream.launch_builder(add_kernel).arg(
                 &a_gpu).arg(b_gpu).arg(
                 &mut c_gpu).arg(
                 size as i32
-            ).launch();
-        }?
+            ).launch().map_err(|e| {
+                format!("Kernel launch failed: {}", e)
+            })?;
+        }?;
     }
     backend.synchronize()?;
     let elapsed = start.elapsed();
