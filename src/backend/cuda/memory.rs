@@ -237,7 +237,7 @@ impl CudaMemoryManager {
         let compute_stream = self
             .get_stream("compute")
             .ok_or("Compute stream not found")?;
-        let gpu_output = kernel_fn(&gpu_input, compute_stream)?;
+        let gpu_output = kernel_fn(&gpu_input, &compute_stream)?;
 
         // Start async D2H transfer
         let result = self.device_to_host_async(gpu_output.as_ref(), Some("copy_d2h"))?;
