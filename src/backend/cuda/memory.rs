@@ -259,8 +259,8 @@ impl CudaMemoryManager {
                 .ctx
                 .new_stream()
                 .map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
-            let stream = Arc::new(stream);
-            streams.insert(name.to_string(), stream.clone());
+            
+            streams.insert(name.to_string(), stream);
         }
         Ok(())
     }
@@ -280,9 +280,9 @@ impl CudaMemoryManager {
             .ctx
             .new_stream()
             .map_err(|e| format!("Failed to create stream '{}': {}", stream_name, e))?;
-        let arc_stream = Arc::new(stream);
-        streams.insert(stream_name.to_string(), arc_stream.clone());
-        Ok(arc_stream)
+        
+        streams.insert(stream_name.to_string(), stream);
+        Ok(stream)
     }
 
     /// Parallel transfer and compute pattern
