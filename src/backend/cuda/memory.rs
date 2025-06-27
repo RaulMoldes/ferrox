@@ -223,7 +223,7 @@ impl CudaMemoryManager {
         kernel_fn: F,
     ) -> Result<Vec<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr + Clone + std::marker::Unpin + Default, // `DeviceRepr` is required for CUDA compatibility
         F: FnOnce(&CudaSlice<T>, &CudaStream) -> Result<R, String>,
         R: AsRef<CudaSlice<T>>,
     {
