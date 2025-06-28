@@ -72,9 +72,10 @@ fn compile_cuda_kernels() {
         let output = Command::new("nvcc")
             .arg("-ptx")
             .arg("-O3")
-            .arg("-I/usr/local/cuda/include")
+            .arg("-ccbin")
+            .arg("gcc-11")
             .arg("--std=c++11")
-            .arg("-arch=sm_70") // You can make this configurable
+            .arg("-arch=sm_86") // You can make this configurable
             .arg(&cu_file)
             .arg("-o")
             .arg(&ptx_file)
