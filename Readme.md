@@ -36,135 +36,18 @@
 - Training/evaluation mode switching
 
 ### Optimization
-- Multiple optimizer implementations (SGD, Adam, RMSprop, AdaGrad)
+- Multiple optimizer implementations (SGD, Adam)
 - Learning rate scheduling support
 - Weight decay and momentum
-- AMSGrad variant support
 
 ## System Requirements
 
 ### Basic Requirements
 - **Rust**: 1.75.0 or later
-- **Operating System**: Linux, macOS, or Windows
+- **Operating System**: Linux mainly.
 
 ### GPU Requirements (Optional)
-- **NVIDIA GPU**: Compute Capability 6.0 or higher
-- **CUDA Toolkit**: 11.0 or later with cuCtxCreate_v4 support
-- **NVIDIA Drivers**: 470.0 or later
-
-## Installation
-
-### Prerequisites
-
-Install Rust and Cargo:
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-For graph visualizations, install GraphViz:
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install graphviz
-```
-
-**macOS:**
-```bash
-brew install graphviz
-```
-
-**Windows:**
-```bash
-choco install graphviz
-```
-
-Verify installation:
-```bash
-dot -V
-```
-
-### CUDA Setup (Optional)
-
-For GPU acceleration, ensure CUDA is properly installed:
-```bash
-nvcc --version
-nvidia-smi
-```
-
-## Building and Running
-
-### CPU-only Build
-```bash
-cargo build --features cpu
-cargo run --features cpu
-```
-
-### GPU-enabled Build
-```bash
-cargo build --features cuda
-cargo run --features cuda
-```
-
-### Testing
-```bash
-# Run all tests
-cargo test
-
-# Test specific features
-cargo test --features cpu
-cargo test --features cuda
-
-# GPU-specific integration tests
-cargo run --features cuda --example cuda_test
-```
-
-## Usage Examples
-
-### Basic Tensor Operations
-```rust
-use ferrox::tensor::Tensor;
-use ferrox::graph::Engine;
-
-let mut engine = Engine::new();
-
-// Create tensors
-let a = Tensor::new(ndarray::arr2(&[[1.0, 2.0], [3.0, 4.0]]).into_dyn());
-let b = Tensor::new(ndarray::arr2(&[[2.0, 0.0], [1.0, 3.0]]).into_dyn());
-
-// Create nodes in computation graph
-let a_node = engine.variable(a, true); // requires_grad = true
-let b_node = engine.variable(b, true);
-
-// Perform operations
-let result = engine.matmul(a_node, b_node)?;
-
-// Compute gradients
-engine.backward(result)?;
-```
-
-### Neural Network Training
-```rust
-use ferrox::nn::{Linear, Module};
-use ferrox::nn::optim::Adam;
-
-// Create model
-let linear = Linear::new(784, 10, true); // input_size, output_size, bias
-
-// Create optimizer
-let mut optimizer = Adam::with_defaults(0.001);
-
-// Training loop
-for (inputs, targets) in dataloader {
-    optimizer.zero_grad(&mut engine);
-    
-    let outputs = linear.forward(&mut engine, inputs)?;
-    let loss = compute_loss(outputs, targets);
-    
-    engine.backward(loss)?;
-    optimizer.step(&mut engine)?;
-}
-```
-
+- **NVIDIA GPU**: Compute Capability 
 ### GPU Acceleration
 ```rust
 use ferrox::backend::get_backend;
@@ -233,7 +116,7 @@ cargo run --example neural_network_training
 -  ONNX export capabilities
 -  WebGPU backend for web deployment
 
-## Troubleshooting
+## Troubleshootinng
 
 ### Common Issues
 
