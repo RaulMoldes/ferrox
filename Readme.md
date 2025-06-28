@@ -95,7 +95,7 @@ cargo run --example neural_network_training
 - Core automatic differentiation engine
 - CPU tensor operations with ndarray backend
 - Basic neural network layers (Linear)
-- Optimization algorithms (SGD, Adam, RMSprop, AdaGrad)
+- Optimization algorithms (SGD, Adam)
 - Graph visualization system
 
 **GPU Features:**
