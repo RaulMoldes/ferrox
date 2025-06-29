@@ -6,7 +6,7 @@ use ferrox::backend::Device;
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::{CudaBackend, CudaTensor};
 #[cfg(feature = "cuda")]
-use ferrox::backend::cuda::{CudaKernels, load_all_kernels};
+use ferrox::backend::cuda::{CudaKernels};
 #[cfg(feature = "cuda")]
 use ferrox::backend::manager::get_backend;
 #[cfg(feature = "cuda")]
@@ -52,7 +52,7 @@ fn test_cuda_arithmetic(tensor: &Tensor<f32>) {
 
     // Test scalar multiplication
     match tensor.mul_scalar_cuda(2.0) {
-        Ok(result) => {
+        Ok(_result) => {
             println!("CUDA scalar multiplication successful");
         }
         Err(e) => panic!("CUDA scalar multiplication failed: {}", e),
@@ -60,7 +60,7 @@ fn test_cuda_arithmetic(tensor: &Tensor<f32>) {
 
     // Test ReLU activation
     match tensor.relu_cuda() {
-        Ok(result) => {
+        Ok(_result) => {
             println!("CUDA ReLU successful");
         }
         Err(e) => panic!("CUDA ReLU failed: {}", e),

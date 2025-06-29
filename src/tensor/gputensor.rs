@@ -657,7 +657,7 @@ where
 
         match data.into_owned().into_shape_with_order(IxDyn(new_shape)) {
             Ok(reshaped) => Ok(Self::new_with_device(reshaped, Device::CPU)), // Return Self, not CPUTensor
-            Err(e) => Err(format!("Failed to reshape tensor: {}", e)),
+            Err(e) => Err(format!("Failed to reshape tensor: {e}")),
         }
     }
 
@@ -695,7 +695,7 @@ where
                 }
                 // Validate that axes_order is a valid permutation
                 let mut sorted_axes = axes_order.to_vec();
-                sorted_axes.sort_unstable(); // Sort unstable is more performant than actual sort, 
+                sorted_axes.sort_unstable(); // Sort unstable is more performant than actual sort,
                 // the drawback is it does not preserve the
                 // order of equal elements, which is fine for our use case.
                 // Basically if you had ("a", 1) and ("a", 2) in the vector,
@@ -1039,7 +1039,7 @@ where
     }
 
     /// Element-wise maximum between two tensors
-    /// Supports both CPU and CUDA execution  
+    /// Supports both CPU and CUDA execution
     pub fn max(&self, other: &Self) -> Result<Self, String> {
         if self.shape() != other.shape() {
             return Err(format!(
@@ -1087,7 +1087,7 @@ where
             .collect();
 
         let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
+            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
 
         Ok(Self::new_with_device(result_array, Device::CPU))
     }
@@ -1102,7 +1102,7 @@ where
             .collect();
 
         let result_array = ndarray::Array::from_shape_vec(self_data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
+            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
 
         Ok(Self::new_with_device(result_array, Device::CPU))
     }
@@ -1277,7 +1277,7 @@ where
         }
 
         let result_array = ndarray::Array::from_shape_vec(output_shape, result_data)
-            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
+            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
 
         Ok(Self::new_with_device(
             result_array.into_dyn(),
@@ -1930,7 +1930,7 @@ where
         }
     }
 
-    /// Hyperbolic tangent with CUDA support and CPU fallback  
+    /// Hyperbolic tangent with CUDA support and CPU fallback
     pub fn tanh(&self) -> GPUTensor<T> {
         match &self.device {
             Device::CPU => self.tanh_cpu(),
@@ -2109,7 +2109,7 @@ where
         let result_data: Vec<T> = self_data.iter().map(|&x| x.sqrt()).collect();
 
         let result_array = ndarray::Array::from_shape_vec(self_data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {}", e))?;
+            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
 
         Ok(Self::new_with_device(result_array, Device::CPU))
     }

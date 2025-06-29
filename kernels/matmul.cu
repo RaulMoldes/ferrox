@@ -15,19 +15,19 @@ extern "C" __global__ void matmul(
 ) {
     // shared memory for tiles
     // TILE_SIZE is the size of the tile, which should be a multiple of the warp size (32).
-    // This is required so that we maximize occupancy. 
+    // This is required so that we maximize occupancy.
     // If we had a TILE_SIZE of 35 , only three threads will be active in the last warp, which is inefficient.
     // Using TILE_SIZE of 16 is a common choice, as it is a multiple of 32 and fits well in shared memory.
     // I also think 16 is a good choice because as matmul is an operation between two matrices, then if you can fit two tiles on the same warp you can take advantage of that memory locality
     // and reduce the number of __global__ memory accesses.
     __shared__ float tile_A[TILE_SIZE][TILE_SIZE];
     __shared__ float tile_B[TILE_SIZE][TILE_SIZE];
-    
+
     int row = blockIdx.y * TILE_SIZE + threadIdx.y;
     int col = blockIdx.x * TILE_SIZE + threadIdx.x;
-    
+
     float sum = 0.0f;
-    
+
     // Loop over tiles
     for (int tile = 0; tile < (K + TILE_SIZE - 1) / TILE_SIZE; ++tile) {
         // Load tile of A into shared memory. Will be reused across threads in the block
@@ -38,7 +38,7 @@ extern "C" __global__ void matmul(
             // Pad with zeros if out of bounds
             tile_A[threadIdx.y][threadIdx.x] = 0.0f;
         }
-        
+
         // Load tile of B into shared memory
         int b_row = tile * TILE_SIZE + threadIdx.y;
         if (b_row < K && col < N) {
@@ -47,17 +47,17 @@ extern "C" __global__ void matmul(
             // Pad with zeros if out of bounds
             tile_B[threadIdx.y][threadIdx.x] = 0.0f;
         }
-        
+
         __syncthreads();
-        
+
         // Compute partial dot product
         for (int k = 0; k < TILE_SIZE; ++k) {
             sum += tile_A[threadIdx.y][k] * tile_B[k][threadIdx.x];
         }
-        
+
         __syncthreads();
     }
-    
+
     // Write result
     if (row < M && col < N) {
         C[row * N + col] = sum;
@@ -76,11 +76,11 @@ extern "C" __global__ void matmul_f64(
 ) {
     __shared__ double tile_A[TILE_SIZE][TILE_SIZE];
     __shared__ double tile_B[TILE_SIZE][TILE_SIZE];
-    
+
     int row = blockIdx.y * TILE_SIZE + threadIdx.y;
     int col = blockIdx.x * TILE_SIZE + threadIdx.x;
     double sum = 0.0;
-    
+
     // Loop over tiles
     for (int tile = 0; tile < (K + TILE_SIZE - 1) / TILE_SIZE; ++tile) {
         // Load tile of A into shared memory
@@ -90,7 +90,7 @@ extern "C" __global__ void matmul_f64(
         } else {
             tile_A[threadIdx.y][threadIdx.x] = 0.0;
         }
-        
+
         // Load tile of B into shared memory
         int b_row = tile * TILE_SIZE + threadIdx.y;
         if (b_row < K && col < N) {
@@ -98,17 +98,17 @@ extern "C" __global__ void matmul_f64(
         } else {
             tile_B[threadIdx.y][threadIdx.x] = 0.0;
         }
-        
+
         __syncthreads();
-        
+
         // Compute partial dot product
         for (int k = 0; k < TILE_SIZE; ++k) {
             sum += tile_A[threadIdx.y][k] * tile_B[k][threadIdx.x];
         }
-        
+
         __syncthreads();
     }
-    
+
     // Write result
     if (row < M && col < N) {
         C[row * N + col] = sum;
