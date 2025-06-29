@@ -11,6 +11,7 @@ pub const MATMUL_PTX: &[u8] = include_bytes!("../../../kernels/matmul.ptx");
 pub const REDUCES_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
 pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
+pub const CONVOLUTIONS_PTX: &[u8] = include_bytes!("../../../kernels/convolutions.ptx");
 
 // Generic kernel launch macro
 macro_rules! launch_kernel {
@@ -110,6 +111,12 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         ptx: TRANSPOSE_PTX,
         module: "transpose_module",
         functions: &["transpose_2d", "transpose_2d_f64"],
+    },
+    KernelConfig {
+        name: "convolutions",
+        ptx: CONVOLUTIONS_PTX,
+        module: "convolutions_module",
+        functions: &["conv2d_forward", "conv2d_forward_f64","conv2d_forward_shared", "conv2d_forward_shared_f64", "depthwise_separable_conv2d_fused","depthwise_separable_conv2d_fused_f64"],
     },
     KernelConfig {
         name: "comparison",

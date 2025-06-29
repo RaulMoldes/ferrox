@@ -539,7 +539,7 @@ mod tests {
             load_all_kernels(&mut kernels).unwrap();
 
             // Now kernels should be loaded
-            assert_eq!(kernels.loaded_kernels().len(), 52);
+            assert_eq!(kernels.loaded_kernels().len(), 56);
         }
     }
 
@@ -1526,7 +1526,7 @@ mod stream_tests {
             // This test requires integration with your kernel system
             let size = 1024;
             let data: Vec<f32> = (0..size).map(|i| i as f32).collect();
-         
+
 
             // Create additional streams for this test
             let temp_manager = setup_stream_manager().unwrap();
