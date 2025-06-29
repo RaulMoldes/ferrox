@@ -110,7 +110,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         name: "transpose",
         ptx: TRANSPOSE_PTX,
         module: "transpose_module",
-        functions: &["transpose_2d", "transpose_2d_f64"],
+        functions: &["transpose_2d", "transpose_2d_f64", "transpose_2d_shared", "transpose_2d_shared_f64"],
     },
     KernelConfig {
         name: "convolutions",
