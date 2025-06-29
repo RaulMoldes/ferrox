@@ -568,7 +568,7 @@ extern "C" __global__ void conv2d_forward_shared_f64(
     // Use shared memory for input and filter
     // Shared memory size: input tile + filter
     // Total shared memory size: (TILE_SIZE + kernel_height - 1) *
-    extern __shared__ double shared_mem[];
+    extern __shared__ double shared_mem_f64[]; // Be careful with variable name declarations
 
     // Compute the size of the input tile
     // Input tile size is the size of the output tile plus the kernel size minus 1
@@ -580,8 +580,8 @@ extern "C" __global__ void conv2d_forward_shared_f64(
     // Partition shared memory
     // First part for input tile, second part for filter
     // shared_mem size: input_tile_h * input_tile_w + filter_size
-    double* shared_input = shared_mem;
-    double* shared_filter = shared_mem + input_tile_h * input_tile_w;
+    double* shared_input = shared_mem_f64;
+    double* shared_filter = shared_mem_f64 + input_tile_h * input_tile_w;
 
     int out_x = blockIdx.x * TILE_SIZE + threadIdx.x;
     int out_y = blockIdx.y * TILE_SIZE + threadIdx.y;
