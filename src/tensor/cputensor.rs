@@ -94,7 +94,7 @@ where
 
         match Array::from_shape_vec(IxDyn(shape), data) {
             Ok(array) => Ok(Self::new(array)),
-            Err(e) => Err(format!("Failed to create tensor: {}", e)),
+            Err(e) => Err(format!("Failed to create tensor: {e}")),
         }
     }
 
@@ -845,8 +845,7 @@ where
 
         if total_elements != new_total_elements {
             return Err(format!(
-                "Cannot reshape tensor with {} elements to shape with {} elements",
-                total_elements, new_total_elements
+                "Cannot reshape tensor with {total_elements} elements to shape with {new_total_elements} elements"
             ));
         }
 

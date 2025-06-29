@@ -4,7 +4,7 @@ use cudarc::driver::CudaContext;
 #[cfg(feature = "cuda")]
 use ferrox::backend::Device;
 #[cfg(feature = "cuda")]
-use ferrox::backend::cuda::{CudaBackend, CudaTensor};
+use ferrox::backend::cuda::{CudaTensor};
 #[cfg(feature = "cuda")]
 use ferrox::backend::cuda::{CudaKernels};
 #[cfg(feature = "cuda")]

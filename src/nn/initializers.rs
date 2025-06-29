@@ -75,7 +75,7 @@ pub fn init_tensor_xavier_uniform(shape: &[usize], gain: f64) -> Tensor<f64> {
     if let Ok(tensor) = Tensor::from_vec(data, shape) {
         tensor
     } else {
-        panic!("Failed to create tensor with shape {:?}", shape);
+        panic!("Failed to create tensor with shape {shape:?}");
     }
 }
 
@@ -97,7 +97,7 @@ pub fn init_tensor_xavier_normal(shape: &[usize], gain: f64) -> Tensor<f64> {
     if let Ok(tensor) = Tensor::from_vec(data, shape) {
         tensor
     } else {
-        panic!("Failed to create tensor with shape {:?}", shape);
+        panic!("Failed to create tensor with shape {shape:?}");
     }
 }
 
@@ -119,7 +119,7 @@ pub fn init_tensor_kaiming_uniform(shape: &[usize], nonlinearity: &str) -> Tenso
     if let Ok(tensor) = Tensor::from_vec(data, shape) {
         tensor
     } else {
-        panic!("Failed to create tensor with shape {:?}", shape);
+        panic!("Failed to create tensor with shape {shape:?}");
     }
 }
 
@@ -141,7 +141,7 @@ pub fn init_tensor_kaiming_normal(shape: &[usize], nonlinearity: &str) -> Tensor
     if let Ok(tensor) = Tensor::from_vec(data, shape) {
         tensor
     } else {
-        panic!("Failed to create tensor with shape {:?}", shape);
+        panic!("Failed to create tensor with shape {shape:?}");
     }
 }
 

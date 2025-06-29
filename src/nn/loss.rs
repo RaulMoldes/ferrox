@@ -321,8 +321,7 @@ where
         let target_shape = graph.get_shape(targets);
         if pred_shape != target_shape {
             return Err(format!(
-                "Shape mismatch: predictions {:?} vs targets {:?}",
-                pred_shape, target_shape
+                "Shape mismatch: predictions {pred_shape:?} vs targets {target_shape:?}"
             ));
         }
 
@@ -565,8 +564,7 @@ where
             // Validate shapes for one-hot targets
             if pred_shape != target_shape {
                 return Err(format!(
-                    "Shape mismatch: predictions {:?} vs targets {:?}",
-                    pred_shape, target_shape
+                    "Shape mismatch: predictions {pred_shape:?} vs targets {target_shape:?}"
                 ));
             }
             targets
@@ -711,8 +709,7 @@ where
 
         if logits_shape != target_shape {
             return Err(format!(
-                "Shape mismatch: logits {:?} vs targets {:?}",
-                logits_shape, target_shape
+                "Shape mismatch: logits {logits_shape:?} vs targets {target_shape:?}"
             ));
         }
 

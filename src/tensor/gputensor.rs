@@ -664,7 +664,7 @@ where
     // Efficient 2D transpose operation using CUDA
     // This is a specialized operation for 2D tensors, leveraging CUDA capabilities
     // It assumes the tensor is 2D and transposes it by swapping rows and columns, in parallel
-    fn transpose_2D_cuda(&self) -> Result<Self, String> {
+    fn transpose_2d_cuda(&self) -> Result<Self, String> {
         if self.ndim() != 2 {
             return Err("Transpose is only supported for 2D tensors".to_string());
         }
@@ -735,7 +735,7 @@ where
                                 let transposed = data.into_owned().reversed_axes();
                                 Ok(Self::new_with_device(transposed, Device::CPU))
                             }
-                            Device::CUDA(_) => self.transpose_2D_cuda(),
+                            Device::CUDA(_) => self.transpose_2d_cuda(),
                         }
                     }
                     _ => {
@@ -1640,29 +1640,7 @@ where
         })
     }
 
-    // Note: This methods sends the CUDA tensor back to CPU
-    // and creates a new GPUTensor from the result.
-    // It is not the most efficient way to handle CUDA results,
-    // A better approach is to use the most optimized method that keeps the data on CUDA and allows to chain operations on the GPU.
-    fn create_sync_tensor_from_cuda_result(
-        &self,
-        cuda_result: crate::backend::cuda::CudaTensor<T>,
-    ) -> Result<Self, String> {
-        //   use crate::backend::manager::get_backend;
 
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        let context_manager = cuda_backend.context_manager();
-
-        // Transfer CUDA result back to CPU
-        let result_cpu = cuda_result.to_cpu(&context_manager)?;
-        let shape = cuda_result.shape();
-
-        // Create a new ArrayD from the CPU result
-        let result_array = ArrayD::from_shape_vec(IxDyn(shape), result_cpu)
-            .map_err(|e| format!("Failed to create array from CUDA result: {}", e))?;
-        Ok(GPUTensor::new_with_device(result_array, Device::CPU))
-    }
 
     /// Create a new GPUTensor from a CUDA result
     /// This method DOES NOT transfer the CUDA result back to CPU.

@@ -40,8 +40,8 @@ fn compile_cuda_kernels() {
     println!("Compiling CUDA kernels...");
 
     for kernel in &kernels {
-        let cu_file = kernels_dir.join(format!("{}.cu", kernel));
-        let ptx_file = kernels_dir.join(format!("{}.ptx", kernel));
+        let cu_file = kernels_dir.join(format!("{kernel}.cu"));
+        let ptx_file = kernels_dir.join(format!("{kernel}.ptx"));
 
         // Skip if .cu file doesn't exist
         if !cu_file.exists() {
@@ -62,12 +62,12 @@ fn compile_cuda_kernels() {
                 .unwrap_or(std::time::UNIX_EPOCH);
 
             if cu_modified <= ptx_modified {
-                println!("✓ {} is up to date", kernel);
+                println!("✓ {kernel} is up to date");
                 continue;
             }
         }
 
-        println!("Compiling {}...", kernel);
+        println!("Compiling {kernel}...");
 
         // Compile kernel to PTX
         let output = Command::new("nvcc")
@@ -95,10 +95,10 @@ fn compile_cuda_kernels() {
 
                 // Fix PTX version for compatibility
                 fix_ptx_version(&ptx_file);
-                println!("✓ Compiled {}", kernel);
+                println!("✓ Compiled {kernel}");
             }
             Err(e) => {
-                println!("cargo:warning=Error compiling {}: {}", kernel, e);
+                println!("cargo:warning=Error compiling {kernel}: {e}");
             }
         }
     }

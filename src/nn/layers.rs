@@ -254,8 +254,7 @@ where
 
         if output_shape != expected_output_shape {
             return Err(format!(
-                "Output shape mismatch after matrix multiplication: expected {:?}, got {:?}",
-                expected_output_shape, output_shape
+                "Output shape mismatch after matrix multiplication: expected {expected_output_shape:?}, got {output_shape:?}"
             ));
         }
 
@@ -294,8 +293,7 @@ where
             let final_output_shape = graph.get_shape(final_output);
             if final_output_shape != expected_output_shape {
                 return Err(format!(
-                    "Final output shape mismatch: expected {:?}, got {:?}",
-                    expected_output_shape, final_output_shape
+                    "Final output shape mismatch: expected {expected_output_shape:?}, got {final_output_shape:?}"
                 ));
             }
 

@@ -102,7 +102,7 @@ where
             let name = param
                 .name()
                 .map(|n| n.to_string())
-                .unwrap_or_else(|| format!("param_{}", i));
+                .unwrap_or_else(|| format!("param_{i}"));
 
             let node_id = Parameter::create_in_graph(graph, param.data.clone());
             param_map.insert(name, node_id);

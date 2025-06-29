@@ -27,11 +27,12 @@ macro_rules! launch_kernel {
                 .launch($cfg)
                 .map_err(|e| format!("Failed to launch {} kernel: {}", $kernel_name, e))?;
         }
-        
+
         Ok(())
     }};
 }
 /// Kernel configuration for automatic loading
+#[allow(dead_code)]
 struct KernelConfig {
     name: &'static str,
     ptx: &'static [u8],
@@ -356,7 +357,7 @@ impl CudaKernels {
         self.launch_binary_elementwise("elementwise_min", cfg, a, b, c, size)
     }
 
-    /// Element-wise maximum: result[i] = max(a[i], b[i])  
+    /// Element-wise maximum: result[i] = max(a[i], b[i])
     pub fn launch_max_elementwise<T>(
         &self,
         cfg: LaunchConfig,

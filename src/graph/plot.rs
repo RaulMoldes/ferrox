@@ -83,8 +83,7 @@ impl GraphVisualizer {
 
             writeln!(
                 dot,
-                "    {} [label=\"{}\", fillcolor=\"{}\"];",
-                node_id, label, color
+                "    {node_id} [label=\"{label}\", fillcolor=\"{color}\"];"
             )
             .unwrap();
         }
@@ -93,7 +92,7 @@ impl GraphVisualizer {
         for &node_id in &relevant_nodes {
             let node = engine.nodes[&node_id].borrow();
             for &input_id in &node.inputs {
-                writeln!(dot, "    {} -> {};", input_id, node_id).unwrap();
+                writeln!(dot, "    {input_id} -> {node_id};").unwrap();
             }
         }
 
@@ -151,13 +150,13 @@ impl GraphVisualizer {
         if let Some(ref op) = node.op {
             write!(label, "{}\\n{}", node_id, self.get_op_name(op.as_ref())).unwrap();
         } else {
-            write!(label, "{}\\nTensor", node_id).unwrap();
+            write!(label, "{node_id}\\nTensor").unwrap();
         }
 
         // Shape information
         if self.config.show_shapes {
             let shape = node.cached_data.shape();
-            write!(label, "\\nShape: {:?}", shape).unwrap();
+            write!(label, "\\nShape: {shape:?}").unwrap();
         }
 
         // Gradient information
@@ -199,7 +198,7 @@ impl GraphVisualizer {
         T: GPUNumber,
     {
         // This is a very simplistic way to get the operation name.
-        format!("{:?}", op)
+        format!("{op:?}")
     }
 
     /// Save the graph as a DOT file
@@ -242,14 +241,14 @@ impl GraphVisualizer {
         let dot_content = self.to_dot(engine, output_nodes);
 
         // Write DOT content to a temporary file
-        let temp_dot = format!("{}.dot", filename);
+        let temp_dot = format!("{filename}.dot");
         let mut file = File::create(&temp_dot)?;
         file.write_all(dot_content.as_bytes())?;
         drop(file); // Ensure file is closed
 
         // Use Graphviz to generate the image
         let output = Command::new("dot")
-            .arg(format!("-T{}", format))
+            .arg(format!("-T{format}"))
             .arg(&temp_dot)
             .arg("-o")
             .arg(filename)
@@ -289,7 +288,7 @@ impl GraphVisualizer {
             if relevant_nodes.contains(&node_id) {
                 let node = engine.nodes[&node_id].borrow();
 
-                print!("Node {}: ", node_id);
+                print!("Node {node_id}: ");
 
                 if let Some(ref op) = node.op {
                     print!("{} ", self.get_op_name(op.as_ref()));
