@@ -139,7 +139,6 @@ mod tests {
         if let Some(backend) = setup_cuda_backend() {
             assert_eq!(backend.id(), 0);
 
-
             // Test device synchronization
             assert!(backend.synchronize().is_ok());
         }
@@ -752,7 +751,6 @@ mod kernel_tests {
             let a = vec![1.0f32; size];
             let b = vec![2.0f32; size];
 
-
             let a_gpu = backend.context_manager().host_to_device(a.clone()).unwrap();
             let b_gpu = backend.context_manager().host_to_device(b.clone()).unwrap();
             let mut c_gpu = backend.context_manager().alloc_zeros::<f32>(size).unwrap();
@@ -1293,8 +1291,6 @@ mod stream_tests {
             assert!(manager.create_stream("test_stream").is_ok());
             assert!(manager.create_stream("another_stream").is_ok());
 
-
-
             // Check stream names
             let stream_names = manager.stream_names();
             assert!(stream_names.contains(&&"test_stream".to_string()));
@@ -1390,7 +1386,6 @@ mod stream_tests {
             let result = manager.host_to_device_async(data, Some("nonexistent"));
             assert!(result.is_err());
 
-
             // Test sync with non-existent stream
             let sync_result = manager.sync_stream("nonexistent");
             assert!(sync_result.is_err());
@@ -1407,19 +1402,17 @@ mod stream_tests {
             let data1 = vec![1.0f32; 1000];
             let data2 = vec![2.0f32; 1000];
             let data3 = vec![3.0f32; 1000];
-           for st in manager.stream_names() {
-            print!("Stream: {},",st);
-           }
+            for st in manager.stream_names() {
+                print!("Stream: {},", st);
+            }
             // Start multiple async operations
-            let gpu1 = manager
-                .host_to_device_async(data1, Some("copy_h2d"));
+            let gpu1 = manager.host_to_device_async(data1, Some("copy_h2d"));
             assert!(gpu1.is_ok());
             let gpu2_result = manager.host_to_device_async(data2, None); //
-             //Default stream
+            //Default stream
             assert!(gpu2_result.is_ok());
             let gpu2 = gpu2_result.unwrap();
-            let gpu3 = manager
-                .host_to_device_async(data3, Some("copy_d2h"));
+            let gpu3 = manager.host_to_device_async(data3, Some("copy_d2h"));
 
             assert!(gpu3.is_ok());
 
@@ -1526,7 +1519,6 @@ mod stream_tests {
             // This test requires integration with your kernel system
             let size = 1024;
             let data: Vec<f32> = (0..size).map(|i| i as f32).collect();
-
 
             // Create additional streams for this test
             let temp_manager = setup_stream_manager().unwrap();

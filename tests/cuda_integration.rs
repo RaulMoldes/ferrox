@@ -4,9 +4,9 @@ use cudarc::driver::CudaContext;
 #[cfg(feature = "cuda")]
 use ferrox::backend::Device;
 #[cfg(feature = "cuda")]
-use ferrox::backend::cuda::{CudaTensor};
+use ferrox::backend::cuda::CudaKernels;
 #[cfg(feature = "cuda")]
-use ferrox::backend::cuda::{CudaKernels};
+use ferrox::backend::cuda::CudaTensor;
 #[cfg(feature = "cuda")]
 use ferrox::backend::manager::get_backend;
 #[cfg(feature = "cuda")]
@@ -494,10 +494,7 @@ fn load_single_kernel(kernels: &mut CudaKernels, name: &str) -> Result<(), Strin
     println!("  Attempting to load PTX into module: {}", module_name);
     println!("  Expected functions: {:?}", functions);
 
-    match kernels
-        .device()
-        .load_module(ptx_str.into())
-    {
+    match kernels.device().load_module(ptx_str.into()) {
         Ok(module) => {
             println!("  ✓ PTX loaded into device successfully");
 

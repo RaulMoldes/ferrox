@@ -30,7 +30,6 @@ impl CudaContextManager {
     /// Creates a new CUDA memory manager for the specified device
     pub fn new(ctx: Arc<CudaContext>) -> Result<Self, String> {
         let default_stream = ctx.default_stream();
-      
 
         Ok(Self {
             ctx,
@@ -151,11 +150,10 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + std::marker::Unpin,
     {
-
         let stream = if let Some(name) = stream_name {
             let found_stream = self
-            .get_stream(name)
-            .ok_or_else(|| "Stream not found".to_string())?;
+                .get_stream(name)
+                .ok_or_else(|| "Stream not found".to_string())?;
             found_stream
         } else {
             self.default_stream.clone()
@@ -181,13 +179,12 @@ impl CudaContextManager {
     {
         let stream = if let Some(name) = stream_name {
             let found_stream = self
-            .get_stream(name)
-            .ok_or_else(|| "Stream not found".to_string())?;
+                .get_stream(name)
+                .ok_or_else(|| "Stream not found".to_string())?;
             found_stream
         } else {
             self.default_stream.clone()
         };
-
 
         let mut host_data = vec![T::default(); gpu_data.len()];
 
@@ -278,8 +275,6 @@ impl CudaContextManager {
         }
         Ok(())
     }
-
-
 
     pub fn create_stream(&self, stream_name: &str) -> Result<Arc<CudaStream>, String> {
         let mut streams = self

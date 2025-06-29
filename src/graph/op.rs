@@ -875,9 +875,7 @@ where
 {
     pub fn new(min_val: T, max_val: T) -> Self {
         if min_val > max_val {
-            panic!(
-                "ClampOp: min_val ({min_val:?}) cannot be greater than max_val ({max_val:?})"
-            );
+            panic!("ClampOp: min_val ({min_val:?}) cannot be greater than max_val ({max_val:?})");
         }
         Self { min_val, max_val }
     }

@@ -120,7 +120,7 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-    /// Element-wise multiplication: result = a * b  
+    /// Element-wise multiplication: result = a * b
     pub fn mul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUNumber + 'static,
@@ -806,6 +806,109 @@ impl<'a> CudaOps<'a> {
             &mut result.data,
             size as i32,
         )?;
+        Ok(result)
+    }
+
+    /// CONVOLUTIONAL OPS.
+    // Add to CudaOps impl block
+    pub fn conv2d<T>(
+        &self,
+        input: &CudaTensor<T>,
+        filter: &CudaTensor<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+           // Implementation for fused depthwise separable convolution
+           let input_shape = input.shape();
+           if input_shape.len() != 4 {
+               return Err("Conv2D requires 4D input".to_string());
+           }
+           let (batch, in_channels, input_h, input_w) = (
+               input_shape[0], input_shape[1], input_shape[2], input_shape[3]
+           );
+
+           let filter_shape = filter.shape();
+           if filter_shape.len() != 4 {
+            return Err("Conv2D requires 4D filter".to_string());
+        }
+        let (out_channels, _, filter_h, filter_w) =
+        (filter_shape[0], filter_shape[1], filter_shape[2],filter_shape[3]
+    );
+
+        let output_h = (input_h + 2 * padding.0 - filter_h) / stride.0 + 1;
+        let output_w = (input_w + 2 * padding.1 - filter_w) / stride.1 + 1;
+
+        let output_shape = vec![batch, out_channels, output_h, output_w];
+        let mut result = CudaTensor::zeros(self.memory, output_shape)?;
+
+        let cfg = LaunchConfig {
+            grid_dim: (
+                ((output_h * output_w + 255) / 256).try_into().unwrap(),
+                batch as u32,
+                out_channels as u32,
+            ),
+            block_dim: (256, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        self.kernels.launch_conv2d_forward(
+            cfg,
+            &input.data,
+            &filter.data,
+            &mut result.data,
+            batch as i32,
+            in_channels as i32,
+            input_h as i32,
+            input_w as i32,
+            out_channels as i32,
+            filter_h as i32,
+            filter_w as i32,
+            stride.0 as i32,
+            stride.1 as i32,
+            padding.0 as i32,
+            padding.1 as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    pub fn depthwise_separable_conv2d<T>(
+        &self,
+        input: &CudaTensor<T>,
+        depthwise_filter: &CudaTensor<T>,
+        pointwise_filter: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+        let input_shape = input.shape();
+        if input_shape.len() != 4 {
+            return Err("Conv2D requires 4D input".to_string());
+        }
+        let (batch, in_channels, input_h, input_w) = (
+            input_shape[0], input_shape[1], input_shape[2], input_shape[3]
+        );
+
+        // Fix: use the correct variable names
+        let output_shape = vec![batch, pointwise_filter.shape[0], input_h, input_w];
+        let mut result = CudaTensor::zeros(self.memory, output_shape)?;
+        let cfg = self.get_launch_config(batch * in_channels * input_h * input_w);
+
+        self.kernels.launch_depthwise_separable_conv2d_fused(
+            cfg,
+            &input.data,
+            &depthwise_filter.data,
+            &pointwise_filter.data,
+            &mut result.data,
+            batch as i32,
+            in_channels as i32,
+            input_h as i32,
+            input_w as i32,      
+        )?;
+
         Ok(result)
     }
 }

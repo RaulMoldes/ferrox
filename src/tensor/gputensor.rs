@@ -1640,8 +1640,6 @@ where
         })
     }
 
-
-
     /// Create a new GPUTensor from a CUDA result
     /// This method DOES NOT transfer the CUDA result back to CPU.
     /// You should manually call the to_cpu() method if you need the result on CPU.

@@ -1,6 +1,8 @@
 // src/backend/cuda/kernels.rs
 #[allow(unused_imports)]
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg};
+use cudarc::driver::{
+    CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -110,13 +112,25 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         name: "transpose",
         ptx: TRANSPOSE_PTX,
         module: "transpose_module",
-        functions: &["transpose_2d", "transpose_2d_f64", "transpose_2d_shared", "transpose_2d_shared_f64"],
+        functions: &[
+            "transpose_2d",
+            "transpose_2d_f64",
+            "transpose_2d_shared",
+            "transpose_2d_shared_f64",
+        ],
     },
     KernelConfig {
         name: "convolutions",
         ptx: CONVOLUTIONS_PTX,
         module: "convolutions_module",
-        functions: &["conv2d_forward", "conv2d_forward_f64","conv2d_forward_shared", "conv2d_forward_shared_f64", "depthwise_separable_conv2d_fused","depthwise_separable_conv2d_fused_f64"],
+        functions: &[
+            "conv2d_forward",
+            "conv2d_forward_f64",
+            "conv2d_forward_shared",
+            "conv2d_forward_shared_f64",
+            "depthwise_separable_conv2d_fused",
+            "depthwise_separable_conv2d_fused_f64",
+        ],
     },
     KernelConfig {
         name: "comparison",
@@ -266,7 +280,11 @@ impl CudaKernels {
             self,
             &kernel_name,
             cfg,
-            input, output, &outer_size, &axis_size, &inner_size
+            input,
+            output,
+            &outer_size,
+            &axis_size,
+            &inner_size
         )
     }
 
@@ -517,7 +535,11 @@ impl CudaKernels {
             self,
             &kernel_name,
             cfg,
-            input, output, &min_val, &max_val, &size
+            input,
+            output,
+            &min_val,
+            &max_val,
+            &size
         )
     }
 
@@ -694,7 +716,11 @@ impl CudaKernels {
             self,
             &kernel_name,
             cfg,
-            input, &min_val, &max_val, result, &size
+            input,
+            &min_val,
+            &max_val,
+            result,
+            &size
         )
     }
 
@@ -711,6 +737,125 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber,
     {
         launch_kernel!(self, kernel_name, cfg, input, output, &size)
+    }
+
+    /// CONVOLUTIONAL KERNELS
+    // Add to CudaKernels impl block
+    pub fn launch_conv2d_forward<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch: i32,
+        in_channels: i32,
+        input_h: i32,
+        input_w: i32,
+        out_channels: i32,
+        filter_h: i32,
+        filter_w: i32,
+        stride_h: i32,
+        stride_w: i32,
+        pad_h: i32,
+        pad_w: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            filter,
+            output,
+            &batch,
+            &in_channels,
+            &input_h,
+            &input_w,
+            &out_channels,
+            &filter_h,
+            &filter_w,
+            &stride_h,
+            &stride_w,
+            &pad_h,
+            &pad_w
+        )
+    }
+
+    pub fn launch_conv2d_forward_shared<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch: i32,
+        in_channels: i32,
+        input_h: i32,
+        input_w: i32,
+        out_channels: i32,
+        filter_h: i32,
+        filter_w: i32,
+        stride_h: i32,
+        stride_w: i32,
+        pad_h: i32,
+        pad_w: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("conv2d_forward_shared");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            filter,
+            output,
+            &batch,
+            &in_channels,
+            &input_h,
+            &input_w,
+            &out_channels,
+            &filter_h,
+            &filter_w,
+            &stride_h,
+            &stride_w,
+            &pad_h,
+            &pad_w
+        )
+    }
+
+    pub fn launch_depthwise_separable_conv2d_fused<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        depthwise_filter: &CudaSlice<T>,
+        pointwise_filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch: i32,
+        channels: i32,
+        height: i32,
+        width: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("depthwise_separable_conv2d_fused");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            depthwise_filter,
+            pointwise_filter,
+            output,
+            &batch,
+            &channels,
+            &height,
+            &width
+        )
     }
 
     pub fn device(&self) -> &Arc<CudaContext> {
