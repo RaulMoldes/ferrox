@@ -57,7 +57,7 @@ __global__ void transpose_2d_shared(
         tile[threadIdx.y][threadIdx.x] = input[input_idx];
     }
     else {
-        tile[threadIdx.y][threadIdx.x] = 0.0f;
+        tile[threadIdx.y][threadIdx.x] = 0.0f; // padding for shared memory
     }
 
     __syncthreads();
