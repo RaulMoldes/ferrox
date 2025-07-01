@@ -3,7 +3,7 @@
 #include <math.h>
 #include <float.h>
 
-#define TILE_SIZE 32
+#define TILE_SIZE 16
 // I have seen some cache access patterns that can lead to cache thrashing
 // and performance degradation.
 // This happens when the matrix dimensions are exact multiples of cache line
