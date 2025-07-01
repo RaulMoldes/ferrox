@@ -580,9 +580,13 @@ where
         })
     }
 
+    //--------------------------------------------------------------
+    // Broadcasting and reshaping operations
+    //--------------------------------------------------------------
+
     // Broadcasting for gradient computation - now returns GPUTensor.
     // Note that this operation is only CPU for now. Using it is very inefficient on GPU.
-    pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<Self, String> {
+    pub fn broadcast_to_cpu(&self, target_shape: &[usize]) -> Result<Self, String> {
         let data: Cow<ArrayD<T>> = self.get_data_synced()?;
 
         match data.broadcast(target_shape) {
@@ -598,17 +602,71 @@ where
         }
     }
 
+    // Broadcasting on CUDA.
+    pub fn broadcast_to_cuda(&self, target_shape: &[usize]) -> Result<Self, String> {
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensor
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
+
+            // Perform broadcasting operation
+            let result_cuda = cuda_ops.broadcast_to(&cuda_tensor, target_shape)?;
+
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+    }
+
+    // Smart broadcasting operation
+    pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<Self, String> {
+        match &self.device {
+            Device::CPU => self.broadcast_to_cpu(target_shape),
+            Device::CUDA(_) => self.broadcast_to_cuda(target_shape).or_else(|_| {
+                println!("CUDA broadcast failed, falling back to CPU");
+                self.broadcast_to_cpu(target_shape)
+            }),
+        }
+    }
+
+
     // Similar to tf.expand_dims, this function adds a new dimension at the specified axis.
-    pub fn unsqueeze(&self, axis: usize) -> Self {
+    // THe gpu alternative is more effcient as it uses a zero-copy approach.
+    pub fn unsqueeze_cpu(&self, axis: usize) -> Self {
         let data: Cow<ArrayD<T>> = self.get_data_synced().unwrap_or_else(|_| {
             panic!("Failed to get data for unsqueeze on CPU");
         });
         let expanded = data.into_owned().insert_axis(Axis(axis));
         Self::new_with_device(expanded, Device::CPU) // CPU only for now
     }
+    
+    // Cuda-based unsqueeze operation. Uses a zero-copy approach.
+    pub fn unsqueeze_cuda(&self, axis: usize) -> Result<Self, String> {
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensor
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
+
+            // Perform unsqueeze operation
+            let result_cuda = cuda_ops.unsqueeze(&cuda_tensor, axis)?;
+
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+    }
+
+    // Smart unsqueeze operation
+    pub fn unsqueeze(&self, axis: usize) -> Result<Self, String> {
+        match &self.device {
+            Device::CPU => Ok(self.unsqueeze_cpu(axis)),
+            Device::CUDA(_) => self.unsqueeze_cuda(axis).or_else(|_| {
+                println!("CUDA unsqueeze failed, falling back to CPU");
+                Ok(self.unsqueeze_cpu(axis))
+            }),
+        }
+    }
 
     // Squeeze operation - remove dimensions of size 1
-    pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
+    pub fn squeeze_cpu(&self, axis: Option<usize>) -> Result<Self, String> {
         let data: Cow<ArrayD<T>> = self.get_data_synced()?;
 
         match axis {
@@ -641,9 +699,38 @@ where
             }
         }
     }
+    
+    // Cuda-based squeeze operation.
+    pub fn squeeze_cuda(&self, axis: Option<usize>) -> Result<Self, String> {
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensor
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
+
+            // Perform squeeze operation
+            let result_cuda = match axis {
+                Some(ax) => cuda_ops.squeeze_axis(&cuda_tensor, ax)?,
+                None => cuda_ops.squeeze_all(&cuda_tensor)?,
+            };
+
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+    }
+
+    pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
+        match &self.device {
+            Device::CPU => self.squeeze_cpu(axis),
+            Device::CUDA(_) => self.squeeze_cuda(axis).or_else(|_| {
+                println!("CUDA squeeze failed, falling back to CPU");
+                self.squeeze_cpu(axis)
+            }),
+        }
+    }
+
 
     // Reshape operation - change tensor shape while preserving total elements
-    pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, String> {
+    pub fn reshape_cpu(&self, new_shape: &[usize]) -> Result<Self, String> {
         let data: Cow<ArrayD<T>> = self.get_data_synced()?;
         let total_elements: usize = data.shape().iter().product();
         let new_total_elements: usize = new_shape.iter().product();
@@ -658,6 +745,33 @@ where
         match data.into_owned().into_shape_with_order(IxDyn(new_shape)) {
             Ok(reshaped) => Ok(Self::new_with_device(reshaped, Device::CPU)), // Return Self, not CPUTensor
             Err(e) => Err(format!("Failed to reshape tensor: {e}")),
+        }
+    }
+
+
+    // Reshape operation for CUDA tensors
+    pub fn reshape_cuda(&self, new_shape: &[usize]) -> Result<Self, String> {
+        self.with_cuda_backend(|cuda_backend| {
+            // Get or create CUDA tensor
+            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let cuda_ops = cuda_backend.ops();
+
+            // Perform reshape operation
+            let result_cuda = cuda_ops.reshape(&cuda_tensor, new_shape)?;
+
+            // Convert the CUDA result back to GPUTensor
+            self.create_tensor_from_cuda_result(result_cuda)
+        })
+    }
+
+    // Smart reshape operation
+    pub fn reshape(&self, new_shape: &[usize]) -> Result<Self, String> {
+        match &self.device {
+            Device::CPU => self.reshape_cpu(new_shape),
+            Device::CUDA(_) => self.reshape_cuda(new_shape).or_else(|_| {
+                println!("CUDA reshape failed, falling back to CPU");
+                self.reshape(new_shape)
+            }),
         }
     }
 
@@ -2181,8 +2295,6 @@ where
     }
 }
 
-
-
 //// -------------------------------------------------------------------
 /// CONVOLUTION OPERATIONS
 /// --------------------------------------------------------------------
@@ -2191,10 +2303,7 @@ where
 impl<T> GPUTensor<T>
 where
     T: GPUNumber + Clone,
-{   
-
-
-
+{
     /// Convert image patches to column matrix (im2col)
     /// Detailed documentation is available in the CPUTensor impl.
     fn im2col(
@@ -2204,49 +2313,59 @@ where
         padding: (usize, usize),
     ) -> Result<ArrayD<T>, String> {
         let input_shape = self.shape();
-        let (batch, channels, in_h, in_w) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
+        let (batch, channels, in_h, in_w) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
         let (kernel_h, kernel_w) = kernel_size;
-        
+
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
         let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-        
+
         let col_height = channels * kernel_h * kernel_w;
         let col_width = batch * out_h * out_w;
-        
+
         let mut col_data = vec![<T as CPUNumber>::zero(); col_height * col_width];
         let input_data = self.data.as_slice().unwrap();
-        
+
         for b in 0..batch {
             for c in 0..channels {
-
                 // Note that here we are iterating over the kernel height and width,
                 // and for each kernel element we iterate over the output feature map.
                 // This is the key part of the im2col operation.
                 for ky in 0..kernel_h {
                     for kx in 0..kernel_w {
                         let col_row = c * kernel_h * kernel_w + ky * kernel_w + kx;
-                        
+
                         for out_y in 0..out_h {
                             for out_x in 0..out_w {
                                 // Calculate the input coordinates based on the output coordinates,
                                 // kernel size, stride, and padding.
                                 let in_y = out_y * stride.0 + ky;
                                 let in_x = out_x * stride.1 + kx;
-                                
+
                                 let col_col = b * out_h * out_w + out_y * out_w + out_x;
-                                
+
                                 // Check if the input coordinates are within the padded input dimensions
                                 // and if they are, we can safely access the input data.
                                 // If they are not, we skip this position, preventing out-of-bounds access.
-                                if in_y >= padding.0 && in_y < in_h + padding.0 &&
-                                   in_x >= padding.1 && in_x < in_w + padding.1 {
+                                if in_y >= padding.0
+                                    && in_y < in_h + padding.0
+                                    && in_x >= padding.1
+                                    && in_x < in_w + padding.1
+                                {
                                     let actual_y = in_y - padding.0;
                                     let actual_x = in_x - padding.1;
-                                    
+
                                     if actual_y < in_h && actual_x < in_w {
-                                        let input_idx = b * (channels * in_h * in_w) +
-                                            c * (in_h * in_w) + actual_y * in_w + actual_x;
-                                        col_data[col_row * col_width + col_col] = input_data[input_idx];
+                                        let input_idx = b * (channels * in_h * in_w)
+                                            + c * (in_h * in_w)
+                                            + actual_y * in_w
+                                            + actual_x;
+                                        col_data[col_row * col_width + col_col] =
+                                            input_data[input_idx];
                                     }
                                 }
                             }
@@ -2255,12 +2374,11 @@ where
                 }
             }
         }
-        
+
         ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
             .map_err(|e| format!("Failed to create im2col matrix: {}", e))
     }
 
-   
     /// 2D Convolution
     /// CPU based implementation of 2D convolution.
     /// Look at the CPUTensor impl for more details.
@@ -2272,60 +2390,73 @@ where
     ) -> Result<Self, String> {
         let input_shape = self.shape();
         let filter_shape = filter.shape();
-        
-        let (batch, in_channels, in_h, in_w) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
-        let (out_channels, _, kernel_h, kernel_w) = (filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3]);
-        
+
+        let (batch, in_channels, in_h, in_w) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
+        let (out_channels, _, kernel_h, kernel_w) = (
+            filter_shape[0],
+            filter_shape[1],
+            filter_shape[2],
+            filter_shape[3],
+        );
+
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
         let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-        
+
         // im2col: [in_channels * kernel_h * kernel_w, batch * out_h * out_w].
         let col_matrix = self.im2col((kernel_h, kernel_w), stride, padding)?;
-        
+
         // Reshape filter: [out_channels, in_channels * kernel_h * kernel_w]
-        let filter_reshaped = filter.data.clone().into_shape_with_order(
-            IxDyn(&[out_channels, in_channels * kernel_h * kernel_w])
-        ).map_err(|e| format!("Filter reshape failed: {}", e))?;
-        
+        let filter_reshaped = filter
+            .data
+            .clone()
+            .into_shape_with_order(IxDyn(&[out_channels, in_channels * kernel_h * kernel_w]))
+            .map_err(|e| format!("Filter reshape failed: {}", e))?;
+
         // Compute the output using matrix multiplication
-        // We need to convert the data to 2D views. Nte that this does not actually create a copy 
+        // We need to convert the data to 2D views. Nte that this does not actually create a copy
         // of the data, it just creates a view of the data with the specified shape.
         let im2col_view: ndarray::ArrayView2<T> = col_matrix.view().into_dimensionality().unwrap();
-        let filter_view: ndarray::ArrayView2<T> = filter_reshaped.view().into_dimensionality().unwrap();
+        let filter_view: ndarray::ArrayView2<T> =
+            filter_reshaped.view().into_dimensionality().unwrap();
         // GEMM: filter_reshaped @ col_matrix = [out_channels, batch * out_h * out_w]
         let output_2d = filter_view.dot(&im2col_view);
-        
 
         // Then we reshape back to the original shape.
         // Reshape to [batch, out_channels, out_h, out_w]
         let output_data: Vec<T> = output_2d.as_slice().unwrap().to_vec();
         let mut final_output = vec![<T as CPUNumber>::zero(); batch * out_channels * out_h * out_w];
-        
+
         // Transpose from [out_channels, batch * out_h * out_w] to [batch, out_channels, out_h, out_w]
         for out_c in 0..out_channels {
             for b in 0..batch {
                 for y in 0..out_h {
                     for x in 0..out_w {
-                        let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
-                        let dst_idx = b * (out_channels * out_h * out_w) + out_c * (out_h * out_w) + y * out_w + x;
+                        let src_idx =
+                            out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                        let dst_idx = b * (out_channels * out_h * out_w)
+                            + out_c * (out_h * out_w)
+                            + y * out_w
+                            + x;
                         final_output[dst_idx] = output_data[src_idx];
                     }
                 }
             }
         }
-        
-        let output_array = ArrayD::from_shape_vec(
-            IxDyn(&[batch, out_channels, out_h, out_w]),
-            final_output
-        ).map_err(|e| format!("Failed to create output tensor: {}", e))?;
-        
+
+        let output_array =
+            ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
+                .map_err(|e| format!("Failed to create output tensor: {}", e))?;
+
         Ok(Self::new(output_array))
     }
 
-    
-
-     /// Depthwise convolution (Look at the CPUTensor impl for more details)
-     pub fn depthwise_conv2d_cpu(
+    /// Depthwise convolution (Look at the CPUTensor impl for more details)
+    pub fn depthwise_conv2d_cpu(
         &self,
         filter: &Self,
         stride: (usize, usize),
@@ -2333,66 +2464,82 @@ where
     ) -> Result<Self, String> {
         let input_shape = self.shape();
         let filter_shape = filter.shape();
-        
-        let (batch, channels, in_h, in_w) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
-        let (filter_channels, _, kernel_h, kernel_w) = (filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3]);
-        
+
+        let (batch, channels, in_h, in_w) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
+        let (filter_channels, _, kernel_h, kernel_w) = (
+            filter_shape[0],
+            filter_shape[1],
+            filter_shape[2],
+            filter_shape[3],
+        );
+
         if channels != filter_channels {
             return Err("Channel count mismatch in depthwise conv".to_string());
         }
-        
+
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
         let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-        
+
         let mut output_data = vec![<T as CPUNumber>::zero(); batch * channels * out_h * out_w];
         let input_data = self.data.as_slice().unwrap();
         let filter_data = filter.data.as_slice().unwrap();
-        
+
         // Each channel processed independently - no cross-channel mixing
         for b in 0..batch {
             for c in 0..channels {
                 for out_y in 0..out_h {
                     for out_x in 0..out_w {
                         let mut sum = <T as CPUNumber>::zero();
-                        
+
                         // Convolve single channel with its corresponding filter
                         for ky in 0..kernel_h {
                             for kx in 0..kernel_w {
                                 let in_y = out_y * stride.0 + ky;
                                 let in_x = out_x * stride.1 + kx;
-                                
-                                if in_y >= padding.0 && in_y < in_h + padding.0 &&
-                                   in_x >= padding.1 && in_x < in_w + padding.1 {
+
+                                if in_y >= padding.0
+                                    && in_y < in_h + padding.0
+                                    && in_x >= padding.1
+                                    && in_x < in_w + padding.1
+                                {
                                     let actual_y = in_y - padding.0;
                                     let actual_x = in_x - padding.1;
-                                    
+
                                     if actual_y < in_h && actual_x < in_w {
-                                        let input_idx = b * (channels * in_h * in_w) +
-                                            c * (in_h * in_w) + actual_y * in_w + actual_x;
-                                        let filter_idx = c * (kernel_h * kernel_w) + ky * kernel_w + kx;
-                                        
+                                        let input_idx = b * (channels * in_h * in_w)
+                                            + c * (in_h * in_w)
+                                            + actual_y * in_w
+                                            + actual_x;
+                                        let filter_idx =
+                                            c * (kernel_h * kernel_w) + ky * kernel_w + kx;
+
                                         sum = sum + input_data[input_idx] * filter_data[filter_idx];
                                     }
                                 }
                             }
                         }
-                        
-                        let output_idx = b * (channels * out_h * out_w) +
-                            c * (out_h * out_w) + out_y * out_w + out_x;
+
+                        let output_idx = b * (channels * out_h * out_w)
+                            + c * (out_h * out_w)
+                            + out_y * out_w
+                            + out_x;
                         output_data[output_idx] = sum;
                     }
                 }
             }
         }
-        
-        let output_array = ArrayD::from_shape_vec(
-            IxDyn(&[batch, channels, out_h, out_w]),
-            output_data
-        ).map_err(|e| format!("Failed to create output tensor: {}", e))?;
-        
+
+        let output_array =
+            ArrayD::from_shape_vec(IxDyn(&[batch, channels, out_h, out_w]), output_data)
+                .map_err(|e| format!("Failed to create output tensor: {}", e))?;
+
         Ok(Self::new(output_array))
     }
-
 
     /// --------------------------------------------------------
     /// SMART OPERATIONS (SELECT GPU OR CPU BASED ON DEVICE)
@@ -2406,15 +2553,21 @@ where
     ) -> Result<GPUTensor<T>, String> {
         // Validate input dimensions
         if self.shape().len() != 4 {
-            return Err("Conv2D requires 4D input tensor [batch, channels, height, width]".to_string());
+            return Err(
+                "Conv2D requires 4D input tensor [batch, channels, height, width]".to_string(),
+            );
         }
         if filter.shape().len() != 4 {
-            return Err("Conv2D requires 4D filter tensor [out_channels, in_channels, height, width]".to_string());
+            return Err(
+                "Conv2D requires 4D filter tensor [out_channels, in_channels, height, width]"
+                    .to_string(),
+            );
         }
 
         match &self.device {
             Device::CPU => self.conv2d_cpu(filter, stride, padding, bias),
-            Device::CUDA(_) => self.conv2d_cuda(filter, stride, padding, bias)
+            Device::CUDA(_) => self
+                .conv2d_cuda(filter, stride, padding, bias)
                 .unwrap_or_else(|_| {
                     println!("CUDA conv2d failed, falling back to CPU");
                     self.conv2d_cpu(filter, stride, padding, bias)
@@ -2422,7 +2575,6 @@ where
                 }),
         }
     }
-
 
     /// Pointwise convolution (1x1 convolution)
     /// Fused depthwise separable convolution (combines depthwise + pointwise)
@@ -2438,26 +2590,30 @@ where
         match &self.device {
             Device::CPU => {
                 // Sequential execution on CPU
-                let intermediate = self.depthwise_conv2d_cpu(depthwise_filter, stride, padding, depthwise_bias)?;
+                let intermediate =
+                    self.depthwise_conv2d_cpu(depthwise_filter, stride, padding, depthwise_bias)?;
                 intermediate.pointwise_conv2d_cpu(pointwise_filter, pointwise_bias)
-            },
-            Device::CUDA(_) => self.depthwise_separable_conv2d_cuda(
-                depthwise_filter,
-                pointwise_filter,
-                stride,
-                padding,
-                depthwise_bias,
-                pointwise_bias,
-            ).unwrap_or_else(|_| {
-                println!("CUDA fused depthwise separable conv2d failed, falling back to CPU");
-                let intermediate = self.depthwise_conv2d(depthwise_filter, stride, padding, depthwise_bias)
-                    .expect("CPU fallback failed");
-                intermediate.pointwise_conv2d(pointwise_filter, pointwise_bias)
-                    .expect("CPU fallback failed")
-            }),
+            }
+            Device::CUDA(_) => self
+                .depthwise_separable_conv2d_cuda(
+                    depthwise_filter,
+                    pointwise_filter,
+                    stride,
+                    padding,
+                    depthwise_bias,
+                    pointwise_bias,
+                )
+                .unwrap_or_else(|_| {
+                    println!("CUDA fused depthwise separable conv2d failed, falling back to CPU");
+                    let intermediate = self
+                        .depthwise_conv2d(depthwise_filter, stride, padding, depthwise_bias)
+                        .expect("CPU fallback failed");
+                    intermediate
+                        .pointwise_conv2d(pointwise_filter, pointwise_bias)
+                        .expect("CPU fallback failed")
+                }),
         }
     }
-
 
     /// PRIVATE CUDA - BASED CONVOLUTION OPERATIONS
     /// Implemented on cuda kernels. Look at the convolutions.cu file for the C++ implementation.
@@ -2472,10 +2628,10 @@ where
         self.with_cuda_backend(|cuda_backend| {
             let cuda_input = self.get_or_create_cuda_tensor(cuda_backend)?;
             let cuda_filter = filter.get_or_create_cuda_tensor(cuda_backend)?;
-            
+
             let cuda_ops = cuda_backend.ops();
             let result_cuda = cuda_ops.conv2d(&cuda_input, &cuda_filter, stride, padding)?;
-            
+
             // Apply bias if provided
             let final_result = if let Some(bias_tensor) = bias {
                 let cuda_bias = bias_tensor.get_or_create_cuda_tensor(cuda_backend)?;
@@ -2483,7 +2639,7 @@ where
             } else {
                 result_cuda
             };
-            
+
             self.create_tensor_from_cuda_result(final_result)
         })
     }
@@ -2502,22 +2658,22 @@ where
             let cuda_input = self.get_or_create_cuda_tensor(cuda_backend)?;
             let cuda_depthwise_filter = depthwise_filter.get_or_create_cuda_tensor(cuda_backend)?;
             let cuda_pointwise_filter = pointwise_filter.get_or_create_cuda_tensor(cuda_backend)?;
-            
+
             let cuda_ops = cuda_backend.ops();
-            
+
             // Get bias tensors if provided
             let cuda_depthwise_bias = if let Some(bias) = depthwise_bias {
                 Some(bias.get_or_create_cuda_tensor(cuda_backend)?)
             } else {
                 None
             };
-            
+
             let cuda_pointwise_bias = if let Some(bias) = pointwise_bias {
                 Some(bias.get_or_create_cuda_tensor(cuda_backend)?)
             } else {
                 None
             };
-            
+
             // Use fused kernel for better performance
             let result_cuda = cuda_ops.depthwise_separable_conv2d_fused(
                 &cuda_input,
@@ -2528,13 +2684,10 @@ where
                 stride,
                 padding,
             )?;
-            
+
             self.create_tensor_from_cuda_result(result_cuda)
         })
     }
-
-
-   
 }
 
 // PartialEq implementation to fix comparison errors in tests

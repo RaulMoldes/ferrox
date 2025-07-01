@@ -916,9 +916,6 @@ where
             }
         }
     }
-
-
-
 }
 
 //// -------------------------------------------------------------------
@@ -929,10 +926,7 @@ where
 impl<T> CPUTensor<T>
 where
     T: GPUNumber + Clone,
-{   
-
-
-
+{
     /// Convert image patches to column matrix (im2col)
     /// I am going to try to explain why these is needed.
     /// Basically, in order to perform convolution, we need to convert the input image patches into a column matrix.
@@ -955,13 +949,13 @@ where
     /// [3 * 2 * 2, 1 * 4 * 4] = [12, 16].
     /// This means we have 12 rows (one for each channel and kernel element)
     /// and 16 columns (one for each position in the output feature map).   
-    /// 
+    ///
     /// If you dive deeper into the impl, you will see that we also have a nested loop
     /// that iterates over the kernel height and width, and for each kernel element,
     /// we iterate over the output feature map positions.
-    /// 
+    ///
     /// You could be tempted to think that it is the same as performing a convolution operation, in a nested loop
-    /// as we are not getting away from it completely, but the key idea is that the outer part of the loop is MUCH SMALLER than if we had to iterate over 
+    /// as we are not getting away from it completely, but the key idea is that the outer part of the loop is MUCH SMALLER than if we had to iterate over
     /// the input image height and width, as an image can have thousands of pixels, while the kernel size is usually small (3x3, 5x5, etc.).
     fn im2col(
         &self,
@@ -970,49 +964,59 @@ where
         padding: (usize, usize),
     ) -> Result<ArrayD<T>, String> {
         let input_shape = self.shape();
-        let (batch, channels, in_h, in_w) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
+        let (batch, channels, in_h, in_w) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
         let (kernel_h, kernel_w) = kernel_size;
-        
+
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
         let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-        
+
         let col_height = channels * kernel_h * kernel_w;
         let col_width = batch * out_h * out_w;
-        
+
         let mut col_data = vec![<T as CPUNumber>::zero(); col_height * col_width];
         let input_data = self.data.as_slice().unwrap();
-        
+
         for b in 0..batch {
             for c in 0..channels {
-
                 // Note that here we are iterating over the kernel height and width,
                 // and for each kernel element we iterate over the output feature map.
                 // This is the key part of the im2col operation.
                 for ky in 0..kernel_h {
                     for kx in 0..kernel_w {
                         let col_row = c * kernel_h * kernel_w + ky * kernel_w + kx;
-                        
+
                         for out_y in 0..out_h {
                             for out_x in 0..out_w {
                                 // Calculate the input coordinates based on the output coordinates,
                                 // kernel size, stride, and padding.
                                 let in_y = out_y * stride.0 + ky;
                                 let in_x = out_x * stride.1 + kx;
-                                
+
                                 let col_col = b * out_h * out_w + out_y * out_w + out_x;
-                                
+
                                 // Check if the input coordinates are within the padded input dimensions
                                 // and if they are, we can safely access the input data.
                                 // If they are not, we skip this position, preventing out-of-bounds access.
-                                if in_y >= padding.0 && in_y < in_h + padding.0 &&
-                                   in_x >= padding.1 && in_x < in_w + padding.1 {
+                                if in_y >= padding.0
+                                    && in_y < in_h + padding.0
+                                    && in_x >= padding.1
+                                    && in_x < in_w + padding.1
+                                {
                                     let actual_y = in_y - padding.0;
                                     let actual_x = in_x - padding.1;
-                                    
+
                                     if actual_y < in_h && actual_x < in_w {
-                                        let input_idx = b * (channels * in_h * in_w) +
-                                            c * (in_h * in_w) + actual_y * in_w + actual_x;
-                                        col_data[col_row * col_width + col_col] = input_data[input_idx];
+                                        let input_idx = b * (channels * in_h * in_w)
+                                            + c * (in_h * in_w)
+                                            + actual_y * in_w
+                                            + actual_x;
+                                        col_data[col_row * col_width + col_col] =
+                                            input_data[input_idx];
                                     }
                                 }
                             }
@@ -1021,12 +1025,11 @@ where
                 }
             }
         }
-        
+
         ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
             .map_err(|e| format!("Failed to create im2col matrix: {}", e))
     }
 
-   
     /// 2D Convolution
     pub fn conv2d(
         &self,
@@ -1036,13 +1039,23 @@ where
     ) -> Result<Self, String> {
         let input_shape = self.shape();
         let filter_shape = filter.shape();
-        
-        let (batch, in_channels, in_h, in_w) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
-        let (out_channels, _, kernel_h, kernel_w) = (filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3]);
-        
+
+        let (batch, in_channels, in_h, in_w) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
+        let (out_channels, _, kernel_h, kernel_w) = (
+            filter_shape[0],
+            filter_shape[1],
+            filter_shape[2],
+            filter_shape[3],
+        );
+
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
         let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-        
+
         // im2col: [in_channels * kernel_h * kernel_w, batch * out_h * out_w]
         // Compute im2col.
         // Aka from:
@@ -1068,44 +1081,49 @@ where
         // This way, we extract patches of the input tensor and flatten them into columns,
         // which allows us to perform the convolution as a matrix multiplication.
         let col_matrix = self.im2col((kernel_h, kernel_w), stride, padding)?;
-        
+
         // Reshape filter: [out_channels, in_channels * kernel_h * kernel_w]
-        let filter_reshaped = filter.data.clone().into_shape_with_order(
-            IxDyn(&[out_channels, in_channels * kernel_h * kernel_w])
-        ).map_err(|e| format!("Filter reshape failed: {}", e))?;
-        
+        let filter_reshaped = filter
+            .data
+            .clone()
+            .into_shape_with_order(IxDyn(&[out_channels, in_channels * kernel_h * kernel_w]))
+            .map_err(|e| format!("Filter reshape failed: {}", e))?;
+
         // Compute the output using matrix multiplication
-        // We need to convert the data to 2D views. Nte that this does not actually create a copy 
+        // We need to convert the data to 2D views. Nte that this does not actually create a copy
         // of the data, it just creates a view of the data with the specified shape.
         let im2col_view: ndarray::ArrayView2<T> = col_matrix.view().into_dimensionality().unwrap();
-        let filter_view: ndarray::ArrayView2<T> = filter_reshaped.view().into_dimensionality().unwrap();
+        let filter_view: ndarray::ArrayView2<T> =
+            filter_reshaped.view().into_dimensionality().unwrap();
         // GEMM: filter_reshaped @ col_matrix = [out_channels, batch * out_h * out_w]
         let output_2d = filter_view.dot(&im2col_view);
-        
 
         // Then we reshape back to the original shape.
         // Reshape to [batch, out_channels, out_h, out_w]
         let output_data: Vec<T> = output_2d.as_slice().unwrap().to_vec();
         let mut final_output = vec![<T as CPUNumber>::zero(); batch * out_channels * out_h * out_w];
-        
+
         // Transpose from [out_channels, batch * out_h * out_w] to [batch, out_channels, out_h, out_w]
         for out_c in 0..out_channels {
             for b in 0..batch {
                 for y in 0..out_h {
                     for x in 0..out_w {
-                        let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
-                        let dst_idx = b * (out_channels * out_h * out_w) + out_c * (out_h * out_w) + y * out_w + x;
+                        let src_idx =
+                            out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                        let dst_idx = b * (out_channels * out_h * out_w)
+                            + out_c * (out_h * out_w)
+                            + y * out_w
+                            + x;
                         final_output[dst_idx] = output_data[src_idx];
                     }
                 }
             }
         }
-        
-        let output_array = ArrayD::from_shape_vec(
-            IxDyn(&[batch, out_channels, out_h, out_w]),
-            final_output
-        ).map_err(|e| format!("Failed to create output tensor: {}", e))?;
-        
+
+        let output_array =
+            ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
+                .map_err(|e| format!("Failed to create output tensor: {}", e))?;
+
         Ok(Self::new(output_array))
     }
 
@@ -1115,7 +1133,7 @@ where
     /// and then apply a pointwise convolution, which mixes the output channels.
     /// The output shape is [batch, out_channels, out_h, out_w] where
     /// out_channels is the number of filters in the pointwise convolution.
-    /// I think it is very inefficient on CPU but as I also have the GPU , I decided to add it so that 
+    /// I think it is very inefficient on CPU but as I also have the GPU , I decided to add it so that
     /// I can keep it as a fallback when gpu is not available.
     pub fn depthwise_separable_conv2d(
         &self,
@@ -1134,17 +1152,17 @@ where
         // The output shape will be [batch, out_channels, out_h, out_w]
         // where out_channels is the number of filters in the pointwise convolution.
         let depthwise_result = self.depthwise_conv2d(depthwise_filter, stride, padding)?;
-        depthwise_result.conv2d(pointwise_filter, (1, 1), (0, 0)) 
+        depthwise_result.conv2d(pointwise_filter, (1, 1), (0, 0))
     }
 
-     /// Depthwise convolution (efficient channel-wise implementation)
-     /// Depthwise convolution applies a separate filter to each input channel independently.
-     /// This is different from standard convolution where filters mix across channels.
-     /// The output shape is [batch, channels, out_h, out_w] where each channel is convolved with its own filter.
-     /// I will provide a link to this explanation 
-     /// which really helped me to understand how depthwise separable 
-     /// convolutions work: https://medium.com/data-science/understanding-depthwise-separable-convolutions-and-the-efficiency-of-mobilenets-6de3d6b62503
-     pub fn depthwise_conv2d(
+    /// Depthwise convolution (efficient channel-wise implementation)
+    /// Depthwise convolution applies a separate filter to each input channel independently.
+    /// This is different from standard convolution where filters mix across channels.
+    /// The output shape is [batch, channels, out_h, out_w] where each channel is convolved with its own filter.
+    /// I will provide a link to this explanation
+    /// which really helped me to understand how depthwise separable
+    /// convolutions work: https://medium.com/data-science/understanding-depthwise-separable-convolutions-and-the-efficiency-of-mobilenets-6de3d6b62503
+    pub fn depthwise_conv2d(
         &self,
         filter: &Self,
         stride: (usize, usize),
@@ -1152,63 +1170,80 @@ where
     ) -> Result<Self, String> {
         let input_shape = self.shape();
         let filter_shape = filter.shape();
-        
-        let (batch, channels, in_h, in_w) = (input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
-        let (filter_channels, _, kernel_h, kernel_w) = (filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3]);
-        
+
+        let (batch, channels, in_h, in_w) = (
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
+        );
+        let (filter_channels, _, kernel_h, kernel_w) = (
+            filter_shape[0],
+            filter_shape[1],
+            filter_shape[2],
+            filter_shape[3],
+        );
+
         if channels != filter_channels {
             return Err("Channel count mismatch in depthwise conv".to_string());
         }
-        
+
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
         let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-        
+
         let mut output_data = vec![<T as CPUNumber>::zero(); batch * channels * out_h * out_w];
         let input_data = self.data.as_slice().unwrap();
         let filter_data = filter.data.as_slice().unwrap();
-        
+
         // Each channel processed independently - no cross-channel mixing
         for b in 0..batch {
             for c in 0..channels {
                 for out_y in 0..out_h {
                     for out_x in 0..out_w {
                         let mut sum = <T as CPUNumber>::zero();
-                        
+
                         // Convolve single channel with its corresponding filter
                         for ky in 0..kernel_h {
                             for kx in 0..kernel_w {
                                 let in_y = out_y * stride.0 + ky;
                                 let in_x = out_x * stride.1 + kx;
-                                
-                                if in_y >= padding.0 && in_y < in_h + padding.0 &&
-                                   in_x >= padding.1 && in_x < in_w + padding.1 {
+
+                                if in_y >= padding.0
+                                    && in_y < in_h + padding.0
+                                    && in_x >= padding.1
+                                    && in_x < in_w + padding.1
+                                {
                                     let actual_y = in_y - padding.0;
                                     let actual_x = in_x - padding.1;
-                                    
+
                                     if actual_y < in_h && actual_x < in_w {
-                                        let input_idx = b * (channels * in_h * in_w) +
-                                            c * (in_h * in_w) + actual_y * in_w + actual_x;
-                                        let filter_idx = c * (kernel_h * kernel_w) + ky * kernel_w + kx;
-                                        
+                                        let input_idx = b * (channels * in_h * in_w)
+                                            + c * (in_h * in_w)
+                                            + actual_y * in_w
+                                            + actual_x;
+                                        let filter_idx =
+                                            c * (kernel_h * kernel_w) + ky * kernel_w + kx;
+
                                         sum = sum + input_data[input_idx] * filter_data[filter_idx];
                                     }
                                 }
                             }
                         }
-                        
-                        let output_idx = b * (channels * out_h * out_w) +
-                            c * (out_h * out_w) + out_y * out_w + out_x;
+
+                        let output_idx = b * (channels * out_h * out_w)
+                            + c * (out_h * out_w)
+                            + out_y * out_w
+                            + out_x;
                         output_data[output_idx] = sum;
                     }
                 }
             }
         }
-        
-        let output_array = ArrayD::from_shape_vec(
-            IxDyn(&[batch, channels, out_h, out_w]),
-            output_data
-        ).map_err(|e| format!("Failed to create output tensor: {}", e))?;
-        
+
+        let output_array =
+            ArrayD::from_shape_vec(IxDyn(&[batch, channels, out_h, out_w]), output_data)
+                .map_err(|e| format!("Failed to create output tensor: {}", e))?;
+
         Ok(Self::new(output_array))
     }
 }
