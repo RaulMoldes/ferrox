@@ -606,11 +606,11 @@ where
     pub fn broadcast_to_cuda(&self, target_shape: &[usize]) -> Result<Self, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Get or create CUDA tensor
-            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
-            let result_cuda = cuda_tensor.broadcast_to(target_shape)?;
+            let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            cuda_tensor.broadcast_to(target_shape)?;
 
             // Convert the CUDA result back to GPUTensor
-            self.create_tensor_from_cuda_result(result_cuda)
+            self.create_tensor_from_cuda_result(cuda_tensor)
         })
     }
 
@@ -639,24 +639,24 @@ where
     pub fn unsqueeze_cuda(&self, axis: usize) -> Result<Self, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Get or create CUDA tensor
-            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
 
 
             // Perform unsqueeze operation
-            let result_cuda = cuda_tensor.unsqueeze(axis)?;
+            cuda_tensor.unsqueeze(axis)?;
 
             // Convert the CUDA result back to GPUTensor
-            self.create_tensor_from_cuda_result(result_cuda)
+            self.create_tensor_from_cuda_result(cuda_tensor)
         })
     }
 
     // Smart unsqueeze operation
-    pub fn unsqueeze(&self, axis: usize) -> Result<Self, String> {
+    pub fn unsqueeze(&self, axis: usize) -> GPUTensor<T> {
         match &self.device {
-            Device::CPU => Ok(self.unsqueeze_cpu(axis)),
-            Device::CUDA(_) => self.unsqueeze_cuda(axis).or_else(|_| {
+            Device::CPU => self.unsqueeze_cpu(axis),
+            Device::CUDA(_) => self.unsqueeze_cuda(axis).unwrap_or_else(|_| {
                 println!("CUDA unsqueeze failed, falling back to CPU");
-                Ok(self.unsqueeze_cpu(axis))
+                self.unsqueeze_cpu(axis)
             }),
         }
     }
@@ -700,13 +700,13 @@ where
     pub fn squeeze_cuda(&self, axis: Option<usize>) -> Result<Self, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Get or create CUDA tensor
-            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
 
 
-            let result_cuda = cuda_tensor.squeeze(axis)?;
+           cuda_tensor.squeeze(axis)?;
 
             // Convert the CUDA result back to GPUTensor
-            self.create_tensor_from_cuda_result(result_cuda)
+            self.create_tensor_from_cuda_result(cuda_tensor)
         })
     }
 
@@ -743,14 +743,14 @@ where
     pub fn reshape_cuda(&self, new_shape: &[usize]) -> Result<Self, String> {
         self.with_cuda_backend(|cuda_backend| {
             // Get or create CUDA tensor
-            let cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
+            let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
 
 
             // Perform reshape operation
-            let result_cuda = cuda_tensor.reshape(new_shape)?;
+            cuda_tensor.reshape(new_shape.to_vec())?;
 
             // Convert the CUDA result back to GPUTensor
-            self.create_tensor_from_cuda_result(result_cuda)
+            self.create_tensor_from_cuda_result(cuda_tensor)
         })
     }
 
@@ -2558,10 +2558,10 @@ where
             Device::CPU => self.conv2d_cpu(filter, stride, padding),
             Device::CUDA(_) => self
                 .conv2d_cuda(filter, stride, padding, bias)
-                .unwrap_or_else(|_| {
+                .or_else(|_| {
                     println!("CUDA conv2d failed, falling back to CPU");
                     self.conv2d_cpu(filter, stride, padding)
-                        .expect("CPU fallback failed")
+
                 }),
         }
     }
@@ -2582,7 +2582,7 @@ where
                 // Sequential execution on CPU
                 let intermediate =
                     self.depthwise_conv2d_cpu(depthwise_filter, stride, padding)?;
-                intermediate.pointwise_conv2d_cpu(pointwise_filter, pointwise_bias)
+                intermediate.conv2d_cpu(pointwise_filter, (1, 1), (0, 0))
             }
             Device::CUDA(_) => self
                 .depthwise_separable_conv2d_cuda(
@@ -2593,14 +2593,12 @@ where
                     depthwise_bias,
                     pointwise_bias,
                 )
-                .unwrap_or_else(|_| {
+                .or_else(|_| {
                     println!("CUDA fused depthwise separable conv2d failed, falling back to CPU");
                     let intermediate = self
-                        .depthwise_conv2d(depthwise_filter, stride, padding, depthwise_bias)
+                        .depthwise_conv2d_cpu(depthwise_filter, stride, padding)
                         .expect("CPU fallback failed");
-                    intermediate
-                        .pointwise_conv2d(pointwise_filter, pointwise_bias)
-                        .expect("CPU fallback failed")
+                    intermediate.conv2d_cpu(pointwise_filter, (1, 1), (0, 0))
                 }),
         }
     }
@@ -2665,14 +2663,10 @@ where
             };
 
             // Use fused kernel for better performance
-            let result_cuda = cuda_ops.depthwise_separable_conv2d_fused(
+            let result_cuda = cuda_ops.depthwise_separable_conv2d(
                 &cuda_input,
                 &cuda_depthwise_filter,
                 &cuda_pointwise_filter,
-                cuda_depthwise_bias.as_ref(),
-                cuda_pointwise_bias.as_ref(),
-                stride,
-                padding,
             )?;
 
             self.create_tensor_from_cuda_result(result_cuda)

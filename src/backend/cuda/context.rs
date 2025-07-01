@@ -465,22 +465,7 @@ where
         &self.strides
     }
 
-    /// Reshapes the tensor to new dimensions (without copying data)
-    pub fn reshape(&mut self, new_shape: Vec<usize>) -> Result<(), String> {
-        let new_size: usize = new_shape.iter().product();
-        let current_size = self.size();
 
-        if new_size != current_size {
-            return Err(format!(
-                "Cannot reshape tensor of size {} to shape {:?} (size {})",
-                current_size, new_shape, new_size
-            ));
-        }
-
-        self.shape = new_shape;
-        self.strides = compute_strides(&self.shape);
-        Ok(())
-    }
 
     // Safer clone implementation
     /// Clones the tensor data to a new CudaTensor
@@ -508,7 +493,7 @@ where
     /// This OPs allow to manipulate the view of the data without copying it
     /// It is useful for broadcasting, slicing, and reshaping tensors on GPU
     /// Zero-copy reshape - only changes shape/strides metadata
-    pub fn reshape(&self, new_shape: Vec<usize>) -> Result<Self, String> {
+    pub fn reshape(&mut self, new_shape: Vec<usize>) -> Result<(), String> {
         let new_size: usize = new_shape.iter().product();
         let current_size = self.size();
 
@@ -524,12 +509,11 @@ where
         if !self.is_contiguous() {
             return Err("Cannot reshape non-contiguous tensor without copying".to_string());
         }
+        self.strides = compute_strides(&new_shape);
+        self.shape = new_shape;
 
-        Ok(Self {
-            data: self.data.clone(), // Shallow clone - same GPU memory
-            shape: new_shape,
-            strides: compute_strides(&new_shape),
-        })
+
+        Ok(())
     }
 
     /// Zero-copy broadcast - BROADCAST OPERATION (Based on: https://numpy.org/doc/2.1/reference/generated/numpy.broadcast.html)
@@ -537,8 +521,8 @@ where
     /// that shares the same GPU memory as the original tensor.
     /// It uses the can_broadcast function to check if the shapes are compatible.
     /// It returns an error if the shapes cannot be broadcasted.
-    pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<Self, String> {
-        if !can_broadcast(&self.shape, target_shape) {
+    pub fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
+        if !can_broadcast_to(&self.shape, target_shape) {
             return Err(format!(
                 "Cannot broadcast shape {:?} to {:?}",
                 self.shape, target_shape
@@ -547,11 +531,10 @@ where
 
         let new_strides = broadcast_strides(&self.shape, &self.strides, target_shape);
 
-        Ok(Self {
-            data: self.data.clone(), // Same GPU memory
-            shape: target_shape.to_vec(),
-            strides: new_strides,
-        })
+        self.shape = target_shape.to_vec();
+        self.strides  = new_strides;
+
+        Ok(())
     }
 
     /// Check if tensor memory layout is contiguous
@@ -561,7 +544,7 @@ where
     }
 
     /// Zero-copy unsqueeze - add dimension of size 1 at specified axis
-    pub fn unsqueeze(&self, axis: usize) -> Result<Self, String> {
+    pub fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
         if axis > self.shape.len() {
             return Err(format!(
                 "Cannot unsqueeze at axis {} for tensor with {} dimensions",
@@ -574,16 +557,13 @@ where
         new_shape.insert(axis, 1);
 
         let new_strides = unsqueeze_strides(&self.strides, axis);
-
-        Ok(Self {
-            data: self.data.clone(), // Zero-copy: same GPU memory
-            shape: new_shape,
-            strides: new_strides,
-        })
+        self.shape = new_shape;
+        self.strides = new_strides;
+        Ok(())
     }
 
     /// Zero-copy squeeze - remove dimensions of size 1
-    pub fn squeeze(&self, axis: Option<usize>) -> Result<Self, String> {
+    pub fn squeeze(&mut self, axis: Option<usize>) -> Result<(), String> {
         match axis {
             Some(ax) => {
                 // Squeeze specific axis
@@ -601,22 +581,16 @@ where
                 let mut new_strides = self.strides.clone();
                 new_shape.remove(ax);
                 new_strides.remove(ax);
-
-                Ok(Self {
-                    data: self.data.clone(),
-                    shape: new_shape,
-                    strides: new_strides,
-                })
+                self.shape = new_shape;
+                self.strides = new_strides;
+                Ok(())
             }
             None => {
                 // Squeeze all dimensions of size 1
                 let (new_shape, new_strides) = squeeze_all_dims(&self.shape, &self.strides);
-
-                Ok(Self {
-                    data: self.data.clone(),
-                    shape: new_shape,
-                    strides: new_strides,
-                })
+                self.shape = new_shape;
+                self.strides = new_strides;
+                Ok(())
             }
         }
     }
