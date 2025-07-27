@@ -1,128 +1,54 @@
-// src/backend/cuda/context.rs
-use super::context::{CudaContextManager, CudaTensor};
-use super::kernels::{CudaKernels, load_all_kernels};
-use super::ops::CudaOps;
+// CUDA device management
+// This module now only handles device initialization, not backend operations
 use cudarc::driver::CudaContext;
 use std::sync::Arc;
 
-/// Main CUDA backend that manages context and kernels
-pub struct CudaBackend {
-    context: Arc<CudaContext>, // CudaContext::new() returns this type directly, // Default stream for memory operations
-    kernels: CudaKernels,
-    context_id: usize, // Unique identifier for the CUDA context
-    context_manager: CudaContextManager,
+/// CUDA device wrapper
+/// Only responsible for CUDA device initialization and context creation
+pub struct CudaDevice {
+    context: Arc<CudaContext>,
+    device_id: usize,
 }
 
-impl CudaBackend {
-    /// Creates a new CUDA backend for the specified context
-    pub fn new(context_id: usize) -> Result<Self, String> {
-        // CudaContext::new() returns Arc<CudaContext> already, not CudaContext
-        let context = CudaContext::new(context_id)
-            .map_err(|e| format!("Failed to initialize CUDA context {}: {}", context_id, e))?;
-
-        // context is already Arc<CudaContext>, so we can clone it directly
-        let mut kernels = CudaKernels::new(context.clone());
-        let context_manager = CudaContextManager::new(context.clone())?;
-        // Load all kernels during initialization
-        load_all_kernels(&mut kernels)?;
+impl CudaDevice {
+    /// Initialize CUDA device and create context
+    pub fn new(device_id: usize) -> Result<Self, String> {
+        let context = CudaContext::new(device_id)
+            .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?;
 
         Ok(Self {
             context,
-            kernels,
-            context_id,
-            context_manager,
+            device_id,
         })
     }
 
-    pub fn default_stream(&self) -> Arc<cudarc::driver::CudaStream> {
-        self.context.default_stream()
+    /// Get the CUDA context for use by other components
+    pub fn context(&self) -> Arc<CudaContext> {
+        self.context.clone()
     }
 
-    /// Returns reference to the CUDA context
-    pub fn context(&self) -> &Arc<CudaContext> {
-        &self.context
-    }
-
+    /// Get device ID
     pub fn id(&self) -> usize {
-        self.context_id
+        self.device_id
     }
 
-    /// Returns reference to the kernel manager
-    pub fn kernels(&self) -> &CudaKernels {
-        &self.kernels
+    /// Check if device is available
+    pub fn is_available() -> bool {
+        CudaContext::new(0).is_ok()
     }
 
-    /// Returns mutable reference to the kernel manager
-    pub fn kernels_mut(&mut self) -> &mut CudaKernels {
-        &mut self.kernels
-    }
-
-    /// Synchronizes the context (waits for all operations to complete)
+    /// Synchronize device operations
     pub fn synchronize(&self) -> Result<(), String> {
         self.context
             .synchronize()
             .map_err(|e| format!("CUDA synchronization failed: {}", e))
     }
-
-    /// Returns context name for debugging
-    pub fn name(&self) -> String {
-        format!("CUDA context {}", self.context_id)
-    }
-
-    /// Creates a CUDA tensor from CPU data
-    /// This method takes host data and copies it to GPU memory
-    pub fn create_tensor_from_cpu<T>(
-        &self,
-        data: Vec<T>,
-        shape: Vec<usize>,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + Clone
-            + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin
-            + Default,
-    {
-        // Validate that data size matches shape
-        let size = shape.iter().product::<usize>();
-        if data.len() != size {
-            return Err(format!(
-                "Data length {} doesn't match shape {:?} (expected {})",
-                data.len(),
-                shape,
-                size
-            ));
-        }
-
-        // Create memory manager for this context
-        let context_manager = self.context_manager();
-
-        // Transfer data from host to context
-        let cuda_data = context_manager.host_to_device(data)?;
-
-        // Create and return the CUDA tensor
-        Ok(CudaTensor::new(cuda_data, shape))
-    }
-
-    /// Returns reference to memory manager
-    /// This method provides access to the memory manager for external use
-    pub fn context_manager(&self) -> &CudaContextManager {
-        &self.context_manager
-    }
-
-    /// Returns reference to operations interface
-    /// This method provides access to CUDA operations for tensor computations
-    pub fn ops(&self) -> CudaOps<'_> {
-        let memory = self.context_manager();
-        CudaOps::new(&self.kernels, memory)
-    }
 }
 
-impl std::fmt::Debug for CudaBackend {
+impl std::fmt::Debug for CudaDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CudaBackend")
-            .field("context_id", &self.context_id)
-            .field("context_name", &self.name())
+        f.debug_struct("CudaDevice")
+            .field("device_id", &self.device_id)
             .finish()
     }
 }

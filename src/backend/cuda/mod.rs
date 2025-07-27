@@ -3,23 +3,26 @@
 pub mod device;
 #[cfg(feature = "cuda")]
 pub mod kernels;
-
 #[cfg(feature = "cuda")]
 pub mod context;
-
 #[cfg(feature = "cuda")]
 pub mod ops;
+#[cfg(feature = "cuda")]
+pub mod stream_manager;
 
 #[cfg(feature = "cuda")]
 pub use context::{CudaContextManager, CudaTensor};
+#[cfg(feature = "cuda")]
+pub use device::CudaDevice;
+#[cfg(feature = "cuda")]
+pub use kernels::{CudaKernels, load_all_kernels};
+
+// ALIAS para compatibilidad - CudaContextManager es ahora el "backend principal"
+#[cfg(feature = "cuda")]
+pub use context::CudaContextManager as CudaBackend;
 
 #[cfg(all(test, feature = "cuda"))]
 mod tests;
-
-#[cfg(feature = "cuda")]
-pub use device::CudaBackend;
-#[cfg(feature = "cuda")]
-pub use kernels::{CudaKernels, load_all_kernels};
 
 // Dummy implementations when CUDA is not available
 #[cfg(not(feature = "cuda"))]

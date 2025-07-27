@@ -1,48 +1,158 @@
-// src/backend/cuda/memory.rs
+// src/backend/cuda/context.rs
 #[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
-use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
+use cudarc::driver::{CudaContext, CudaSlice, CudaStream, LaunchConfig};
+use crate::backend::number::CPUNumber;
+use super::kernels::{CudaKernels, load_all_kernels};
+use super::ops::CudaOps;
+use super::device::CudaDevice;
+use super::stream_manager::StreamManager;
+use ndarray::{ArrayD, IxDyn};
 use std::collections::HashMap;
 use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
-///
-/// This module provides high-level abstractions for:
-/// - Allocating GPU memory buffers
-/// - Host-to-device transfers
-/// - Device-to-host transfers
-/// - Memory copying between GPU buffers
-/// - Memory pool management for better performance
-/// - Stream management for asynchronous operations
+
+/// Enhanced CUDA context manager that serves as the main backend abstraction
+/// This replaces the CudaBackend functionality from device.rs
 pub struct CudaContextManager {
     ctx: Arc<CudaContext>,
-    // Uses a HashMap to manage multiple CUDA streams by name
-    // This allows for flexible stream management, where each stream can be identified by a unique name
-    streams: Arc<Mutex<HashMap<String, Arc<CudaStream>>>>,
     default_stream: Arc<CudaStream>,
+    kernels: CudaKernels,
+    stream_manager: StreamManager, // StreamManager is owned by ContextManager
 }
 
 unsafe impl Send for CudaContextManager {}
 unsafe impl Sync for CudaContextManager {}
 
 impl CudaContextManager {
-    /// Creates a new CUDA memory manager for the specified device
-    pub fn new(ctx: Arc<CudaContext>) -> Result<Self, String> {
+    /// Creates a new CUDA context manager with full backend capabilities
+    pub fn new(device: CudaDevice) -> Result<Self, String> {
+        let ctx = device.context();
         let default_stream = ctx.default_stream();
+
+        // Initialize and load kernels during context creation
+        let mut kernels = CudaKernels::new(ctx.clone());
+        load_all_kernels(&mut kernels)?;
+
+        // Create stream manager
+        let stream_manager = StreamManager::new();
 
         Ok(Self {
             ctx,
-            streams: Arc::new(Mutex::new(HashMap::new())),
             default_stream,
+            kernels,
+            stream_manager,
         })
     }
 
-    /// Allocates zeroed memory on the GPU. In C++ API, you would do this with
-    /// `cudaMalloc` + `cudaMemset`.
-    /// This is a convenience method that combines allocation and zeroing.
-    /// It is safer, because it ensures the memory is initialized to zero,
-    /// avoiding potential issues with uninitialized memory and corrupted data.
+    /// Create context manager directly from device ID
+    pub fn from_device_id(device_id: usize) -> Result<Self, String> {
+        let device = CudaDevice::new(device_id)?;
+        Self::new(device)
+    }
+
+
+
+    // ============= BACKEND TENSOR CREATION OPERATIONS =============
+    // These methods provide the backend abstraction
+
+    /// Create zeroed tensor data on GPU
+    pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + cudarc::driver::ValidAsZeroBits
+            + crate::backend::number::GPUNumber
+            + 'static,
+    {
+        let size = shape.iter().product();
+        let gpu_data = self.alloc_zeros(size)?;
+        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
+    }
+
+    /// Create ones tensor data directly on GPU
+    pub fn ones<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + cudarc::driver::ValidAsZeroBits
+            + crate::backend::number::GPUNumber
+            + 'static,
+    {
+        let size = shape.iter().product();
+        let mut gpu_data = unsafe { self.alloc(size)? };
+
+        let cfg = LaunchConfig {
+            block_dim: (256, 1, 1),
+            grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        self.kernels.launch_fill(cfg, &mut gpu_data, <T as CPUNumber>::one(), size as i32)?;
+        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
+    }
+
+    pub fn empty<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + cudarc::driver::ValidAsZeroBits
+            + crate::backend::number::GPUNumber
+            + 'static,
+    {
+        self.zeros(shape)
+    }
+
+    /// Create tensor filled with specific value directly on GPU
+    pub fn full<T>(&self, shape: &[usize], fill_value: T) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + cudarc::driver::ValidAsZeroBits
+            + crate::backend::number::GPUNumber
+            + 'static,
+    {
+        let size = shape.iter().product();
+        let mut gpu_data = unsafe { self.alloc(size)? };
+
+        let cfg = LaunchConfig {
+            block_dim: (256, 1, 1),
+            grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        self.kernels.launch_fill(cfg, &mut gpu_data, fill_value, size as i32)?;
+        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
+    }
+
+    /// Create random tensor data directly on GPU using CUDA kernels
+    pub fn randn<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr
+            + cudarc::driver::ValidAsZeroBits
+            + crate::backend::number::GPUNumber
+            + 'static,
+    {
+        let size = shape.iter().product();
+        let mut gpu_data = unsafe { self.alloc(size)? };
+
+        let cfg = LaunchConfig {
+            block_dim: (256, 1, 1),
+            grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        // Use current timestamp as seed for randomness
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        self.kernels.launch_fill_random(cfg, &mut gpu_data, size as i32, seed)?;
+        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
+    }
+
+    // ============= GPU MEMORY MANAGEMENT =============
+
+    /// Allocates zeroed memory on the GPU
     pub fn alloc_zeros<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
@@ -52,15 +162,11 @@ impl CudaContextManager {
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
     }
 
-    /// Allocates uninitialized memory on the GPU.
-    /// Basic cudaMalloc equivalent.
+    /// Allocates uninitialized memory on the GPU
     pub unsafe fn alloc<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr,
     {
-        // SAFETY: This method does not initialize the memory, so it may contain garbage data.
-        // Use with caution, as it may lead to undefined behavior if the data is not initialized.
-        // It is the user's responsibility to ensure the memory is initialized before use.
         unsafe {
             self.default_stream
                 .alloc(size)
@@ -68,43 +174,45 @@ impl CudaContextManager {
         }
     }
 
-    /// SYNCHRONOUS memory transfers between host and device
-    // -------- `cudaMemcpy` equivalents for host to device transfers  -------- //
-
-    // ASYNC transfers are implemented using streams, which allow overlapping
-    // memory transfers with kernel execution, improving performance.
-
-    /// Copies data from host to device
-    /// `host_to_device` is a synchronous operation that blocks until the copy is complete.
-    pub fn host_to_device<T>(&self, data: Vec<T>) -> Result<CudaSlice<T>, String>
+    /// Synchronous host to device transfer
+    pub fn host_to_device<T>(&self, data: &[T]) -> Result<CudaSlice<T>, String>  // Changed from Vec<T> to &[T]
     where
-        T: cudarc::driver::DeviceRepr + std::marker::Unpin, // we need to be able to unpin the data
+        T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        let mut gpu_mem = unsafe { self.default_stream.alloc::<T>(data.len()) }
+        // Allocate GPU memory first
+        let mut device_buffer = self.default_stream
+            .alloc_zeros(data.len())
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
 
-        self.default_stream
-            .memcpy_htod(&data, &mut gpu_mem)
-            .map_err(|e| format!("Failed to copy host to device: {}", e))?;
-        Ok(gpu_mem)
+        // Copy data from host to device using the correct cudarc API
+        unsafe {
+            self.default_stream
+                .memcpy_htod(data, &mut device_buffer,)  // data is now &[T]
+                .map_err(|e| format!("Host to device transfer failed: {}", e))?;
+        }
+
+        Ok(device_buffer)
     }
 
-    /// Copies data from device to host synchronously
-    pub fn device_to_host<T>(&self, gpu_data: &CudaSlice<T>) -> Result<Vec<T>, String>
+    /// Synchronous device to host transfer
+    pub fn device_to_host<T>(&self, data: &CudaSlice<T>) -> Result<Vec<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone + std::default::Default,
+        T: cudarc::driver::DeviceRepr + Clone + Default,
     {
-        let mut host_data = vec![T::default(); gpu_data.len()];
+        // Allocate host buffer
+        let mut host_buffer = vec![T::default(); data.len()];
 
-        self.default_stream
-            .memcpy_dtoh(gpu_data, &mut host_data)
-            .map_err(|e| format!("Failed to copy device to host: {}", e))?;
-        Ok(host_data)
+        // Copy data from device to host using the correct cudarc API
+        unsafe {
+            self.default_stream
+                .memcpy_dtoh(data, &mut host_buffer)
+                .map_err(|e| format!("Device to host transfer failed: {}", e))?;
+        }
+
+        Ok(host_buffer)
     }
 
-    /// Copies data between GPU buffers.
-    /// Not used for now but if I scale the project to support multiple GPUs, and parallel execution
-    /// will be nice to have
+    /// Device to device memory copy
     pub fn device_to_device<T>(
         &self,
         src: &CudaSlice<T>,
@@ -113,235 +221,191 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr,
     {
-        self.default_stream
-            .memcpy_dtod(src, dst)
-            .map_err(|e| format!("Failed to copy device to device: {}", e))
+        if src.len() != dst.len() {
+            return Err(format!(
+                "Source and destination sizes don't match: {} vs {}",
+                src.len(),
+                dst.len()
+            ));
+        }
+
+        // Copy data from device to device using the correct cudarc API
+        unsafe {
+            self.default_stream
+                .memcpy_dtod(src, dst)
+                .map_err(|e| format!("Device to device copy failed: {}", e))?;
+        }
+
+        Ok(())
     }
 
-    // Currently cudarc does not allow to access the device free memory or total memory data directly.
-    // There is a crate called ´cust´ that provides this functionality via FFI.
-    // If needed, I can implement this later.
+    // ============= BACKEND INTERFACE METHODS =============
 
-    /// Synchronizes the device to ensure all operations complete
+    /// Get device ID (compatibility method for tests)
+    pub fn id(&self) -> usize {
+        // Since we don't store device_id anymore, return 0 as default
+        // In a real implementation, you could query this from the context
+        0
+    }
+
+    /// Get device name for debugging
+    pub fn name(&self) -> String {
+        "CUDA context".to_string()
+    }
+
+    /// Access to kernel manager
+    pub fn kernels(&self) -> &CudaKernels {
+        &self.kernels
+    }
+
+    /// Mutable access to kernel manager
+    pub fn kernels_mut(&mut self) -> &mut CudaKernels {
+        &mut self.kernels
+    }
+
+    /// Access to operations interface
+    pub fn ops(&self) -> CudaOps<'_> {
+        CudaOps::new(&self.kernels, self)
+    }
+
+    /// Synchronize all operations
     pub fn synchronize(&self) -> Result<(), String> {
         self.ctx
             .synchronize()
-            .map_err(|e| format!("Failed to synchronize device: {}", e))
+            .map_err(|e| format!("CUDA synchronization failed: {}", e))
     }
 
-    // -------- ASYNC MEMORY TRANSFERS -------- //
+    /// Get default stream
+    pub fn default_stream(&self) -> Arc<CudaStream> {
+        self.default_stream.clone()
+    }
 
-    /// ASYNC operations using streams
-    /// These methods allow overlapping memory transfers with kernel execution,
-    /// improving performance by utilizing the GPU's capabilities.
-    /// NVIDIA docs: https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__STREAM.html
-    /// A stream is basically a GPU-based pipelining of the memory transfers with kernel execution.
-    ///
-    ///
-    //
-    // Note: I was going to implement this when I realized that
-    // cudarc 0.12.1 doesn't expose async API directly, so I decided to upgrade to 0.16.5
-    // which has better async support.
-    pub fn host_to_device_async<T>(
+    /// Access to underlying CUDA context
+    pub fn context(&self) -> &Arc<CudaContext> {
+        &self.ctx
+    }
+
+    /// Create CUDA tensor from CPU data (backend functionality)
+    pub fn create_tensor_from_cpu<T>(
         &self,
-        data: Vec<T>,
-        stream_name: Option<&str>,
-    ) -> Result<CudaSlice<T>, String>
+        data: &[T],
+        shape: Vec<usize>,
+    ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + std::marker::Unpin,
+        T: cudarc::driver::DeviceRepr
+            + Clone
+            + cudarc::driver::ValidAsZeroBits
+            + std::marker::Unpin
+            + Default,
     {
-        let stream = if let Some(name) = stream_name {
-            let found_stream = self
-                .get_stream(name)
-                .ok_or_else(|| "Stream not found".to_string())?;
-            found_stream
-        } else {
-            self.default_stream.clone()
-        };
-
-        let mut gpu_mem = unsafe { stream.alloc::<T>(data.len()) }
-            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
-
-        stream
-            .memcpy_htod(&data, &mut gpu_mem)
-            .map_err(|e| format!("Failed stream-aware host to device copy: {}", e))?;
-        Ok(gpu_mem)
-    }
-
-    /// Stream-aware device to host copy (currently synchronous but stream-scheduled)
-    pub fn device_to_host_async<T>(
-        &self,
-        gpu_data: &CudaSlice<T>,
-        stream_name: Option<&str>,
-    ) -> Result<Vec<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr + Clone + std::default::Default,
-    {
-        let stream = if let Some(name) = stream_name {
-            let found_stream = self
-                .get_stream(name)
-                .ok_or_else(|| "Stream not found".to_string())?;
-            found_stream
-        } else {
-            self.default_stream.clone()
-        };
-
-        let mut host_data = vec![T::default(); gpu_data.len()];
-
-        stream
-            .memcpy_dtoh(gpu_data, &mut host_data)
-            .map_err(|e| format!("Failed stream-aware device to host copy: {}", e))?;
-        Ok(host_data)
-    }
-
-    // -------- STREAM MANAGEMENT -------- //
-
-    /// Check if stream exists (simplified since we can't query CUDA stream status)
-    pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
-        let streams = self
-            .streams
-            .lock()
-            .map_err(|e| format!("Failed to lock streams: {}", e))?;
-        if streams.contains_key(stream_name) {
-            Ok(true) // Assume ready since we can't query
-        } else {
-            Err(format!("Stream '{}' not found", stream_name))
+        let size = shape.iter().product::<usize>();
+        if data.len() != size {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                size
+            ));
         }
+
+        let cuda_data = self.host_to_device(data)?;  // Pass slice reference
+        Ok(CudaTensor::new(cuda_data, shape))
     }
 
-    pub fn stream_names(&self) -> Vec<String> {
-        let streams = self.streams.lock().unwrap();
-        streams.keys().cloned().collect()
-    }
+    // ============= STREAM MANAGEMENT (DELEGATED TO STREAMMANAGER) =============
 
-    /// Synchronize specific stream
-    pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
-        let streams = self
-            .streams
-            .lock()
-            .map_err(|e| format!("Failed to lock streams: {}", e))?;
-        let stream = streams
-            .get(stream_name)
-            .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
-
-        stream
-            .synchronize()
-            .map_err(|e| format!("Failed to sync stream '{}': {}", stream_name, e))
-    }
-
-    /// Synchronizes all streams
-    pub fn sync_all_streams(&self) -> Result<(), String> {
-        let streams = self
-            .streams
-            .lock()
-            .map_err(|e| format!("Failed to lock streams: {}", e))?;
-        for (name, stream) in streams.iter() {
-            stream
-                .synchronize()
-                .map_err(|e| format!("Failed to sync stream '{}': {}", name, e))?;
-        }
-        Ok(())
-    }
-
-    /// -------------------------------------------------
-    // -------- PARALLEL OPERATION PATTERN -------- //
-    /// This method allows you to perform parallel operations on the GPU
-    /// using a provided kernel function. It requires the `setup_parallel_streams` to be called before.
-    /// ---------------------------------------------------
-    pub fn setup_parallel_streams(
-        &mut self,
-        //   stream_names: &[&str],
-    ) -> Result<(), String> {
-        let mut streams = self
-            .streams
-            .lock()
-            .map_err(|e| format!("Failed to lock streams: {}", e))?;
-        //Default value for testing
-        let stream_names = vec![
-            "compute",  // Main compute stream
-            "copy_h2d", // Host to device copy stream
-            "copy_d2h", // Device to host copy stream
-        ];
-        for name in stream_names {
-            if streams.contains_key(name) {
-                return Err(format!("Stream '{}' already exists", name));
-            }
-            let stream = self
-                .ctx
-                .new_stream()
-                .map_err(|e| format!("Failed to create stream '{}': {}", name, e))?;
-
-            streams.insert(name.to_string(), stream.clone());
-        }
-        Ok(())
-    }
-
-    pub fn create_stream(&self, stream_name: &str) -> Result<Arc<CudaStream>, String> {
-        let mut streams = self
-            .streams
-            .lock()
-            .map_err(|e| format!("Failed to lock streams: {}", e))?;
-        if streams.contains_key(stream_name) {
-            return Err(format!("Stream '{}' already exists", stream_name));
-        }
-        let stream = self
-            .ctx
-            .new_stream()
-            .map_err(|e| format!("Failed to create stream '{}': {}", stream_name, e))?;
-
-        streams.insert(stream_name.to_string(), stream.clone());
-        Ok(stream)
-    }
-
-    /// Parallel transfer and compute pattern
-    pub fn parallel_operation<T, F, R>(
-        &self,
-        input_data: Vec<T>,
-        kernel_fn: F,
-    ) -> Result<Vec<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr + Clone + std::marker::Unpin + Default, // `DeviceRepr` is required for CUDA compatibility
-        F: FnOnce(&CudaSlice<T>, &CudaStream) -> Result<R, String>,
-        R: AsRef<CudaSlice<T>>,
-    {
-        // Start async H2D transfer
-        let gpu_input = self.host_to_device_async(input_data, Some("copy_h2d"))?;
-
-        // Wait for transfer to complete
-        self.sync_stream("copy_h2d")?;
-
-        // Launch kernel on compute stream
-        let compute_stream = self
-            .get_stream("compute")
-            .ok_or("Compute stream not found")?;
-        let gpu_output = kernel_fn(&gpu_input, &compute_stream)?;
-
-        // Start async D2H transfer
-        let result = self.device_to_host_async(gpu_output.as_ref(), Some("copy_d2h"))?;
-
-        // Sync all streams
-        self.sync_stream("compute")?;
-        self.sync_stream("copy_d2h")?;
-
-        Ok(result)
+    /// Creates or gets a named stream for async operations
+    pub fn create_stream(&self, name: &str) -> Result<(), String> {
+        self.stream_manager.create_stream(&self.ctx, name)
     }
 
     /// Get stream reference for kernel launches
     pub fn get_stream(&self, stream_name: &str) -> Option<Arc<CudaStream>> {
-        self.streams.lock().unwrap().get(stream_name).cloned()
+        self.stream_manager.get_stream(stream_name)
     }
 
-    /// Returns reference to the underlying CUDA device
-    pub fn device(&self) -> &Arc<CudaContext> {
-        &self.ctx
+    /// Check if stream exists and is ready (completed all operations)
+    pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
+        self.stream_manager.is_stream_ready(stream_name)
+    }
+
+    /// Get names of all managed streams
+    pub fn stream_names(&self) -> Vec<String> {
+        self.stream_manager.stream_names()
+    }
+
+    /// Synchronize all managed streams
+    pub fn sync_all_streams(&self) -> Result<(), String> {
+        self.stream_manager.sync_all_streams()
+    }
+
+    /// Setup parallel streams commonly used in deep learning
+    pub fn setup_parallel_streams(&self) -> Result<(), String> {
+        self.stream_manager.setup_parallel_streams(&self.ctx)
+    }
+
+    /// Synchronize a specific stream
+    pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
+        self.stream_manager.sync_stream(stream_name)
+    }
+
+    /// Get number of managed streams
+    pub fn stream_count(&self) -> usize {
+        self.stream_manager.stream_count()
+    }
+
+    /// Remove a stream by name
+    pub fn remove_stream(&self, name: &str) -> Result<(), String> {
+        self.stream_manager.remove_stream(name)
+    }
+
+    /// Clear all streams
+    pub fn clear_streams(&self) {
+        self.stream_manager.clear_streams();
+    }
+
+    // ============= ASYNC OPERATIONS (USING STREAMMANAGER) =============
+
+    /// Asynchronous host to device transfer using named stream
+    pub fn host_to_device_async<T>(
+        &self,
+        data: &[T],  // Changed from Vec<T> to &[T]
+        stream_name: Option<&str>,
+    ) -> Result<CudaSlice<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
+    {
+        self.stream_manager.host_to_device_async(&self.ctx, data, stream_name)
+    }
+
+    /// Asynchronous device to host transfer using named stream
+    pub fn device_to_host_async<T>(
+        &self,
+        data: &CudaSlice<T>,
+        stream_name: Option<&str>,
+    ) -> Result<Vec<T>, String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + Default,
+    {
+        if let Some(stream_name) = stream_name {
+            self.stream_manager.device_to_host_async(data, Some(stream_name))
+        } else {
+            // Use default stream for async operation - allocate host buffer and copy
+            let mut host_buffer = vec![T::default(); data.len()];
+            unsafe {
+                self.default_stream
+                    .memcpy_dtoh(data,&mut host_buffer)
+                    .map_err(|e| format!("Async device to host transfer failed: {}", e))?;
+            }
+            Ok(host_buffer)
+        }
     }
 }
 
-/// Convenience struct for managing tensors on GPU
-///
-/// Wraps CudaSlice with additional metadata for tensor operations
-#[repr(C)] // Better memory layout for CUDA compatibility
-pub struct CudaTensor<T> {
+/// Enhanced CUDA tensor with better integration
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct CudaTensor<T: cudarc::driver::DeviceRepr> {
     pub data: CudaSlice<T>,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
@@ -353,11 +417,9 @@ where
         + Clone
         + cudarc::driver::ValidAsZeroBits
         + std::marker::Unpin
-        + Default, // `DeviceRepr` is required for CUDA compatibility
-                   // `ValidAsZeroBits` ensures that the type can be safely zeroed out
-                   // `Unpin` is required for safe memory operations in cudarc
+        + Default,
 {
-    /// Creates a new CUDA tensor with the given data and shape
+    /// Creates a new CUDA tensor with computed strides
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
         let strides = compute_strides(&shape);
         Self {
@@ -367,14 +429,12 @@ where
         }
     }
 
-    /// Creates a CUDA tensor from host data vector
-    /// This is a convenience method that combines memory allocation and data transfer
+    /// Create tensor from host data using context manager
     pub fn from_vec(
         context_manager: &CudaContextManager,
         data: Vec<T>,
         shape: Vec<usize>,
     ) -> Result<Self, String> {
-        // Validate that data size matches shape
         let expected_size = shape.iter().product::<usize>();
         if data.len() != expected_size {
             return Err(format!(
@@ -385,14 +445,11 @@ where
             ));
         }
 
-        // Transfer data from host to device using the memory manager
-        let cuda_data = context_manager.host_to_device(data)?;
-
-        // Create and return tensor
+        let cuda_data = context_manager.host_to_device(&data)?;  // Pass slice reference
         Ok(Self::new(cuda_data, shape))
     }
 
-    // Creates a CUDA tensor from host data using async transfer
+    /// Create async tensor from host data
     pub fn from_vec_async(
         context_manager: &CudaContextManager,
         data: Vec<T>,
@@ -409,17 +466,15 @@ where
             ));
         }
 
-        let cuda_data = context_manager.host_to_device_async(data, stream_name)?;
+        let cuda_data = context_manager.host_to_device_async(&data, stream_name)?;  // Pass slice reference
         Ok(Self::new(cuda_data, shape))
     }
 
-    /// Transfers CUDA tensor data back to CPU as a vector
-    /// This method copies data from GPU to host memory using the memory manager
+    /// Transfer tensor data back to CPU
     pub fn to_cpu(&self, context_manager: &CudaContextManager) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
-        // Use the memory manager to perform the device-to-host transfer
         context_manager.device_to_host(&self.data)
     }
 
@@ -432,56 +487,43 @@ where
         context_manager.device_to_host_async(&self.data, stream_name)
     }
 
-    // Same as `to_cpu`, but returns a vector of the data
-    /// Transfers CUDA tensor data back to CPU as a vector
-    pub fn to_vec(&self, memory: &CudaContextManager) -> Result<Vec<T>, String> {
-        memory.device_to_host(&self.data)
+    /// Get tensor data as vector (alias for to_cpu)
+    pub fn to_vec(&self, context_manager: &CudaContextManager) -> Result<Vec<T>, String> {
+        context_manager.device_to_host(&self.data)
     }
 
-    /// Creates a new zeroed CUDA tensor with the given shape
+    /// Create zeroed CUDA tensor
     pub fn zeros(context_manager: &CudaContextManager, shape: Vec<usize>) -> Result<Self, String> {
         let size = shape.iter().product();
         let data = context_manager.alloc_zeros(size)?;
         Ok(Self::new(data, shape))
     }
 
-    /// Returns the total number of elements in the tensor
+    // ============= TENSOR METADATA =============
+
     pub fn size(&self) -> usize {
         self.shape.iter().product()
     }
 
-    /// Returns the number of dimensions
     pub fn ndim(&self) -> usize {
         self.shape.len()
     }
 
-    /// Returns the shape of the tensor
     pub fn shape(&self) -> &[usize] {
         &self.shape
     }
 
-    /// Returns the strides of the tensor
     pub fn strides(&self) -> &[usize] {
         &self.strides
     }
 
-
-
-    // Safer clone implementation
-    /// Clones the tensor data to a new CudaTensor
+    /// Deep clone tensor data
     pub fn deep_clone(&self, context_manager: &CudaContextManager) -> Result<Self, String> {
-        // 1. Allocate new device memory
         let num_elements = self.data.len();
-        let mut new_data: CudaSlice<T> = context_manager
-            .alloc_zeros(num_elements) // ENSURE THE MEMORY IS ZEROED
-            .map_err(|e| format!("Failed to allocate new GPU memory: {}", e))?;
+        let mut new_data: CudaSlice<T> = context_manager.alloc_zeros(num_elements)?;
 
-        // 2. Copy data from old slice to new slice
-        context_manager
-            .device_to_device(&self.data, &mut new_data)
-            .map_err(|e| format!("Failed to copy data to new GPU memory: {}", e))?;
+        context_manager.device_to_device(&self.data, &mut new_data)?;
 
-        // 3. Return a new tensor
         Ok(Self {
             data: new_data,
             shape: self.shape.clone(),
@@ -489,10 +531,13 @@ where
         })
     }
 
-    /// Zero-copy memory management
-    /// This OPs allow to manipulate the view of the data without copying it
-    /// It is useful for broadcasting, slicing, and reshaping tensors on GPU
-    /// Zero-copy reshape - only changes shape/strides metadata
+    /// Check if tensor is contiguous
+    pub fn is_contiguous(&self) -> bool {
+        let expected_strides = compute_strides(&self.shape);
+        self.strides == expected_strides
+    }
+
+    /// Zero-copy reshape
     pub fn reshape(&mut self, new_shape: Vec<usize>) -> Result<(), String> {
         let new_size: usize = new_shape.iter().product();
         let current_size = self.size();
@@ -504,23 +549,18 @@ where
             ));
         }
 
-        // Check if reshape is contiguous (can reuse same data layout)
-        // If not contiguous, we cannot reshape without copying
         if !self.is_contiguous() {
             return Err("Cannot reshape non-contiguous tensor without copying".to_string());
         }
+
         self.strides = compute_strides(&new_shape);
         self.shape = new_shape;
-
-
         Ok(())
     }
 
-    /// Zero-copy broadcast - BROADCAST OPERATION (Based on: https://numpy.org/doc/2.1/reference/generated/numpy.broadcast.html)
-    /// This operation allows to create a new tensor with a different shape
-    /// that shares the same GPU memory as the original tensor.
-    /// It uses the can_broadcast function to check if the shapes are compatible.
-    /// It returns an error if the shapes cannot be broadcasted.
+    // ============= IN-PLACE TENSOR OPERATIONS =============
+
+    /// In-place broadcast operation - changes tensor view without copying data
     pub fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
         if !can_broadcast_to(&self.shape, target_shape) {
             return Err(format!(
@@ -529,47 +569,62 @@ where
             ));
         }
 
-        let new_strides = broadcast_strides(&self.shape, &self.strides, target_shape);
+        // Compute new strides for broadcasted tensor
+        let mut new_strides = vec![0; target_shape.len()];
+        let offset = target_shape.len() - self.shape.len();
 
-        self.shape = target_shape.to_vec();
-        self.strides  = new_strides;
-
-        Ok(())
-    }
-
-    /// Check if tensor memory layout is contiguous
-    pub fn is_contiguous(&self) -> bool {
-        let expected_strides = compute_strides(&self.shape);
-        self.strides == expected_strides
-    }
-
-    /// Zero-copy unsqueeze - add dimension of size 1 at specified axis
-    pub fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
-        if axis > self.shape.len() {
-            return Err(format!(
-                "Cannot unsqueeze at axis {} for tensor with {} dimensions",
-                axis,
-                self.shape.len()
-            ));
+        for (i, &dim) in self.shape.iter().enumerate() {
+            let target_idx = offset + i;
+            if dim == 1 && target_shape[target_idx] != 1 {
+                // Broadcasting dimension - stride becomes 0
+                new_strides[target_idx] = 0;
+            } else {
+                // Non-broadcasting dimension - keep original stride
+                new_strides[target_idx] = self.strides[i];
+            }
         }
 
-        let mut new_shape = self.shape.clone();
-        new_shape.insert(axis, 1);
-
-        let new_strides = unsqueeze_strides(&self.strides, axis);
-        self.shape = new_shape;
+        self.shape = target_shape.to_vec();
         self.strides = new_strides;
         Ok(())
     }
 
-    /// Zero-copy squeeze - remove dimensions of size 1
+    /// In-place unsqueeze - add dimension of size 1 at specified axis
+    pub fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
+        if axis > self.shape.len() {
+            return Err(format!(
+                "Axis {} out of bounds for tensor with {} dimensions",
+                axis, self.shape.len()
+            ));
+        }
+
+        // Insert dimension of size 1 at specified axis
+        self.shape.insert(axis, 1);
+
+        // Insert stride at specified position
+        // New dimension has stride equal to the stride of the dimension it's inserted before
+        let new_stride = if axis < self.strides.len() {
+            self.strides[axis]
+        } else {
+            1 // If inserting at the end, stride is 1
+        };
+        self.strides.insert(axis, new_stride);
+
+        Ok(())
+    }
+
+    /// In-place squeeze - remove dimensions of size 1
     pub fn squeeze(&mut self, axis: Option<usize>) -> Result<(), String> {
         match axis {
             Some(ax) => {
                 // Squeeze specific axis
                 if ax >= self.shape.len() {
-                    return Err(format!("Axis {} out of bounds", ax));
+                    return Err(format!(
+                        "Axis {} out of bounds for tensor with {} dimensions",
+                        ax, self.shape.len()
+                    ));
                 }
+
                 if self.shape[ax] != 1 {
                     return Err(format!(
                         "Cannot squeeze axis {} with size {}",
@@ -577,26 +632,74 @@ where
                     ));
                 }
 
-                let mut new_shape = self.shape.clone();
-                let mut new_strides = self.strides.clone();
-                new_shape.remove(ax);
-                new_strides.remove(ax);
-                self.shape = new_shape;
-                self.strides = new_strides;
-                Ok(())
+                self.shape.remove(ax);
+                self.strides.remove(ax);
             }
             None => {
                 // Squeeze all dimensions of size 1
-                let (new_shape, new_strides) = squeeze_all_dims(&self.shape, &self.strides);
-                self.shape = new_shape;
-                self.strides = new_strides;
-                Ok(())
+                let indices_to_remove: Vec<usize> = self.shape
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, size)| *size == 1)
+                    .map(|(i, _)| i)
+                    .collect();
+
+                // Remove in reverse order to maintain correct indices
+                for &idx in indices_to_remove.iter().rev() {
+                    self.shape.remove(idx);
+                    self.strides.remove(idx);
+                }
             }
         }
+
+        Ok(())
+    }
+
+    /// In-place transpose for 2D tensors
+    pub fn transpose_2d(&mut self) -> Result<(), String> {
+        if self.ndim() != 2 {
+            return Err("Transpose_2d only works on 2D tensors".to_string());
+        }
+
+        // Swap dimensions and strides
+        self.shape.swap(0, 1);
+        self.strides.swap(0, 1);
+
+        Ok(())
+    }
+
+    /// In-place permute dimensions
+    pub fn permute(&mut self, axes: &[usize]) -> Result<(), String> {
+        if axes.len() != self.ndim() {
+            return Err(format!(
+                "Number of axes {} must match tensor dimensions {}",
+                axes.len(), self.ndim()
+            ));
+        }
+
+        // Check that all axes are valid and unique
+        let mut sorted_axes = axes.to_vec();
+        sorted_axes.sort_unstable();
+        for (i, &axis) in sorted_axes.iter().enumerate() {
+            if axis != i {
+                return Err(format!("Invalid or duplicate axis in permutation: {:?}", axes));
+            }
+        }
+
+        // Reorder shape and strides according to axes
+        let old_shape = self.shape.clone();
+        let old_strides = self.strides.clone();
+
+        for (new_idx, &old_idx) in axes.iter().enumerate() {
+            self.shape[new_idx] = old_shape[old_idx];
+            self.strides[new_idx] = old_strides[old_idx];
+        }
+
+        Ok(())
     }
 }
 
-/// Computes strides for a given shape (row-major order)
+/// Compute row-major strides for a given shape
 pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
     let mut strides = vec![1; shape.len()];
     for i in (0..shape.len().saturating_sub(1)).rev() {
@@ -606,125 +709,17 @@ pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
 }
 
 /// Check if shapes can be broadcasted
-/// Follows NumPy broadcasting rules:
-/// 1. Start from trailing dimensions and work backward
-/// 2. Dimensions are compatible if:
-///    - They are equal, OR
-///    - One of them is 1, OR
-///    - One of them is missing (treat as 1)
-/// 3. Missing dimensions are added as size 1 at the beginning
-/// 4. Result shape has the maximum size in each dimension
-fn can_broadcast_to(source_shape: &[usize], target_shape: &[usize]) -> bool {
-    // Source cannot have more dimensions than target
-    if source_shape.len() > target_shape.len() {
+pub fn can_broadcast_to(from_shape: &[usize], to_shape: &[usize]) -> bool {
+    if from_shape.len() > to_shape.len() {
         return false;
     }
 
-    let offset = target_shape.len() - source_shape.len();
-
-    // Check each dimension from right to left
-    for (i, &src_dim) in source_shape.iter().enumerate() {
-        let tgt_dim = target_shape[i + offset];
-
-        // Compatible if: equal OR source is 1
-        if src_dim != 1 && src_dim != tgt_dim {
+    let offset = to_shape.len() - from_shape.len();
+    for (i, &dim) in from_shape.iter().enumerate() {
+        let target_dim = to_shape[offset + i];
+        if dim != 1 && dim != target_dim {
             return false;
         }
     }
-
     true
-}
-
-/// Compute broadcast strides for target shape
-/// This function calculates the strides for a new shape that is a broadcasted version of the source
-/// shape. It follows the broadcasting rules defined in `can_broadcast_to`.
-fn broadcast_strides(
-    source_shape: &[usize],
-    source_strides: &[usize],
-    target_shape: &[usize],
-) -> Vec<usize> {
-    let mut new_strides = vec![0; target_shape.len()];
-    let offset = target_shape.len() - source_shape.len();
-
-    // Leading dimensions get stride 0 (broadcasted)
-    for i in 0..offset {
-        new_strides[i] = 0;
-    }
-
-    // Map existing dimensions
-    for (i, (&src_dim, &src_stride)) in source_shape.iter().zip(source_strides).enumerate() {
-        let tgt_idx = i + offset;
-        new_strides[tgt_idx] = if src_dim == 1 { 0 } else { src_stride };
-    }
-
-    new_strides
-}
-
-/// Utility functions to handle tenso shape and strides calculations
-/// Compute strides for unsqueeze operation
-fn unsqueeze_strides(strides: &[usize], axis: usize) -> Vec<usize> {
-    let mut new_strides = strides.to_vec();
-
-    // Stride for new dimension: use stride of next dimension, or 1 if at end
-    let new_stride = if axis < strides.len() {
-        strides[axis]
-    } else {
-        1
-    };
-
-    new_strides.insert(axis, new_stride);
-    new_strides
-}
-
-/// Remove all dimensions of size 1 and their corresponding strides
-fn squeeze_all_dims(shape: &[usize], strides: &[usize]) -> (Vec<usize>, Vec<usize>) {
-    let mut new_shape = Vec::new();
-    let mut new_strides = Vec::new();
-
-    for (i, &dim_size) in shape.iter().enumerate() {
-        if dim_size != 1 {
-            new_shape.push(dim_size);
-            new_strides.push(strides[i]);
-        }
-    }
-
-    // Handle edge case: if all dimensions were size 1, keep one
-    if new_shape.is_empty() {
-        new_shape.push(1);
-        new_strides.push(1);
-    }
-
-    (new_shape, new_strides)
-}
-
-impl<T> Debug for CudaTensor<T>
-where
-    T: cudarc::driver::DeviceRepr + Clone + std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "CudaTensor {{ shape: {:?}, strides: {:?}, data: {:?} }}",
-            self.shape, self.strides, self.data
-        )
-    }
-}
-
-// Cloning a CudaTensor requires that the underlying data can be cloned
-// This is necessary for operations that may need to duplicate tensors on the GPU
-// Here we clone the CudaSlice, which is a handle to the GPU memory.
-// It can lead to memory races because the underlying data is not copied, just the handle over the cuda slice, then if one handle is modified, the other will see the changes as well.
-// This is a shallow clone, meaning it only copies the handle to the GPU memory.
-// I am not sure if it would require additional memory allocation or not.
-impl<T> Clone for CudaTensor<T>
-where
-    T: cudarc::driver::DeviceRepr + Clone + cudarc::driver::ValidAsZeroBits + std::marker::Unpin,
-{
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            shape: self.shape.clone(),
-            strides: self.strides.clone(),
-        }
-    }
 }

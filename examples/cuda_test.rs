@@ -51,9 +51,9 @@ fn benchmark_vector_addition(
     let a: Vec<f32> = (0..size).map(|i| i as f32).collect();
     let b: Vec<f32> = (0..size).map(|i| (i * 2) as f32).collect();
 
-    let a_gpu = backend.context_manager().host_to_device(a.clone())?;
-    let b_gpu = backend.context_manager().host_to_device(b.clone())?;
-    let mut c_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let a_gpu = backend.host_to_device(&a)?;
+    let b_gpu = backend.host_to_device(&b)?;
+    let mut c_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
@@ -101,7 +101,7 @@ fn benchmark_vector_addition(
     let low_level_time = start.elapsed();
 
     // Verify correctness
-    let result = backend.context_manager().device_to_host(&c_gpu)?;
+    let result = backend.device_to_host(&c_gpu)?;
     for i in 0..10.min(size) {
         let expected = a[i] + b[i];
         assert!(
@@ -132,8 +132,8 @@ fn benchmark_relu(
     iterations: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let input: Vec<f32> = (0..size).map(|i| i as f32 - (size as f32 / 2.0)).collect();
-    let input_gpu = backend.context_manager().host_to_device(input.clone())?;
-    let mut output_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let input_gpu = backend.host_to_device(&input)?;
+    let mut output_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
@@ -158,7 +158,7 @@ fn benchmark_relu(
     let elapsed = start.elapsed();
 
     // Verify correctness
-    let result = backend.context_manager().device_to_host(&output_gpu)?;
+    let result = backend.device_to_host(&output_gpu)?;
     for i in 0..10.min(size) {
         let expected = input[i].max(0.0);
         assert!(
@@ -189,9 +189,9 @@ fn benchmark_matmul(
     let a: Vec<f32> = (0..size).map(|i| (i % 100) as f32).collect();
     let b: Vec<f32> = (0..size).map(|i| ((i + 50) % 100) as f32).collect();
 
-    let a_gpu = backend.context_manager().host_to_device(a)?;
-    let b_gpu = backend.context_manager().host_to_device(b)?;
-    let mut c_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let a_gpu = backend.host_to_device(&a)?;
+    let b_gpu = backend.host_to_device(&b)?;
+    let mut c_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (16, 16, 1),
@@ -244,15 +244,15 @@ fn benchmark_memory_transfers(backend: &CudaBackend) -> Result<(), Box<dyn std::
         // Host to Device
         let start = std::time::Instant::now();
         for _ in 0..iterations {
-            let _gpu_data = backend.context_manager().host_to_device(data.clone())?;
+            let _gpu_data = backend.host_to_device(&data)?;
         }
         let h2d_time = start.elapsed().as_secs_f64() / iterations as f64;
 
         // Device to Host (reuse last allocation)
-        let gpu_data = backend.context_manager().host_to_device(data.clone())?;
+        let gpu_data = backend.host_to_device(&data)?;
         let start = std::time::Instant::now();
         for _ in 0..iterations {
-            let _result = backend.context_manager().device_to_host(&gpu_data)?;
+            let _result = backend.device_to_host(&gpu_data)?;
         }
         let d2h_time = start.elapsed().as_secs_f64() / iterations as f64;
 
@@ -283,7 +283,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize CUDA backend
     println!("Initializing CUDA backend...");
-    let cuda_backend = match CudaBackend::new(0) {
+    let cuda_backend = match CudaBackend::from_device_id(0) {
         Ok(backend) => {
             println!("CUDA backend initialized successfully");
             println!("   Device: {}", backend.name());
@@ -392,9 +392,9 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     let b: Vec<f32> = (0..size).map(|i| (i * 2) as f32).collect();
 
     // Allocate GPU memory
-    let a_gpu = backend.context_manager().host_to_device(a.clone())?;
-    let b_gpu = backend.context_manager().host_to_device(b.clone())?;
-    let mut c_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let a_gpu = backend.host_to_device(&a)?;
+    let b_gpu = backend.host_to_device(&b)?;
+    let mut c_gpu = backend.alloc_zeros::<f32>(size)?;
 
     // Launch configuration
     let cfg = LaunchConfig {
@@ -410,7 +410,7 @@ fn test_vector_addition(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     backend.synchronize()?;
 
     // Get results and verify
-    let result = backend.context_manager().device_to_host(&c_gpu)?;
+    let result = backend.device_to_host(&c_gpu)?;
     for i in 0..size.min(10) {
         let expected = a[i] + b[i];
         let actual = result[i];
@@ -432,8 +432,8 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
     let size = 1024;
     let input: Vec<f32> = (0..size).map(|i| i as f32 - 512.0).collect(); // Mix of positive/negative
 
-    let input_gpu = backend.context_manager().host_to_device(input.clone())?;
-    let mut output_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let input_gpu = backend.host_to_device(&input)?;
+    let mut output_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
@@ -446,7 +446,7 @@ fn test_relu_activation(backend: &CudaBackend) -> Result<(), Box<dyn std::error:
         .launch_relu(cfg, &input_gpu, &mut output_gpu, size as i32)?;
     backend.synchronize()?;
 
-    let result = backend.context_manager().device_to_host(&output_gpu)?;
+    let result = backend.device_to_host(&output_gpu)?;
     for i in 0..size.min(10) {
         let expected = input[i].max(0.0);
         let actual = result[i];
@@ -472,9 +472,9 @@ fn test_matrix_multiplication(backend: &CudaBackend) -> Result<(), Box<dyn std::
     let a: Vec<f32> = (0..size).map(|i| (i % 10) as f32).collect();
     let b: Vec<f32> = (0..size).map(|i| ((i + 5) % 10) as f32).collect();
 
-    let a_gpu = backend.context_manager().host_to_device(a.clone())?;
-    let b_gpu = backend.context_manager().host_to_device(b.clone())?;
-    let mut c_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let a_gpu = backend.host_to_device(&a)?;
+    let b_gpu = backend.host_to_device(&b)?;
+    let mut c_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (16, 16, 1),
@@ -491,7 +491,7 @@ fn test_matrix_multiplication(backend: &CudaBackend) -> Result<(), Box<dyn std::
     )?;
     backend.synchronize()?;
 
-    let result = backend.context_manager().device_to_host(&c_gpu)?;
+    let result = backend.device_to_host(&c_gpu)?;
 
     // Verify a few elements (simple sanity check)
     assert!(result.len() == size, "Result size mismatch");
@@ -509,9 +509,9 @@ fn test_operation_chaining(backend: &CudaBackend) -> Result<(), Box<dyn std::err
     let size = 512;
     let input: Vec<f32> = (0..size).map(|i| i as f32 - 256.0).collect();
 
-    let input_gpu = backend.context_manager().host_to_device(input.clone())?;
-    let mut temp_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
-    let mut output_gpu = backend.context_manager().alloc_zeros::<f32>(size)?;
+    let input_gpu = backend.host_to_device(&input)?;
+    let mut temp_gpu = backend.alloc_zeros::<f32>(size)?;
+    let mut output_gpu = backend.alloc_zeros::<f32>(size)?;
 
     let cfg = LaunchConfig {
         block_dim: (256, 1, 1),
@@ -530,7 +530,7 @@ fn test_operation_chaining(backend: &CudaBackend) -> Result<(), Box<dyn std::err
         .launch_add(cfg, &temp_gpu, &temp_gpu, &mut output_gpu, size as i32)?;
     backend.synchronize()?;
 
-    let result = backend.context_manager().device_to_host(&output_gpu)?;
+    let result = backend.device_to_host(&output_gpu)?;
 
     // Verify chained operations
     for i in 0..size.min(10) {

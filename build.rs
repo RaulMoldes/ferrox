@@ -35,6 +35,7 @@ fn compile_cuda_kernels() {
         "transpose",
         "comparison", // New kernel
         "convolutions",
+        "fill"
     ];
 
     println!("Compiling CUDA kernels...");

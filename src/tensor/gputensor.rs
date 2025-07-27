@@ -119,7 +119,7 @@ where
             // Priority: use CUDA data if available
             let backend = crate::backend::manager::get_backend();
             let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-            let context_manager = cuda_backend.context_manager();
+            let context_manager = cuda_backend;
             context_manager.device_to_host(&cuda_tensor.data)
         } else if !self.data.is_empty() {
             // Fallback to CPU data
@@ -365,7 +365,7 @@ where
             // Convert CPU data to CUDA
             let host_data: Vec<T> = self.data.iter().cloned().collect();
             let shape: Vec<usize> = self.shape().to_vec();
-            let cuda_data = cuda_backend.context_manager().host_to_device(host_data)?;
+            let cuda_data = cuda_backend.host_to_device(&host_data)?;
             Ok(crate::backend::cuda::CudaTensor::new(cuda_data, shape))
         }
     }
@@ -641,7 +641,6 @@ where
             // Get or create CUDA tensor
             let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
 
-
             // Perform unsqueeze operation
             cuda_tensor.unsqueeze(axis)?;
 
@@ -702,8 +701,7 @@ where
             // Get or create CUDA tensor
             let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
 
-
-           cuda_tensor.squeeze(axis)?;
+            cuda_tensor.squeeze(axis)?;
 
             // Convert the CUDA result back to GPUTensor
             self.create_tensor_from_cuda_result(cuda_tensor)
@@ -744,7 +742,6 @@ where
         self.with_cuda_backend(|cuda_backend| {
             // Get or create CUDA tensor
             let mut cuda_tensor = self.get_or_create_cuda_tensor(cuda_backend)?;
-
 
             // Perform reshape operation
             cuda_tensor.reshape(new_shape.to_vec())?;
@@ -985,7 +982,7 @@ where
 
         let shape: Vec<usize> = self.shape().to_vec();
         let host_data: Vec<T> = self.data.iter().cloned().collect();
-        let cuda_tensor = CudaTensor::from_vec(&cuda_backend.context_manager(), host_data, shape)?;
+        let cuda_tensor = CudaTensor::from_vec(&cuda_backend, host_data, shape)?;
 
         Ok(Self {
             data: self.data.clone(),
@@ -1016,7 +1013,7 @@ where
                 //    use crate::backend::manager::get_backend;
                 let backend = get_backend();
                 let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-                let context_manager = cuda_backend.context_manager();
+                let context_manager = cuda_backend;
 
                 // Pass memory manager to to_vec()
                 let host_data = cuda_tensor.to_vec(&context_manager)?;
@@ -2234,7 +2231,7 @@ where
         let cuda_tensor = self.cuda_storage.as_ref().unwrap();
         let backend = crate::backend::manager::get_backend();
         let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        let context_manager = cuda_backend.context_manager();
+        let context_manager = cuda_backend;
 
         let cpu_data = cuda_tensor.to_cpu(context_manager)?;
         self.data = ArrayD::from_shape_vec(IxDyn(cuda_tensor.shape()), cpu_data)
@@ -2561,7 +2558,6 @@ where
                 .or_else(|_| {
                     println!("CUDA conv2d failed, falling back to CPU");
                     self.conv2d_cpu(filter, stride, padding)
-
                 }),
         }
     }
@@ -2580,8 +2576,7 @@ where
         match &self.device {
             Device::CPU => {
                 // Sequential execution on CPU
-                let intermediate =
-                    self.depthwise_conv2d_cpu(depthwise_filter, stride, padding)?;
+                let intermediate = self.depthwise_conv2d_cpu(depthwise_filter, stride, padding)?;
                 intermediate.conv2d_cpu(pointwise_filter, (1, 1), (0, 0))
             }
             Device::CUDA(_) => self
