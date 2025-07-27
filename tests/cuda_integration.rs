@@ -370,11 +370,8 @@ fn test_to_vec_works_on_gpu_tensors() {
 fn test_gpu_only_tensor_indexing_panics() {
     let backend = get_backend();
     if let Some(cuda_backend) = backend.cuda_backend() {
-        if let Ok(cuda_tensor) = CudaTensor::from_vec(
-            cuda_backend.context_manager(),
-            vec![1.0f32, 2.0, 3.0],
-            vec![3],
-        ) {
+        if let Ok(cuda_tensor) = CudaTensor::from_vec(cuda_backend, vec![1.0f32, 2.0, 3.0], vec![3])
+        {
             // Create GPU-only tensor
             let gpu_tensor = Tensor {
                 data: ArrayD::zeros(IxDyn(&[0])), // Empty CPU data

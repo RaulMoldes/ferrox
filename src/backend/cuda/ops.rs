@@ -81,7 +81,7 @@ impl<'a> CudaOps<'a> {
     {
         let size = shape.iter().product();
         let host_data = vec![value; size];
-        let gpu_data = self.memory.host_to_device(host_data)?;
+        let gpu_data = self.memory.host_to_device(&host_data)?;
         Ok(CudaTensor::new(gpu_data, shape.to_vec()))
     }
 
@@ -906,5 +906,5 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-    
+
 }

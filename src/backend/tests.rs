@@ -29,8 +29,8 @@ mod tests {
         println!("=== Backend Manager Initialization Debug ===");
 
         // Test direct CUDA backend creation (we know this works)
-        println!("1. Testing direct CudaBackend::new(0)...");
-        match CudaBackend::new(0) {
+        println!("1. Testing direct CudaBackend::from_device_id(0)...");
+        match CudaBackend::from_device_id(0) {
             Ok(backend) => {
                 println!("  ✓ Direct CudaBackend creation SUCCESS");
                 println!("    Device ID: {}", backend.id());

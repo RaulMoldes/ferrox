@@ -14,6 +14,7 @@ pub const REDUCES_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
 pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 pub const CONVOLUTIONS_PTX: &[u8] = include_bytes!("../../../kernels/convolutions.ptx");
+pub const FILL_PTX: &[u8] = include_bytes!("../../../kernels/fill.ptx");
 
 // Generic kernel launch macro
 macro_rules! launch_kernel {
@@ -132,6 +133,17 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "depthwise_separable_conv2d_fused_f64",
         ],
     },
+    KernelConfig {
+    name: "fill",
+    ptx: FILL_PTX,
+    module: "fill_module",
+    functions: &[
+        "fill",           // f32 version
+        "fill_f64",       // f64 version
+        "fill_random",    // f32 random
+        "fill_random_f64", // f64 random
+    ],
+},
     KernelConfig {
         name: "comparison",
         ptx: COMPARISON_PTX,
@@ -320,6 +332,37 @@ impl CudaKernels {
         T: crate::backend::number::GPUNumber + 'static,
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
+    }
+
+
+    /// Launch fill kernel with constant value
+    pub fn launch_fill<T>(
+        &self,
+        cfg: LaunchConfig,
+        data: &mut CudaSlice<T>,
+        value: T,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("fill");
+        launch_kernel!(self, &kernel_name, cfg, data, &value, &size)
+    }
+
+    /// Launch random fill kernel
+    pub fn launch_fill_random<T>(
+        &self,
+        cfg: LaunchConfig,
+        data: &mut CudaSlice<T>,
+        size: i32,
+        seed: u64,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUNumber + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("fill_random");
+        launch_kernel!(self, &kernel_name, cfg, data, &size, &seed)
     }
 
     /// Element-wise tensor division: result[i] = a[i] / b[i]

@@ -38,7 +38,7 @@ impl BackendManager {
         #[cfg(feature = "cuda")]
         {
             // Try to initialize CUDA backend, but don't fail if unavailable
-            if let Ok(cuda_backend) = CudaBackend::new(0) {
+            if let Ok(cuda_backend) = CudaBackend::from_device_id(0) {
                 manager.cuda_backend = Some(cuda_backend);
                 println!("CUDA backend initialized successfully");
             } else {

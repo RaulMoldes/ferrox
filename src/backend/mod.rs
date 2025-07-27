@@ -7,7 +7,8 @@ pub mod cuda;
 // CUDA backend module
 
 #[cfg(feature = "cuda")]
-pub use cuda::CudaBackend;
+pub use cuda::CudaContextManager as CudaBackend;
+
 #[cfg(feature = "cuda")]
 pub use device::cuda;
 
