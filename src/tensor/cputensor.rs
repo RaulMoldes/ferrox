@@ -136,7 +136,143 @@ where
     pub fn into_data(self) -> ArrayD<T> {
         self.data
     }
-    // TODO: Modify this section to have a more generic way to operate between cuda and cpu tensors.
+
+
+    /// SLICING SUPPORT
+    /// 
+    /// Get immutable slice view of tensor data
+    /// Zero-cost access to underlying memory for efficient operations
+    pub fn as_slice(&self) -> &[T] {
+        self.data.as_slice().expect("ArrayD should always be contiguous for CPUTensor")
+    }
+
+
+    // Get mutable slice view of tensor data
+    /// Enables in-place operations without reallocations
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        self.data.as_slice_mut().expect("ArrayD should always be contiguous for CPUTensor")
+    }
+
+
+    /// Get slice of specific length starting from offset
+    /// Useful for accessing sub-tensors or specific regions
+    pub fn slice_range(&self, start: usize, len: usize) -> Result<&[T], String> {
+        let full_slice = self.as_slice();
+        if start + len > full_slice.len() {
+            return Err(format!(
+                "Slice range [{}, {}) exceeds tensor size {}",
+                start, start + len, full_slice.len()
+            ));
+        }
+        Ok(&full_slice[start..start + len])
+    }
+
+
+    /// Get mutable slice of specific length starting from offset
+    pub fn slice_range_mut(&mut self, start: usize, len: usize) -> Result<&mut [T], String> {
+        let total_len = self.data.len();
+        if start + len > total_len {
+            return Err(format!(
+                "Slice range [{}, {}) exceeds tensor size {}",
+                start, start + len, total_len
+            ));
+        }
+        let full_slice = self.as_slice_mut();
+        Ok(&mut full_slice[start..start + len])
+    }
+
+
+    /// Create tensor from existing slice (copies data)
+    /// Useful for creating tensors from memory pool slices
+    pub fn from_slice(slice: &[T], shape: &[usize]) -> Result<Self, String> {
+        let expected_len: usize = shape.iter().product();
+        if slice.len() != expected_len {
+            return Err(format!(
+                "Slice length {} doesn't match shape {:?} (expected {})",
+                slice.len(), shape, expected_len
+            ));
+        }
+
+        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
+            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
+
+        Ok(Self::new(array))
+    }
+
+    /// In-place element-wise addition using slices
+    /// Zero allocation operation when tensors have same size
+    pub fn add_inplace(&mut self, other: &Self) -> Result<(), String>
+    where
+        T: std::ops::AddAssign + Copy,
+    {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for in-place addition: {:?} vs {:?}",
+                self.shape(), other.shape()
+            ));
+        }
+
+        let self_slice = self.as_slice_mut();
+        let other_slice = other.as_slice();
+
+        for (a, &b) in self_slice.iter_mut().zip(other_slice.iter()) {
+            *a += b;
+        }
+
+        Ok(())
+    }
+
+    /// In-place element-wise multiplication using slices
+    pub fn mul_inplace(&mut self, other: &Self) -> Result<(), String>
+    where
+        T: std::ops::MulAssign + Copy,
+    {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for in-place multiplication: {:?} vs {:?}",
+                self.shape(), other.shape()
+            ));
+        }
+
+        let self_slice = self.as_slice_mut();
+        let other_slice = other.as_slice();
+
+        for (a, &b) in self_slice.iter_mut().zip(other_slice.iter()) {
+            *a *= b;
+        }
+
+        Ok(())
+    }
+
+    /// Fill tensor with specific value using slice access
+    /// More efficient than creating new tensor with fill
+    pub fn fill_inplace(&mut self, value: T)
+    where
+        T: Copy,
+    {
+        let slice = self.as_slice_mut();
+        slice.fill(value);
+    }
+
+    /// Copy data from another tensor using slices
+    /// Efficient memory copy without intermediate allocations
+    pub fn copy_from(&mut self, other: &Self) -> Result<(), String>
+    where
+        T: Copy,
+    {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for copy: {:?} vs {:?}",
+                self.shape(), other.shape()
+            ));
+        }
+
+        let self_slice = self.as_slice_mut();
+        let other_slice = other.as_slice();
+
+        self_slice.copy_from_slice(other_slice);
+        Ok(())
+    }
 
     // Element-wise operations.
     // These are operations that are applied to each element of the tensor.
@@ -948,7 +1084,7 @@ where
     /// the output shape of the im2col operation would be [
     /// [3 * 2 * 2, 1 * 4 * 4] = [12, 16].
     /// This means we have 12 rows (one for each channel and kernel element)
-    /// and 16 columns (one for each position in the output feature map).   
+    /// and 16 columns (one for each position in the output feature map).
     ///
     /// If you dive deeper into the impl, you will see that we also have a nested loop
     /// that iterates over the kernel height and width, and for each kernel element,

@@ -136,6 +136,167 @@ where
         self.data.is_empty()
     }
 
+
+
+    ///// SLICING SUPPORT
+    /// Get immutable slice view of CPU data
+    /// Returns error if tensor is on GPU and not synced to CPU
+    pub fn as_slice(&self) -> Result<&[T], String> {
+        if self.is_cuda() && self.data.is_empty() {
+            return Err("GPU tensor data not synced to CPU. Call .to_cpu() first".to_string());
+        }
+
+        Ok(self.data.as_slice().expect("ArrayD should be contiguous"))
+    }
+
+    /// Get mutable slice view of CPU data
+    /// Invalidates CUDA storage since CPU data will be modified
+    pub fn as_slice_mut(&mut self) -> Result<&mut [T], String> {
+        if self.is_cuda() && self.data.is_empty() {
+            return Err("GPU tensor data not synced to CPU. Call .to_cpu() first".to_string());
+        }
+
+        // Invalidate CUDA storage since we're modifying CPU data
+        self.cuda_storage = None;
+        self.device = Device::CPU;
+
+        Ok(self.data.as_slice_mut().expect("ArrayD should be contiguous"))
+    }
+
+    /// Get slice view with automatic CPU sync
+    /// More expensive but always works - syncs from GPU if needed
+    pub fn as_slice_synced(&mut self) -> Result<&[T], String> {
+        if self.is_cuda() && self.data.is_empty() {
+            self.sync_to_cpu()?; // Force sync from GPU
+        }
+        Ok(self.data.as_slice().expect("ArrayD should be contiguous"))
+    }
+
+    /// Get mutable slice with automatic CPU sync
+    /// Syncs from GPU and invalidates CUDA storage
+    pub fn as_slice_mut_synced(&mut self) -> Result<&mut [T], String> {
+        if self.is_cuda() && self.data.is_empty() {
+            self.sync_to_cpu()?; // Force sync from GPU
+        }
+
+        // Invalidate CUDA storage since we're modifying CPU data
+        self.cuda_storage = None;
+        self.device = Device::CPU;
+
+        Ok(self.data.as_slice_mut().expect("ArrayD should be contiguous"))
+    }
+
+    /// Create GPUTensor from existing slice (copies data to CPU)
+    pub fn from_slice(slice: &[T], shape: &[usize]) -> Result<Self, String> {
+        let expected_len: usize = shape.iter().product();
+        if slice.len() != expected_len {
+            return Err(format!(
+                "Slice length {} doesn't match shape {:?} (expected {})",
+                slice.len(), shape, expected_len
+            ));
+        }
+
+        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
+            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
+
+        Ok(Self::new(array))
+    }
+
+    /// Create GPUTensor from slice with specific device
+    pub fn from_slice_device(slice: &[T], shape: &[usize], device: Device) -> Result<Self, String> {
+        let mut tensor = Self::from_slice(slice, shape)?;
+        tensor.device = device;
+        Ok(tensor)
+    }
+
+    /// In-place addition on CPU side (GPU tensors sync first)
+    pub fn add_inplace(&mut self, other: &Self) -> Result<(), String>
+    where
+        T: std::ops::AddAssign + Copy,
+    {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for in-place addition: {:?} vs {:?}",
+                self.shape(), other.shape()
+            ));
+        }
+
+        // Force both tensors to CPU for slice operations
+        let self_slice = self.as_slice_mut_synced()?;
+        let other_slice = if other.is_cuda() && other.data.is_empty() {
+            // Other tensor needs sync but we can't mutate it
+            return Err("Cannot perform in-place operation: other tensor on GPU and not synced".to_string());
+        } else {
+            other.as_slice()?
+        };
+
+        for (a, &b) in self_slice.iter_mut().zip(other_slice.iter()) {
+            *a += b;
+        }
+
+        Ok(())
+    }
+
+    /// In-place multiplication on CPU side
+    pub fn mul_inplace(&mut self, other: &Self) -> Result<(), String>
+    where
+        T: std::ops::MulAssign + Copy,
+    {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for in-place multiplication: {:?} vs {:?}",
+                self.shape(), other.shape()
+            ));
+        }
+
+        let self_slice = self.as_slice_mut_synced()?;
+        let other_slice = if other.is_cuda() && other.data.is_empty() {
+            return Err("Cannot perform in-place operation: other tensor on GPU and not synced".to_string());
+        } else {
+            other.as_slice()?
+        };
+
+        for (a, &b) in self_slice.iter_mut().zip(other_slice.iter()) {
+            *a *= b;
+        }
+
+        Ok(())
+    }
+
+    /// Fill tensor with value (forces to CPU)
+    pub fn fill_inplace(&mut self, value: T) -> Result<(), String>
+    where
+        T: Copy,
+    {
+        let slice = self.as_slice_mut_synced()?;
+        slice.fill(value);
+        Ok(())
+    }
+
+    /// Copy data from another tensor using slices
+    pub fn copy_from(&mut self, other: &Self) -> Result<(), String>
+    where
+        T: Copy,
+    {
+        if self.shape() != other.shape() {
+            return Err(format!(
+                "Shape mismatch for copy: {:?} vs {:?}",
+                self.shape(), other.shape()
+            ));
+        }
+
+        let self_slice = self.as_slice_mut_synced()?;
+        let other_slice = if other.is_cuda() && other.data.is_empty() {
+            return Err("Cannot copy from GPU tensor that's not synced to CPU".to_string());
+        } else {
+            other.as_slice()?
+        };
+
+        self_slice.copy_from_slice(other_slice);
+        Ok(())
+    }
+
+
     /// Conditional selection: where condition is true, use true_vals, else false_vals (CPU only for now)
     pub fn where_condition(
         condition: &GPUTensor<T>,
