@@ -2,9 +2,10 @@ use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
+use crate::tensor::storage::{StorageBackend, CPUOwnedStorage};
 
 // Tensor wrapper to handle dynamic arrays more elegantly
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CPUTensor<T>
 where
     T: GPUNumber,
@@ -14,6 +15,37 @@ where
     // This way I will be able to use different data types in the future.
     // For now, we will keep it as f64 for simplicity.
     pub device: Device,
+    storage: Option<Box<dyn StorageBackend<T>>>,
+}
+
+impl<T> Clone for CPUTensor<T>
+where
+   T: GPUNumber + Clone,
+{
+   fn clone(&self) -> Self {
+       let storage = if let Some(storage_ref) = &self.storage {
+           // Try to downcast to CPUOwnedStorage if possible
+           if let Some(any_ref) = storage_ref.as_any() {
+               if let Some(cpu_storage) = any_ref.downcast_ref::<CPUOwnedStorage<T>>() {
+                   Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
+               } else if let Ok(storage) = storage_ref.clone_storage() {
+                   Some(storage)
+               } else {
+                   None
+               }
+           } else {
+               None
+           }
+       } else {
+           None
+       };
+
+       Self {
+           data: self.data.clone(),
+           device: self.device.clone(),
+           storage,
+       }
+   }
 }
 
 // Main implementation block with basic operations
@@ -33,10 +65,29 @@ where
     // The graph node is a separate struct (check src/graph/node.rs), which indeed has a data property, that in ferrrox will be a tensor.
     // In the course, the graph node was the main layer of abstraction over the device, and the tensor inherits from it. The data field of the
     pub fn new(data: ArrayD<T>) -> Self {
+        // Create storage backend from the data
+        let storage = CPUOwnedStorage::new(data.clone());
+
         Self {
+            data, // Keep for now
+            device: default_device(),
+            storage: Some(Box::new(storage)),
+        }
+    }
+
+    // Internal method to create tensor with specific storage
+    fn new_with_storage<S>(storage: S) -> Result<Self, String>
+    where
+        S: StorageBackend<T> + 'static,
+    {
+        // Extract data from storage for backward compatibility
+        let data = storage.cpu_data()?.clone();
+
+        Ok(Self {
             data,
             device: default_device(),
-        }
+            storage: Some(Box::new(storage)),
+        })
     }
 
     // Creates a new tensor with the given data and device.
@@ -46,22 +97,26 @@ where
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
     // Ideally,we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as i prefer to focus more on the automatic differentiation engine thing.
     pub fn new_with_device(data: ArrayD<T>, device: Device) -> Self {
-        Self { data, device }
+        let storage = CPUOwnedStorage::new(data.clone());
+        Self { data, device, storage: Some(Box::new(storage)) }
     }
 
     // Random numbers
     pub fn randn(shape: &[usize]) -> Self {
         let device = default_device();
+
         let data_f64 = device.randn(shape);
         let data = data_f64.mapv(|x| <T as CPUNumber>::from_f64(x).unwrap());
-        Self { data, device }
+        let storage = CPUOwnedStorage::new(data.clone());
+        Self { data, device,   storage: Some(Box::new(storage))}
     }
 
     pub fn randn_with_device(shape: &[usize], device: Device) -> Self {
         // Generates a tensor with random numbers from a normal distribution.
         let data_f64 = device.randn(shape);
         let data = data_f64.mapv(|x| <T as CPUNumber>::from_f64(x).unwrap());
-        Self { data, device }
+        let storage = CPUOwnedStorage::new(data.clone());
+        Self { data, device, storage: Some(Box::new(storage)) }
     }
 
     // Random numbers
@@ -69,14 +124,16 @@ where
         let device = default_device();
         let data_i64 = device.randint(shape);
         let data = data_i64.mapv(|x| <T as CPUNumber>::from_i64(x).unwrap());
-        Self { data, device }
+        let storage = CPUOwnedStorage::new(data.clone());
+        Self { data, device, storage: Some(Box::new(storage))  }
     }
 
     pub fn randint_with_device(shape: &[usize], device: Device) -> Self {
         // Generates a tensor with random integer numbers.
         let data_i64 = device.randint(shape);
         let data = data_i64.mapv(|x| <T as CPUNumber>::from_i64(x).unwrap());
-        Self { data, device }
+        let storage = CPUOwnedStorage::new(data.clone());
+        Self { data, device, storage: Some(Box::new(storage)) }
     }
 
     // Creates a tensor from a Rust vector. Again we are bound to ndarray backend here, but it is okay for now.
@@ -139,7 +196,7 @@ where
 
 
     /// SLICING SUPPORT
-    /// 
+    ///
     /// Get immutable slice view of tensor data
     /// Zero-cost access to underlying memory for efficient operations
     pub fn as_slice(&self) -> &[T] {
@@ -1393,16 +1450,22 @@ where
     // Zeroes
     pub fn zeros(shape: &[usize]) -> Self {
         let device = default_device();
+        let data = device.zeros(shape);
+        let storage = CPUOwnedStorage::new(data.clone());
         Self {
-            data: device.zeros(shape),
+            data,
             device,
+            storage: Some(Box::new(storage))
         }
     }
 
     pub fn zeros_with_device(shape: &[usize], device: Device) -> Self {
+        let data = device.zeros(shape);
+        let storage = CPUOwnedStorage::new(data.clone());
         Self {
-            data: device.zeros(shape),
+            data,
             device,
+            storage: Some(Box::new(storage))
         }
     }
 }
@@ -1425,16 +1488,22 @@ where
     // Ones
     pub fn ones(shape: &[usize]) -> Self {
         let device = default_device();
+        let data = device.ones(shape);
+        let storage = CPUOwnedStorage::new(data.clone());
         Self {
-            data: device.ones(shape),
+            data,
             device,
+            storage: Some(Box::new(storage))
         }
     }
 
     pub fn ones_with_device(shape: &[usize], device: Device) -> Self {
+        let data = device.ones(shape);
+        let storage = CPUOwnedStorage::new(data.clone());
         Self {
-            data: device.ones(shape),
+            data,
             device,
+            storage: Some(Box::new(storage))
         }
     }
 }

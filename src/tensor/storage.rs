@@ -1,6 +1,7 @@
 // src/tensor/storage.rs
 use ndarray::ArrayD;
 use std::borrow::Cow;
+use std::fmt::Debug;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -13,12 +14,17 @@ use crate::backend::number::GPUNumber;
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
-pub trait StorageBackend<T>
+pub trait StorageBackend<T>: Debug
 where
     T: crate::backend::number::GPUNumber
 {
     /// Get tensor shape
     fn shape(&self) -> &[usize];
+
+    // Add this method for downcasting
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None // Default implementation returns None for borrowed storage
+    }
 
     /// Get number of dimensions
     fn ndim(&self) -> usize;
@@ -37,6 +43,8 @@ where
 
     /// Check if this storage owns its data
     fn owns_data(&self) -> bool;
+
+    fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
 }
 
 /// Owned CPU storage
@@ -57,6 +65,10 @@ where
 {
     fn shape(&self) -> &[usize] {
         self.data.shape()
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
     fn ndim(&self) -> usize {
@@ -82,6 +94,10 @@ where
     fn owns_data(&self) -> bool {
         true
     }
+
+    fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        Ok(Box::new(self.clone()))
+    }
 }
 
 /// Borrowed CPU storage - new functionality for non-ownership
@@ -102,6 +118,10 @@ where
 {
     fn shape(&self) -> &[usize] {
         self.data.shape()
+    }
+
+    fn as_any(&self) ->  Option<&dyn std::any::Any> {
+        None
     }
 
     fn ndim(&self) -> usize {
@@ -126,6 +146,10 @@ where
 
     fn owns_data(&self) -> bool {
         false
+    }
+
+    fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        Err("Cannot clone borrowed storage".to_string())
     }
 }
 
@@ -159,6 +183,10 @@ where
         self.cuda_data.shape()
     }
 
+     fn as_any(&self) ->  Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
     fn ndim(&self) -> usize {
         self.cuda_data.shape().len()
     }
@@ -181,5 +209,11 @@ where
 
     fn owns_data(&self) -> bool {
         true
+    }
+
+
+
+    fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        Ok(Box::new(self.clone()))
     }
 }
