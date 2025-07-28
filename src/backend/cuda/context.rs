@@ -429,6 +429,52 @@ where
         }
     }
 
+
+    /// Create tensor from CPU slice without taking ownership
+    /// This allows borrowing external data for GPU transfer
+    pub fn from_cpu_slice(
+        context_manager: &CudaContextManager,
+        data: &[T],
+        shape: Vec<usize>,
+    ) -> Result<Self, String> {
+        let expected_size = shape.iter().product::<usize>();
+        if data.len() != expected_size {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                expected_size
+            ));
+        }
+
+        // Transfer slice data to GPU - this copies the data to GPU
+        let cuda_data = context_manager.host_to_device(data)?;
+        Ok(Self::new(cuda_data, shape))
+    }
+
+    /// Create tensor from CPU slice asynchronously without taking ownership
+    /// Useful for overlapping transfers with computation
+    pub fn from_cpu_slice_async(
+        context_manager: &CudaContextManager,
+        data: &[T],
+        shape: Vec<usize>,
+        stream_name: Option<&str>,
+    ) -> Result<Self, String> {
+        let expected_size = shape.iter().product::<usize>();
+        if data.len() != expected_size {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                expected_size
+            ));
+        }
+
+        // Async transfer slice data to GPU
+        let cuda_data = context_manager.host_to_device_async(data, stream_name)?;
+        Ok(Self::new(cuda_data, shape))
+    }
+
     /// Create tensor from host data using context manager
     pub fn from_vec(
         context_manager: &CudaContextManager,
