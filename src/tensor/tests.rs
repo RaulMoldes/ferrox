@@ -59,16 +59,16 @@ mod tests {
         // Test ReLU
         let relu_result = input.relu();
         let expected_relu = Tensor::from_vec(vec![0.0, 0.0, 0.0, 1.0, 2.0], &[5]).unwrap();
-        assert_eq!(relu_result, expected_relu);
+        assert_eq!(relu_result, Ok(expected_relu));
 
         // Test Sigmoid (should be between 0 and 1)
-        let sigmoid_result = input.sigmoid();
+        let sigmoid_result = input.sigmoid().expect("Error while computing sigmoid");
         for &val in sigmoid_result.data().iter() {
             assert!(val >= 0.0 && val <= 1.0);
         }
 
         // Test Exp
-        let exp_result = input.exp();
+        let exp_result = input.exp().expect("Error while computing exponentiation");
         assert!(exp_result.data().iter().all(|&x| x > 0.0));
 
         // Test Negate
@@ -165,7 +165,7 @@ mod tests {
 
         // Test unsqueeze
         let unsqueezed = squeezed.unsqueeze(1);
-        assert_eq!(unsqueezed.shape(), &[3, 1]);
+        assert_eq!(unsqueezed.expect("Error while attempting to unsqueeze").shape(), &[3, 1]);
     }
 
     #[test]
@@ -188,18 +188,18 @@ mod tests {
         let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
 
         // Test sum
-        let sum_all = tensor.sum(None);
+        let sum_all = tensor.sum(None).expect("Reduction error");
         assert_eq!(sum_all.data().iter().next().unwrap(), &21.0);
 
         // Test mean
-        let mean_all = tensor.mean(None);
+        let mean_all = tensor.mean(None).expect("Reduction error");
         assert_eq!(mean_all.data().iter().next().unwrap(), &3.5);
 
         // Test sum along axis
-        let sum_axis0 = tensor.sum(Some(0));
+        let sum_axis0 = tensor.sum(Some(&[0])).expect("Reduction error");
         assert_eq!(sum_axis0.shape(), &[3]);
 
-        let sum_axis1 = tensor.sum(Some(1));
+        let sum_axis1 = tensor.sum(Some(&[1])).expect("Reduction error");
         assert_eq!(sum_axis1.shape(), &[2]);
     }
 }

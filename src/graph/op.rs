@@ -140,7 +140,7 @@ where
         if inputs.len() != 1 {
             return Err("ReLUOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].relu())
+        inputs[0].relu()
     }
 
     fn gradient(
@@ -180,7 +180,11 @@ where
         if inputs.len() != 1 {
             return Err("SumOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].sum(self.axis))
+        if let Some(axis) = self.axis {
+            inputs[0].sum(Some(&[axis]))
+        }else {
+            inputs[0].sum(None)
+        }
     }
 
     fn gradient(
@@ -195,7 +199,7 @@ where
             Some(axis) => {
                 // For axis-specific sum, we need to expand dimensions back
                 let expanded = grad_output.unsqueeze(axis);
-                expanded.broadcast_to(input_shape)?
+                expanded?.broadcast_to(input_shape)?
             }
             None => {
                 // Sum over all dimensions: broadcast scalar gradient to input shape
@@ -420,7 +424,7 @@ where
         let grad_a = grad_output.mul(&b.mul(&a_pow_b_minus_one)?)?;
 
         let a_pow_b = a.powf(b)?;
-        let ln_a = a.log();
+        let ln_a = a.log()?;
         let grad_b = grad_output.mul(&a_pow_b.mul(&ln_a)?)?;
 
         Ok(vec![grad_a, grad_b])
@@ -442,7 +446,7 @@ where
         if inputs.len() != 1 {
             return Err("ExpOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].exp())
+        inputs[0].exp()
     }
 
     fn gradient(
@@ -451,7 +455,7 @@ where
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // d(exp(x))/dx = exp(x)
-        let exp_x = inputs[0].exp();
+        let exp_x = inputs[0].exp()?;
         let grad = grad_output.mul(&exp_x)?;
         Ok(vec![grad])
     }
@@ -472,7 +476,7 @@ where
         if inputs.len() != 1 {
             return Err("LogOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].log())
+        inputs[0].log()
     }
 
     fn gradient(
@@ -652,7 +656,7 @@ where
 
         // Sum over leading dimensions that were added
         for _ in 0..ndim_diff {
-            grad = grad.sum(Some(0));
+            grad = grad.sum(Some(&[0]))?;
         }
 
         // Sum over dimensions that were expanded from size 1
@@ -662,8 +666,8 @@ where
             .enumerate()
         {
             if input_dim == 1 && output_dim > 1 {
-                grad = grad.sum(Some(i));
-                grad = grad.unsqueeze(i);
+                grad = grad.sum(Some(&[i]))?;
+                grad = grad.unsqueeze(i)?
             }
         }
 
@@ -696,8 +700,8 @@ where
         }
 
         match &self.axes {
-            Some(axes) => Ok(inputs[0].sum_axes(Some(axes))),
-            None => Ok(inputs[0].sum(None)),
+            Some(axes) => inputs[0].sum(Some(axes)),
+            None => inputs[0].sum(None),
         }
     }
 
@@ -714,7 +718,7 @@ where
                 let mut grad = grad_output.clone();
                 // Expand dimensions back for each summed axis
                 for &axis in axes.iter().rev() {
-                    grad = grad.unsqueeze(axis);
+                    grad = grad.unsqueeze(axis)?;
                 }
                 grad.broadcast_to(input_shape)?
             }
@@ -1090,7 +1094,7 @@ where
             return Err("MaxAlongDimOp requires exactly 1 input".to_string());
         }
 
-        inputs[0].max_along_dim(self.dim)
+        inputs[0].max_reduce(Some(&[self.dim]))
     }
 
     fn gradient(
@@ -1105,7 +1109,7 @@ where
         let input = &inputs[0];
 
         // First, compute the maximum values again to determine which elements were maximal
-        let max_values = input.max_along_dim(self.dim)?;
+        let max_values = input.max_reduce(Some(&[self.dim]))?;
 
         // Expand max_values to match input shape for comparison
         let expanded_max = max_values.expand_dims(self.dim)?;
@@ -1113,9 +1117,9 @@ where
 
         let mask = input.equal(&broadcasted_max)?;
 
-        let count_maxima = mask.sum(Some(self.dim));
+        let count_maxima = mask.sum(Some(&[self.dim]));
 
-        let expanded_count = count_maxima.expand_dims(self.dim)?;
+        let expanded_count = count_maxima?.expand_dims(self.dim)?;
         let expanded_grad = grad_output.expand_dims(self.dim)?;
         let broadcasted_count = expanded_count.broadcast_to(input.shape())?;
         let broadcasted_grad = expanded_grad.broadcast_to(input.shape())?;
@@ -1188,25 +1192,25 @@ where
         }
 
         // Step 1: Find maximum along the specified dimension for numerical stability
-        let max_vals = input.max_along_dim(self.dim)?;
+        let max_vals = input.max_reduce(Some(&[self.dim]))?;
 
         // Step 2: Expand max_vals back to original shape for broadcasting
         let expanded_max = max_vals.unsqueeze(self.dim);
-        let broadcasted_max = expanded_max.broadcast_to(input_shape)?;
+        let broadcasted_max = expanded_max?.broadcast_to(input_shape)?;
 
         // Step 3: Subtract max and compute exponentials: exp(x - max)
         // This should be fused into a sub operation for efficiency. However curently it is not implemented.
         let negated = broadcasted_max.neg()?;
         let shifted_input = input.add(&negated)?;
 
-        let exp_vals = shifted_input.exp();
+        let exp_vals = shifted_input.exp()?;
 
         // Step 4: Sum exponentials along the dimension
-        let sum_exp = exp_vals.sum(Some(self.dim));
+        let sum_exp = exp_vals.sum(Some(&[self.dim]));
 
         // Step 5: Expand sum back to original shape for broadcasting
-        let expanded_sum = sum_exp.unsqueeze(self.dim);
-        let broadcasted_sum = expanded_sum.broadcast_to(input_shape)?;
+        let expanded_sum = sum_exp?.unsqueeze(self.dim);
+        let broadcasted_sum = expanded_sum?.broadcast_to(input_shape)?;
 
         // Step 6: Divide by sum to get probabilities
         let result = exp_vals.div(&broadcasted_sum)?;
@@ -1234,11 +1238,11 @@ where
         let elementwise_product = softmax_output.mul(grad_output)?;
 
         // Sum along the softmax dimension: sum(softmax * grad_output, dim)
-        let sum_product = elementwise_product.sum(Some(self.dim));
+        let sum_product = elementwise_product.sum(Some(&[self.dim]))?;
 
         // Expand sum back to original shape for broadcasting
         let expanded_sum = sum_product.unsqueeze(self.dim);
-        let broadcasted_sum = expanded_sum.broadcast_to(input.shape())?;
+        let broadcasted_sum = expanded_sum?.broadcast_to(input.shape())?;
 
         // Compute final gradient: softmax * (grad_output - broadcasted_sum)
         let negated_sum = broadcasted_sum.neg()?;

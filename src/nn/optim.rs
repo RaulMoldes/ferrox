@@ -165,14 +165,15 @@ where
     /// # Arguments
     /// * `engine` - The computation graph engine
     /// * `max_norm` - Maximum allowed gradient norm
-     pub fn clip_grad_norm(&mut self, engine: &mut Engine<T>, max_norm: T) {
+    pub fn clip_grad_norm(&mut self, engine: &mut Engine<T>, max_norm: T) {
         let mut total_norm_sq = <T as CPUNumber>::zero();
 
         // Calculate total gradient norm across all parameters using CPUTensor methods
         for &param_node in &self.param_nodes {
             if let Some(grad) = engine.get_gradient(param_node) {
                 // Use CPUTensor methods to compute squared norm
-                let grad_squared = grad.mul(&grad)
+                let grad_squared = grad
+                    .mul(&grad)
                     .unwrap_or_else(|err| panic!("Failed to square gradient: {}", err));
 
                 // Sum all elements - we need to access CPU data for this scalar operation
@@ -194,7 +195,8 @@ where
 
             for &param_node in &self.param_nodes {
                 if let Some(grad) = engine.get_gradient(param_node) {
-                    let clipped_grad = grad.mul_scalar(clip_coef)
+                    let clipped_grad = grad
+                        .mul_scalar(clip_coef)
                         .unwrap_or_else(|err| panic!("Failed to clip gradient: {}", err));
                     engine.set_gradient(param_node, clipped_grad);
                 }
@@ -233,13 +235,17 @@ where
                 // Apply weight decay using CPUTensor methods: g = g + weight_decay * p
                 let mut effective_grad = if self.weight_decay != zero {
                     // Use CPUTensor::add and mul_scalar instead of direct operations
-                    let weight_decay_term = current_params.mul_scalar(self.weight_decay)
-                        .unwrap_or_else(|err| panic!("Failed to compute weight decay term: {}", err));
+                    let weight_decay_term = current_params
+                        .mul_scalar(self.weight_decay)
+                        .unwrap_or_else(|err| {
+                            panic!("Failed to compute weight decay term: {}", err)
+                        });
 
-                    grad.add(&weight_decay_term)
-                        .unwrap_or_else(|err| panic!("Failed to apply weight decay to gradient: {}", err))
+                    grad.add(&weight_decay_term).unwrap_or_else(|err| {
+                        panic!("Failed to apply weight decay to gradient: {}", err)
+                    })
                 } else {
-                    grad.clone()  // Clone since we need owned value
+                    grad.clone() // Clone since we need owned value
                 };
 
                 // Initialize momentum buffer if it doesn't exist
@@ -251,23 +257,30 @@ where
 
                 // Update momentum buffer: v = momentum * v + (1 - dampening) * g
                 if self.momentum != zero {
-                    let momentum_term = momentum_buffer.mul_scalar(self.momentum)
+                    let momentum_term = momentum_buffer
+                        .mul_scalar(self.momentum)
                         .unwrap_or_else(|err| panic!("Failed to compute momentum term: {}", err));
 
-                    let grad_term = effective_grad.mul_scalar(one - self.dampening)
+                    let grad_term = effective_grad
+                        .mul_scalar(one - self.dampening)
                         .unwrap_or_else(|err| panic!("Failed to compute gradient term: {}", err));
 
-                    *momentum_buffer = momentum_term.add(&grad_term)
+                    *momentum_buffer = momentum_term
+                        .add(&grad_term)
                         .unwrap_or_else(|err| panic!("Failed to update momentum buffer: {}", err));
 
                     // For Nesterov: update = g + momentum * v
                     // For standard: update = v
                     effective_grad = if self.nesterov {
-                        let nesterov_term = momentum_buffer.mul_scalar(self.momentum)
-                            .unwrap_or_else(|err| panic!("Failed to compute Nesterov term: {}", err));
+                        let nesterov_term = momentum_buffer
+                            .mul_scalar(self.momentum)
+                            .unwrap_or_else(|err| {
+                                panic!("Failed to compute Nesterov term: {}", err)
+                            });
 
-                        effective_grad.add(&nesterov_term)
-                            .unwrap_or_else(|err| panic!("Failed to compute Nesterov update: {}", err))
+                        effective_grad.add(&nesterov_term).unwrap_or_else(|err| {
+                            panic!("Failed to compute Nesterov update: {}", err)
+                        })
                     } else {
                         momentum_buffer.clone()
                     };
@@ -275,13 +288,16 @@ where
 
                 // Update parameters: p = p - lr * update
                 // Use neg() method instead of negate(), and add() instead of direct operations
-                let lr_scaled_update = effective_grad.mul_scalar(self.lr)
-                    .unwrap_or_else(|err| panic!("Failed to scale update by learning rate: {}", err));
+                let lr_scaled_update = effective_grad.mul_scalar(self.lr).unwrap_or_else(|err| {
+                    panic!("Failed to scale update by learning rate: {}", err)
+                });
 
-                let negative_update = lr_scaled_update.neg()
+                let negative_update = lr_scaled_update
+                    .neg()
                     .unwrap_or_else(|err| panic!("Failed to negate update: {}", err));
 
-                let new_params = current_params.add(&negative_update)
+                let new_params = current_params
+                    .add(&negative_update)
                     .unwrap_or_else(|err| panic!("Failed to update parameters: {}", err));
 
                 engine.set_node_data(param_node, new_params);
@@ -299,9 +315,6 @@ where
         self.param_nodes.insert(param_node_id);
     }
 }
-
-
-
 
 /// Adam optimizer - Adaptive Moment Estimation
 ///
@@ -397,22 +410,29 @@ where
 
                 // Apply weight decay using CPUTensor methods: g = g + weight_decay * p
                 let effective_grad = if self.weight_decay != zero {
-                    let weight_decay_term = current_params.mul_scalar(self.weight_decay)
-                        .unwrap_or_else(|err| panic!("Failed to compute weight decay term: {}", err));
+                    let weight_decay_term = current_params
+                        .mul_scalar(self.weight_decay)
+                        .unwrap_or_else(|err| {
+                            panic!("Failed to compute weight decay term: {}", err)
+                        });
 
-                    grad.add(&weight_decay_term)
-                        .unwrap_or_else(|err| panic!("Failed to apply weight decay to gradient: {}", err))
+                    grad.add(&weight_decay_term).unwrap_or_else(|err| {
+                        panic!("Failed to apply weight decay to gradient: {}", err)
+                    })
                 } else {
                     grad.clone()
                 };
 
                 // Initialize moment estimates if they don't exist
                 if !self.first_moments.contains_key(&param_node) {
-                    self.first_moments.insert(param_node, Tensor::zeros(current_params.shape()));
-                    self.second_moments.insert(param_node, Tensor::zeros(current_params.shape()));
+                    self.first_moments
+                        .insert(param_node, Tensor::zeros(current_params.shape()));
+                    self.second_moments
+                        .insert(param_node, Tensor::zeros(current_params.shape()));
 
                     if self.amsgrad {
-                        self.max_second_moments.insert(param_node, Tensor::zeros(current_params.shape()));
+                        self.max_second_moments
+                            .insert(param_node, Tensor::zeros(current_params.shape()));
                     }
                 }
 
@@ -420,43 +440,74 @@ where
                 let second_moment = self.second_moments.get_mut(&param_node).unwrap();
 
                 // Update biased first moment estimate: m_t = beta1 * m_{t-1} + (1 - beta1) * g_t
-                let first_momentum_term = first_moment.mul_scalar(self.beta1)
+                let first_momentum_term = first_moment
+                    .mul_scalar(self.beta1)
                     .unwrap_or_else(|err| panic!("Failed to compute first momentum term: {}", err));
 
-                let first_grad_term = effective_grad.mul_scalar(one - self.beta1)
+                let first_grad_term = effective_grad
+                    .mul_scalar(one - self.beta1)
                     .unwrap_or_else(|err| panic!("Failed to compute first gradient term: {}", err));
 
-                *first_moment = first_momentum_term.add(&first_grad_term)
-                    .unwrap_or_else(|err| panic!("Failed to update first moment estimate: {}", err));
+                *first_moment = first_momentum_term
+                    .add(&first_grad_term)
+                    .unwrap_or_else(|err| {
+                        panic!("Failed to update first moment estimate: {}", err)
+                    });
 
                 // Update biased second moment estimate: v_t = beta2 * v_{t-1} + (1 - beta2) * g_t^2
-                let grad_squared = effective_grad.mul(&effective_grad)
+                let grad_squared = effective_grad
+                    .mul(&effective_grad)
                     .unwrap_or_else(|err| panic!("Failed to square gradient: {}", err));
 
-                let second_momentum_term = second_moment.mul_scalar(self.beta2)
-                    .unwrap_or_else(|err| panic!("Failed to compute second momentum term: {}", err));
+                let second_momentum_term =
+                    second_moment.mul_scalar(self.beta2).unwrap_or_else(|err| {
+                        panic!("Failed to compute second momentum term: {}", err)
+                    });
 
-                let second_grad_term = grad_squared.mul_scalar(one - self.beta2)
-                    .unwrap_or_else(|err| panic!("Failed to compute second gradient term: {}", err));
+                let second_grad_term =
+                    grad_squared
+                        .mul_scalar(one - self.beta2)
+                        .unwrap_or_else(|err| {
+                            panic!("Failed to compute second gradient term: {}", err)
+                        });
 
-                *second_moment = second_momentum_term.add(&second_grad_term)
-                    .unwrap_or_else(|err| panic!("Failed to update second moment estimate: {}", err));
+                *second_moment =
+                    second_momentum_term
+                        .add(&second_grad_term)
+                        .unwrap_or_else(|err| {
+                            panic!("Failed to update second moment estimate: {}", err)
+                        });
 
                 // Compute bias-corrected first moment estimate: m_hat_t = m_t / (1 - beta1^t)
-                let first_moment_corrected = first_moment.div_scalar(bias_correction1)
-                    .unwrap_or_else(|err| panic!("Failed to compute bias correction for first moment: {}", err));
+                let first_moment_corrected = first_moment
+                    .div_scalar(bias_correction1)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "Failed to compute bias correction for first moment: {}",
+                            err
+                        )
+                    });
 
                 // Compute bias-corrected second moment estimate: v_hat_t = v_t / (1 - beta2^t)
-                let mut second_moment_corrected = second_moment.div_scalar(bias_correction2)
-                    .unwrap_or_else(|err| panic!("Failed to compute bias correction for second moment: {}", err));
+                let mut second_moment_corrected = second_moment
+                    .div_scalar(bias_correction2)
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "Failed to compute bias correction for second moment: {}",
+                            err
+                        )
+                    });
 
                 // AMSGrad: use max of current and past second moments
                 if self.amsgrad {
                     let max_second_moment = self.max_second_moments.get_mut(&param_node).unwrap();
 
                     // Element-wise maximum using CPUTensor::max method
-                    let updated_max = max_second_moment.max(&second_moment_corrected)
-                        .unwrap_or_else(|err| panic!("Failed to compute element-wise maximum: {}", err));
+                    let updated_max = max_second_moment
+                        .max(&second_moment_corrected)
+                        .unwrap_or_else(|err| {
+                            panic!("Failed to compute element-wise maximum: {}", err)
+                        });
 
                     *max_second_moment = updated_max.clone();
                     second_moment_corrected = updated_max;
@@ -464,18 +515,24 @@ where
 
                 // Compute parameter update: p_t = p_t - lr * m_hat_t / (sqrt(v_hat_t) + eps)
                 // Create denominator tensor: sqrt(v_hat_t) + eps
-                let denominator = self.create_sqrt_plus_eps_tensor(&second_moment_corrected).unwrap_or_else(|err| panic!("Failed to create sqrt plus eps tensor: {}", err));
+                let denominator = self
+                    .create_sqrt_plus_eps_tensor(&second_moment_corrected)
+                    .unwrap_or_else(|err| panic!("Failed to create sqrt plus eps tensor: {}", err));
 
-                let update_direction = first_moment_corrected.div(&denominator)
+                let update_direction = first_moment_corrected
+                    .div(&denominator)
                     .unwrap_or_else(|err| panic!("Failed to compute update direction: {}", err));
 
-                let scaled_update = update_direction.mul_scalar(self.lr)
-                    .unwrap_or_else(|err| panic!("Failed to scale update by learning rate: {}", err));
+                let scaled_update = update_direction.mul_scalar(self.lr).unwrap_or_else(|err| {
+                    panic!("Failed to scale update by learning rate: {}", err)
+                });
 
-                let negative_update = scaled_update.neg()
+                let negative_update = scaled_update
+                    .neg()
                     .unwrap_or_else(|err| panic!("Failed to negate update: {}", err));
 
-                let new_params = current_params.add(&negative_update)
+                let new_params = current_params
+                    .add(&negative_update)
                     .unwrap_or_else(|err| panic!("Failed to update parameters: {}", err));
 
                 engine.set_node_data(param_node, new_params);
@@ -601,17 +658,17 @@ mod optimizer_tests {
     /// Helper to get scalar value from tensor using CPUTensor methods
     fn get_scalar_value<T>(tensor: &Tensor<T>) -> T
     where
-        T: GPUFloat + Clone
+        T: GPUFloat + Clone,
     {
         // Use CPUTensor method to access data instead of direct indexing
         let cpu_data = tensor.cpu_data().expect("Failed to get CPU data");
-        cpu_data[[0]].clone()  // ndarray indexing for scalar
+        cpu_data[[0]].clone() // ndarray indexing for scalar
     }
 
     /// Helper to get vector values from tensor using CPUTensor methods
     fn get_vector_values<T>(tensor: &Tensor<T>) -> Vec<T>
     where
-        T: GPUFloat + Clone
+        T: GPUFloat + Clone,
     {
         let cpu_data = tensor.cpu_data().expect("Failed to get CPU data");
         cpu_data.iter().cloned().collect()

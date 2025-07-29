@@ -4,7 +4,6 @@ use crate::tensor::storage::{CPUOwnedStorage, StorageBackend};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
 
-
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug)]
 pub struct CPUTensor<T>
@@ -95,26 +94,26 @@ where
     }
 
     // Internal method to create tensor with specific storage backend
-// This will become the primary constructor once data field is removed
-fn new_with_storage<S>(storage: S) -> Result<Self, String>
-where
-    S: crate::tensor::storage::StorageBackend<T> + 'static,
-{
-    // Extract data from storage for backward compatibility
-    let data = match storage.cpu_data() {
-        Ok(cpu_data) => cpu_data.clone(),
-        Err(_) => {
-            // For GPU storage, create empty CPU data as placeholder
-            ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
-        }
-    };
+    // This will become the primary constructor once data field is removed
+    fn new_with_storage<S>(storage: S) -> Result<Self, String>
+    where
+        S: crate::tensor::storage::StorageBackend<T> + 'static,
+    {
+        // Extract data from storage for backward compatibility
+        let data = match storage.cpu_data() {
+            Ok(cpu_data) => cpu_data.clone(),
+            Err(_) => {
+                // For GPU storage, create empty CPU data as placeholder
+                ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
+            }
+        };
 
-    Ok(Self {
-        data, // TODO: Remove this field in final migration step
-        device: crate::backend::default_device(),
-        storage: Some(Box::new(storage)),
-    })
-}
+        Ok(Self {
+            data, // TODO: Remove this field in final migration step
+            device: crate::backend::default_device(),
+            storage: Some(Box::new(storage)),
+        })
+    }
 
     // Creates a new tensor with the given data and device.
     // This is useful when you want to create a tensor with a specific device, for example, when you want to use a GPU.
@@ -252,13 +251,10 @@ where
     pub(crate) fn from_storage_backend(
         storage: Box<dyn crate::tensor::storage::StorageBackend<T>>,
         device: crate::backend::Device,
-    ) -> Result<Self, String>
-    {
+    ) -> Result<Self, String> {
         let data = match storage.cpu_data() {
             Ok(cpu_data) => cpu_data.clone(),
-            Err(_) => {
-                ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
-            }
+            Err(_) => ndarray::ArrayD::zeros(ndarray::IxDyn(&[])),
         };
 
         Ok(Self {
@@ -432,24 +428,24 @@ where
             Err(e) => Err(format!("Failed to extract data: {}", e)),
         }
     }
-
-
 }
 
-
-impl <T> CPUTensor<T>
+impl<T> CPUTensor<T>
 where
     T: GPUFloat + Clone,
 {
-
     // Element-wise operations.
     // These are operations that are applied to each element of the tensor.
     // They are easily parallelizable and can be implemented using ndarray's mapv method.
     // The mapv method applies a function to each element of the array and returns a new array with the results.
     pub fn add(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         // Use the ElementwiseOps trait - works for both CPU and future CUDA implementations
@@ -461,9 +457,13 @@ where
 
     /// Element-wise subtraction using storage trait
     pub fn sub(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.sub(other_storage.as_ref())?;
@@ -472,9 +472,13 @@ where
 
     /// Element-wise multiplication using storage trait
     pub fn mul(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.mul(other_storage.as_ref())?;
@@ -483,9 +487,13 @@ where
 
     /// Element-wise division using storage trait
     pub fn div(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.div(other_storage.as_ref())?;
@@ -494,9 +502,13 @@ where
 
     /// Element-wise minimum using storage trait
     pub fn min(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.min(other_storage.as_ref())?;
@@ -505,9 +517,13 @@ where
 
     /// Element-wise maximum using storage trait
     pub fn max(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.max(other_storage.as_ref())?;
@@ -516,7 +532,9 @@ where
 
     /// Scalar addition - more efficient than broadcasting
     pub fn add_scalar(&self, scalar: T) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.add_scalar(scalar)?;
@@ -525,7 +543,9 @@ where
 
     /// Scalar multiplication
     pub fn mul_scalar(&self, scalar: T) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.mul_scalar(scalar)?;
@@ -534,7 +554,9 @@ where
 
     /// Scalar substraction
     pub fn sub_scalar(&self, scalar: T) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sub_scalar(scalar)?;
@@ -543,7 +565,9 @@ where
 
     /// Scalar division
     pub fn div_scalar(&self, scalar: T) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.div_scalar(scalar)?;
@@ -552,7 +576,9 @@ where
 
     /// Unary negation - replaces your negate() method
     pub fn neg(&self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.neg()?;
@@ -561,7 +587,9 @@ where
 
     /// Element-wise absolute value using storage trait
     pub fn abs(&self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.abs()?;
@@ -570,26 +598,47 @@ where
 
     /// Element-wise clamp using storage trait
     pub fn clamp(&self, min_val: T, max_val: T) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.clamp(min_val, max_val)?;
         Self::from_storage_backend(result_storage, self.device.clone())
     }
 
+    /// Element-wise square root
+    /// Returns a new tensor with square root values
+    /// Validates that all values are non-negative
+    pub fn sqrt(&self) -> Result<Self, String> {
+        // Check for negative values first
+        let has_negative = self.data.iter().any(|&x| x < <T as CPUNumber>::zero());
+        if has_negative {
+            return Err("Cannot compute square root of negative values".to_string());
+        }
+
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.sqrt()).collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
+
+        Ok(Self::new_with_device(result_array, self.device.clone()))
+    }
 }
 
-impl <T> CPUTensor<T>
+impl<T> CPUTensor<T>
 where
     T: GPUFloat + Clone,
 {
-
-
     /// Element-wise greater than or equal comparison using storage trait
     pub fn greater_equal(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.greater_equal(other_storage.as_ref())?;
@@ -598,9 +647,13 @@ where
 
     /// Element-wise less than or equal comparison using storage trait
     pub fn less_equal(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.less_equal(other_storage.as_ref())?;
@@ -609,9 +662,13 @@ where
 
     /// Element-wise equality comparison using storage trait
     pub fn equal(&self, other: &Self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let other_storage = other.storage.as_ref()
+        let other_storage = other
+            .storage
+            .as_ref()
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.equal(other_storage.as_ref())?;
@@ -620,7 +677,9 @@ where
 
     /// Logical NOT operation using storage trait
     pub fn logical_not(&self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.logical_not()?;
@@ -629,7 +688,9 @@ where
 
     /// Range check operation using storage trait
     pub fn in_range(&self, min_val: T, max_val: T) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.in_range(min_val, max_val)?;
@@ -638,114 +699,14 @@ where
 
     /// Sign function using storage trait
     pub fn sign(&self) -> Result<Self, String> {
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sign()?;
         Self::from_storage_backend(result_storage, self.device.clone())
     }
-
-    /// Find maximum values along a specific dimension
-    /// Reduces the tensor by one dimension
-    pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
-        let shape = self.shape();
-
-        if dim >= shape.len() {
-            return Err(format!(
-                "Dimension {} out of bounds for tensor with {} dimensions",
-                dim,
-                shape.len()
-            ));
-        }
-
-        // Calculate the output shape (remove the specified dimension)
-        let mut output_shape = shape.to_vec();
-        output_shape.remove(dim);
-
-        // If we're reducing all dimensions, result is a scalar
-        if output_shape.is_empty() {
-            output_shape.push(1);
-        }
-
-        let output_size: usize = output_shape.iter().product();
-        let mut result_data = vec![T::min_value(); output_size];
-
-        // Calculate strides for efficient indexing
-        let input_strides = self.calculate_strides();
-        let output_strides = Self::calculate_strides_for_shape(&output_shape);
-
-        // Iterate through all elements and find maximum along the specified dimension
-        for input_idx in 0..self.data.len() {
-            // Convert flat index to multi-dimensional coordinates
-            let coords = self.flat_to_coords(input_idx, &input_strides);
-
-            // Convert back to flat index in output tensor
-            let output_idx = Self::coords_to_flat(&coords, &output_strides);
-
-            let current_value = self.data.as_slice().unwrap()[input_idx];
-            if current_value > result_data[output_idx] {
-                result_data[output_idx] = current_value;
-            }
-        }
-
-        let result_array = ndarray::Array::from_shape_vec(output_shape, result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
-
-        Ok(Self::new_with_device(
-            result_array.into_dyn(),
-            self.device.clone(),
-        ))
-    }
-
-    // Helper method to calculate strides for a given shape
-    fn calculate_strides_for_shape(shape: &[usize]) -> Vec<usize> {
-        let mut strides = vec![1; shape.len()];
-        for i in (0..shape.len().saturating_sub(1)).rev() {
-            strides[i] = strides[i + 1] * shape[i + 1];
-        }
-        strides
-    }
-
-    // Helper method to calculate strides for current tensor
-    fn calculate_strides(&self) -> Vec<usize> {
-        Self::calculate_strides_for_shape(self.shape())
-    }
-
-    // Helper method to convert flat index to coordinates
-    fn flat_to_coords(&self, mut flat_idx: usize, strides: &[usize]) -> Vec<usize> {
-        let mut coords = vec![0; strides.len()];
-        for i in 0..strides.len() {
-            coords[i] = flat_idx / strides[i];
-            flat_idx %= strides[i];
-        }
-        coords
-    }
-
-    // Helper method to convert coordinates to flat index
-    fn coords_to_flat(coords: &[usize], strides: &[usize]) -> usize {
-        coords
-            .iter()
-            .zip(strides.iter())
-            .map(|(coord, stride)| coord * stride)
-            .sum()
-    }
-
-    
-    // Expand dimensions by adding a new axis at the specified position
-    pub fn expand_dims(&self, axis: usize) -> Result<CPUTensor<T>, String> {
-        if axis > self.ndim() {
-            return Err(format!(
-                "Cannot insert axis {} for tensor with {} dimensions",
-                axis,
-                self.ndim()
-            ));
-        }
-
-        let expanded = self.data.clone().insert_axis(ndarray::Axis(axis));
-        Ok(Self::new_with_device(expanded, self.device.clone()))
-    }
-
-
 
     // Detach operation - creates a new tensor that shares data but detaches from graph
     // Need to check if this is the right way to do it.
@@ -808,7 +769,6 @@ where
     }
 }
 
-
 impl<T> CPUTensor<T>
 where
     T: GPUFloat + Clone,
@@ -818,7 +778,10 @@ where
     /// Get immutable slice view of tensor data using storage backend
     /// Zero-cost access to underlying memory for efficient operations
     pub fn as_slice(&self) -> Result<&[T], String> {
-        let storage = self.storage.as_ref().ok_or("Tensor has no storage backend")?;
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
 
         // Only works for CPU storage
         if storage.is_gpu() {
@@ -826,7 +789,8 @@ where
         }
 
         let cpu_data = storage.cpu_data()?;
-        cpu_data.as_slice()
+        cpu_data
+            .as_slice()
             .ok_or("ArrayD is not contiguous - cannot convert to slice".to_string())
     }
 
@@ -834,11 +798,16 @@ where
     /// Enables in-place operations without reallocations
     /// Only works for owned CPU storage
     pub fn as_slice_mut(&mut self) -> Result<&mut [T], String> {
-        let storage = self.storage.as_mut().ok_or("Tensor has no storage backend")?;
+        let storage = self
+            .storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?;
 
         // Only works for CPU storage
         if storage.is_gpu() {
-            return Err("Cannot get mutable slice from GPU tensor. Use .to_cpu() first".to_string());
+            return Err(
+                "Cannot get mutable slice from GPU tensor. Use .to_cpu() first".to_string(),
+            );
         }
 
         // Check if storage owns its data
@@ -847,7 +816,8 @@ where
         }
 
         let cpu_data = storage.cpu_data_mut()?;
-        cpu_data.as_slice_mut()
+        cpu_data
+            .as_slice_mut()
             .ok_or("ArrayD is not contiguous - cannot convert to mutable slice".to_string())
     }
 
@@ -907,7 +877,11 @@ where
     }
 
     /// Create tensor from existing slice with specific device
-    pub fn from_slice_with_device(slice: &[T], shape: &[usize], device: crate::backend::Device) -> Result<Self, String> {
+    pub fn from_slice_with_device(
+        slice: &[T],
+        shape: &[usize],
+        device: crate::backend::Device,
+    ) -> Result<Self, String> {
         let expected_len: usize = shape.iter().product();
         if slice.len() != expected_len {
             return Err(format!(
@@ -930,7 +904,6 @@ where
         })
     }
 
-
     /// Check if tensor data is contiguous (for slice operations)
     pub fn is_contiguous(&self) -> bool {
         if let Ok(data) = self.cpu_data() {
@@ -941,10 +914,12 @@ where
         }
     }
 
-
     /// Clone the tensor into owned storage (converts borrowed to owned)
     pub fn to_owned(&self) -> Result<Self, String> {
-        let storage = self.storage.as_ref().ok_or("Tensor has no storage backend")?;
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
 
         let cpu_data = if storage.is_gpu() {
             // For GPU storage, sync to CPU first
@@ -961,143 +936,122 @@ where
         })
     }
 
-
     /// Create a flattened view of the tensor as 1D
     /// Returns a new tensor with same data but 1D shape
     pub fn flatten(&self) -> Result<Self, String> {
         let cpu_data = self.get_cpu_data()?.into_owned();
         let total_elements = cpu_data.len();
 
-        let flattened = cpu_data.into_shape(ndarray::IxDyn(&[total_elements]))
+        let flattened = cpu_data
+            .into_shape(ndarray::IxDyn(&[total_elements]))
             .map_err(|e| format!("Failed to flatten tensor: {}", e))?;
 
         Ok(Self::new_with_device(flattened, self.device.clone()))
     }
 }
 
-impl<T> CPUTensor<T>
-where
-    T: GPUFloat,
-{
-    pub fn matmul(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String>
-    where
-        T: Clone + ndarray::LinalgScalar,
-    {
-        if self.ndim() != 2 || other.ndim() != 2 {
-            return Err("Matrix multiplication requires 2D tensors".to_string());
-        }
-
-        let a_shape = self.shape();
-        let b_shape = other.shape();
-
-        if a_shape[1] != b_shape[0] {
-            return Err(format!(
-                "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
-                a_shape[0], a_shape[1], b_shape[0], b_shape[1]
-            ));
-        }
-
-        // Be more explicit about the types
-        let a: ndarray::ArrayView2<T> = self.data.view().into_dimensionality().unwrap();
-        let b: ndarray::ArrayView2<T> = other.data.view().into_dimensionality().unwrap();
-
-        // Dot product of two 2D arrays, gives the matrix multiplication result.
-        // Look at `ndarray` documentation for more details on `dot`.
-        // https://docs.rs/ndarray/latest/ndarray/struct.ArrayBase.html#method.dot
-        let result = a.dot(&b);
-
-        Ok(CPUTensor::new_with_device(
-            result.into_dyn(),
-            self.device.clone(),
-        ))
-    }
-}
-
-
 // Implementation for floating-point operations
 impl<T> CPUTensor<T>
 where
     T: GPUFloat,
 {
-    pub fn sigmoid(&self) -> CPUTensor<T> {
-        // Euler's sigmoid function: 1 / (1 + exp(-x))
-        CPUTensor::new_with_device(
-            self.data.mapv(|x| {
-                let one = <T as CPUNumber>::one();
-                let neg_x = -x;
-                one / (one + neg_x.exp())
-            }),
-            self.device.clone(),
-        )
+    /// Matrix multiplication using storage trait
+    pub fn matmul(&self, other: &Self) -> Result<Self, String>
+    where
+        T: Clone + ndarray::LinalgScalar,
+    {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other
+            .storage
+            .as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.matmul(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    /// Element-wise square root
-    /// Returns a new tensor with square root values
-    /// Validates that all values are non-negative
-    pub fn sqrt(&self) -> Result<Self, String> {
-        // Check for negative values first
-        let has_negative = self.data.iter().any(|&x| x < <T as CPUNumber>::zero());
-        if has_negative {
-            return Err("Cannot compute square root of negative values".to_string());
-        }
+    /// Sigmoid activation function using storage trait
+    pub fn sigmoid(&self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
 
-        let result_data: Vec<T> = self.data.iter().map(|&x| x.sqrt()).collect();
-
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
-
-        Ok(Self::new_with_device(result_array, self.device.clone()))
+        let result_storage = storage.sigmoid()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    // Activation functions
-    pub fn relu(&self) -> CPUTensor<T> {
-        // ReLU activation function: max(0, x)
-        CPUTensor::new_with_device(
-            self.data.mapv(|x| {
-                let zero = <T as CPUNumber>::zero();
-                if x > zero { x } else { zero }
-            }),
-            self.device.clone(),
-        )
+    /// ReLU activation function using storage trait
+    pub fn relu(&self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.relu()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    // Additional activation functions
-    pub fn exp(&self) -> CPUTensor<T> {
-        CPUTensor::new_with_device(self.data.mapv(|x| x.exp()), self.device.clone())
+    /// Exponential function using storage trait
+    pub fn exp(&self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.exp()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn log(&self) -> CPUTensor<T> {
-        CPUTensor::new_with_device(self.data.mapv(|x| x.ln()), self.device.clone())
-    }
-    pub fn tanh(&self) -> CPUTensor<T> {
-        CPUTensor::new_with_device(
-            self.data.mapv(|x| {
-                let e_x = x.exp();
-                let e_neg_x = (-x).exp();
-                (e_x - e_neg_x) / (e_x + e_neg_x)
-            }),
-            self.device.clone(),
-        )
+    /// Natural logarithm using storage trait
+    pub fn log(&self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.log()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn powf(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-        Ok(CPUTensor::new_with_device(
-            ndarray::Zip::from(&self.data)
-                .and(&other.data)
-                .map_collect(|&a, &b| a.powf(b)),
-            self.device.clone(),
-        ))
+    /// Hyperbolic tangent using storage trait
+    pub fn tanh(&self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.tanh()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn power_scalar(&self, scalar: T) -> CPUTensor<T> {
-        CPUTensor::new_with_device(self.data.mapv(|x| x.powf(scalar)), self.device.clone())
+    /// Element-wise power using storage trait
+    pub fn powf(&self, other: &Self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other
+            .storage
+            .as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.powf(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Scalar power using storage trait
+    pub fn power_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.power_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 }
 
@@ -1107,233 +1061,169 @@ where
     T: GPUFloat + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
 {
     // Reduction operations.
-    // As we do not know the shape of the tensor at compile time, we use `ndarray`'s dynamic arrays.
-    // We can sum or mean over a specific axis or all elements, it is up to the user to provide the axis over which to perform the reduction operation.
-    pub fn sum(&self, axis: Option<usize>) -> CPUTensor<T> {
-        match axis {
-            Some(ax) => {
-                let result = self.data.sum_axis(Axis(ax));
-                CPUTensor::new_with_device(result, self.device.clone())
-            }
-            None => {
-                // If axis is not provided we just sum all elements
-                let total_sum = self.data.sum();
-                CPUTensor::new_with_device(
-                    ArrayD::from_elem(IxDyn(&[]), total_sum),
-                    self.device.clone(),
-                )
-            }
-        }
+    // Sum reduction along multiple axes using storage backend
+    /// This replaces the old sum_axes method to use the storage backend
+    pub fn sum(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.sum(axes)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    // Sum over the specified axes in reverse sorted order.
-    // This function allows summing over multiple axes at once, which is useful for reducing the dimensionality of the tensor.
-    // Example:
-    // Given tensor [2, 2, 2] with data [1,2,3,4,5,6,7,8]:
-    // [[[1, 2],     <- indices [0,0,:]
-    // [3, 4]],    <- indices [0,1,:]
-    // [[5, 6],     <- indices [1,0,:]
-    // [7, 8]]]    <- indices [1,1,:]
-    // If we sum over axes [0, 2], we get a tensor with shape [2] and data [14, 22]
-    // - Step 1: Sum over axis 2:
-    // [1,2] → 3
-    // [3,4] → 7
-    // [5,6] → 11
-    // [7,8] → 15
-    // Result: [[3,7], [11,15]] with shape [2,2]
-    // - Step 2: Sum over axis 0:
-    // [3,11] → 14
-    // [7,15] → 22
-    // Result: [14, 22] with shape [2]
-    pub fn sum_axes(&self, axes: Option<&[usize]>) -> CPUTensor<T> {
-        match axes {
-            Some(axes_list) => {
-                // Validate axes are within bounds
-                for &ax in axes_list {
-                    if ax >= self.ndim() {
-                        panic!(
-                            "Axis {} is out of bounds for tensor with {} dimensions",
-                            ax,
-                            self.ndim()
-                        );
-                    }
-                }
+    /// Mean reduction along multiple axes using storage backend
+    pub fn mean(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
 
-                let mut result = self.data.clone();
-
-                // Sort axes in descending order to avoid index shifting issues
-                let mut sorted_axes = axes_list.to_vec();
-                sorted_axes.sort_unstable();
-                sorted_axes.reverse();
-
-                // Remove duplicates to avoid summing the same axis twice
-                sorted_axes.dedup();
-
-                for &ax in &sorted_axes {
-                    result = result.sum_axis(Axis(ax));
-                }
-
-                CPUTensor::new_with_device(result, self.device.clone())
-            }
-            None => self.sum(None),
-        }
+        let result_storage = storage.mean(axes)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn mean(&self, axis: Option<usize>) -> CPUTensor<T> {
-        match axis {
-            Some(ax) => {
-                let result = self.data.mean_axis(Axis(ax)).unwrap();
-                CPUTensor::new_with_device(result, self.device.clone())
-            }
-            None => {
-                let total_mean = self.data.mean().unwrap();
-                CPUTensor::new_with_device(
-                    ArrayD::from_elem(IxDyn(&[]), total_mean),
-                    self.device.clone(),
-                )
-            }
-        }
+    /// Maximum values reduction along multiple axes using storage backend
+    pub fn max_reduce(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.max_reduce(axes)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    // Broadcasting for gradient computation
-    // Broadcasting allows us to perform operations on tensors of different shapes.
-    // As can be seen on Ndarray's docs, broadcast function returns None if the shapes of the tensors cannot be broadcasted together.
-    // https://docs.rs/ndarray/latest/ndarray/struct.ArrayBase.html#method.broadcast
+    /// Minimum values reduction along multiple axes using storage backend
+    pub fn min_reduce(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.min_reduce(axes)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+}
+
+impl<T> CPUTensor<T>
+where
+    T: GPUFloat + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+{
+    /// Broadcasting for gradient computation and tensor operations
+    /// Uses storage backend for consistent behavior across CPU/GPU
     pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<CPUTensor<T>, String> {
-        match self.data.broadcast(target_shape) {
-            Some(broadcasted) => Ok(CPUTensor::new_with_device(
-                broadcasted.to_owned(),
-                self.device.clone(),
-            )),
-            None => Err(format!(
-                "Cannot broadcast {:?} to {:?}",
-                self.shape(),
-                target_shape
-            )),
+        if let Some(storage) = &self.storage {
+            let new_storage = storage.broadcast_to(target_shape)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        } else {
+            // Create storage backend and use it - no fallback needed
+            let storage = Box::new(CPUOwnedStorage::new(self.data.clone()));
+            let new_storage = storage.broadcast_to(target_shape)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
         }
     }
 
-    // Similar to tf.expand_dims, this function adds a new dimension at the specified axis.
-    pub fn unsqueeze(&self, axis: usize) -> CPUTensor<T> {
-        let expanded = self.data.clone().insert_axis(Axis(axis));
-        CPUTensor::new_with_device(expanded, self.device.clone())
-    }
-
-    // Basically the opposite of unsqueeze, this function removes a dimension of size 1 from the tensor.
-    // We need to check the size of the axis before removing it, as it is not possible to remove an axis with size greater than 1.
-    // Imagine a tensor: [[[1, 3, 1, 5],[1,2,3,4]],[[1, 3, 1, 5],[1,2,3,4]],] if we try to squeeze axis 1, we would need to remove the two elements on that axis,
-    // which is not the purpose of the squeeze operation.
-    pub fn squeeze(&self, axis: Option<usize>) -> Result<CPUTensor<T>, String> {
-        match axis {
-            Some(ax) => {
-                if self.shape()[ax] != 1 {
-                    return Err(format!(
-                        "Cannot squeeze axis {} with size {}",
-                        ax,
-                        self.shape()[ax]
-                    ));
-                }
-                let squeezed = self.data.clone().remove_axis(Axis(ax));
-                Ok(CPUTensor::new_with_device(squeezed, self.device.clone()))
-            }
-            None => {
-                // Remove all dimensions of size 1
-                let mut result = self.data.clone();
-                let mut axis_to_remove = Vec::new();
-
-                for (i, &size) in self.shape().iter().enumerate() {
-                    if size == 1 {
-                        axis_to_remove.push(i);
-                    }
-                }
-
-                // Remove axes in reverse order to maintain indices
-                for &ax in axis_to_remove.iter().rev() {
-                    result = result.remove_axis(Axis(ax));
-                }
-
-                Ok(CPUTensor::new_with_device(result, self.device.clone()))
-            }
-        }
-    }
-
-    // Reshape operation
+    /// Reshape operation - change tensor shape while preserving total elements
+    /// Validates element count consistency before reshaping
     pub fn reshape(&self, new_shape: &[usize]) -> Result<CPUTensor<T>, String> {
-        let total_elements: usize = self.shape().iter().product();
-        let new_total_elements: usize = new_shape.iter().product();
-
-        if total_elements != new_total_elements {
-            return Err(format!(
-                "Cannot reshape tensor with {total_elements} elements to shape with {new_total_elements} elements"
-            ));
-        }
-
-        match self.data.clone().into_shape_with_order(IxDyn(new_shape)) {
-            Ok(reshaped) => Ok(CPUTensor::new_with_device(reshaped, self.device.clone())),
-            Err(e) => Err(format!("Failed to reshape tensor: {e}")),
+        if let Some(storage) = &self.storage {
+            let new_storage = storage.reshape(new_shape)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        } else {
+            let storage = Box::new(CPUOwnedStorage::new(self.data.clone()));
+            let new_storage = storage.reshape(new_shape)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
         }
     }
 
-    // Transpose operation is one of the other things that is quite tricky to implement from scratch.
-    // It requires permuting the axes of the CPUTensor, which can be done using ndarray's `permuted_axes` method.
+    /// Transpose operation - permute tensor axes
+    /// If axes is None, performs default transpose (reverse all axes)
+    /// If axes provided, must be valid permutation of 0..ndim
     pub fn transpose(&self, axes: Option<&[usize]>) -> Result<CPUTensor<T>, String> {
-        match axes {
-            Some(axes_order) => {
-                if axes_order.len() != self.ndim() {
-                    return Err(format!(
-                        "Axes length {} doesn't match CPUTensor dimensions {}",
-                        axes_order.len(),
-                        self.ndim()
-                    ));
-                }
-                // Validate that axes_order is a valid permutation
-                let mut sorted_axes = axes_order.to_vec();
-                sorted_axes.sort_unstable(); // Sort unstable is more performant than actual sort,
-                // the drawback is it does not preserve the
-                // order of equal elements, which is fine for our use case.
-                // Basically if you had ("a", 1) and ("a", 2) in the vector,
-                // they could be swapped in the sorted vector.
-                // We expect the sorted axes to be 0..ndim()
-                let expected: Vec<usize> = (0..self.ndim()).collect();
-                if sorted_axes != expected {
-                    return Err(format!(
-                        "Invalid axes permutation: {:?}. Must be a permutation of 0..{}",
-                        axes_order,
-                        self.ndim()
-                    ));
-                }
-                // Create the transposed array by permuting axes
-                let transposed = self.data.clone().permuted_axes(axes_order);
-                Ok(CPUTensor::new_with_device(transposed, self.device.clone()))
-            }
-            // If no axes are provided, we perform the default transpose operation,
-            // which as we know is to reverse the order of the axes.
-            None => {
-                // Default transpose: reverse all axes
-                match self.ndim() {
-                    0 | 1 => {
-                        // 0D and 1D tensors are unchanged by transpose
-                        Ok(self.clone())
-                    }
-                    2 => {
-                        // For 2D arrays, swap the two axes
-                        let transposed = self.data.clone().reversed_axes();
-                        Ok(CPUTensor::new_with_device(transposed, self.device.clone()))
-                    }
-                    _ => {
-                        // Till now it has been easy. Now we need to handle higher dimensional arrays.
-                        // Everybody gangsta until they have to transpose a 3D or higher tensor.
-                        // For higher dimensional arrays, reverse the order of all axes
-                        let axes_order: Vec<usize> = (0..self.ndim()).rev().collect();
-                        // Convert Vec<usize> to &[usize] for permuted_axes.
-                        // This is required because the dimension of the Vec is not known at compile time.
-                        // We can use `as_slice()` to convert it to a slice.
-                        let transposed = self.data.clone().permuted_axes(axes_order.as_slice());
-                        Ok(CPUTensor::new_with_device(transposed, self.device.clone()))
-                    }
-                }
-            }
+        if let Some(storage) = &self.storage {
+            let new_storage = storage.transpose(axes)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        } else {
+            let storage = Box::new(CPUOwnedStorage::new(self.data.clone()));
+            let new_storage = storage.transpose(axes)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
         }
+    }
+
+    /// Add dimension of size 1 at specified axis
+    /// Similar to tf.expand_dims - axis can be 0..ndim (inclusive)
+    pub fn unsqueeze(&self, axis: usize) -> Result<CPUTensor<T>, String> {
+        if let Some(storage) = &self.storage {
+            let new_storage = storage.unsqueeze(axis)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        } else {
+            let storage = Box::new(CPUOwnedStorage::new(self.data.clone()));
+            let new_storage = storage.unsqueeze(axis)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        }
+    }
+
+    /// Remove dimensions of size 1 from tensor
+    /// If axis is Some(ax), removes only specified axis if it has size 1
+    /// If axis is None, removes all dimensions with size 1
+    pub fn squeeze(&self, axis: Option<usize>) -> Result<CPUTensor<T>, String> {
+        if let Some(storage) = &self.storage {
+            let new_storage = storage.squeeze(axis)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        } else {
+            let storage = Box::new(CPUOwnedStorage::new(self.data.clone()));
+            let new_storage = storage.squeeze(axis)?;
+            Ok(CPUTensor {
+                data: new_storage.cpu_data()?.clone(),
+                device: self.device.clone(),
+                storage: Some(new_storage),
+            })
+        }
+    }
+
+    /// TensorFlow-style expand_dims - alias for unsqueeze
+    /// Adds dimension of size 1 at specified axis
+    /// Implemented through unsqueeze to avoid code duplication
+    pub fn expand_dims(&self, axis: usize) -> Result<CPUTensor<T>, String> {
+        self.unsqueeze(axis)
     }
 }
 

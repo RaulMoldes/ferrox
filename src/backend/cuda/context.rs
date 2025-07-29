@@ -708,7 +708,6 @@ where
         Ok(())
     }
 
-
     /// Get CUDA operations backend for this tensor
     /// Returns a reference to CudaOps that can perform operations on this tensor
     pub fn get_cuda_ops(&self) -> Option<crate::backend::cuda::ops::CudaOps> {
@@ -734,16 +733,12 @@ where
         use crate::backend::manager::get_backend;
 
         let backend = get_backend();
-        let cuda_backend = backend.cuda_backend()
-            .ok_or("CUDA backend not available")?;
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
-        let cuda_ops = crate::backend::cuda::ops::CudaOps::new(
-            cuda_backend.kernels(),
-            cuda_backend,
-        );
+        let cuda_ops =
+            crate::backend::cuda::ops::CudaOps::new(cuda_backend.kernels(), cuda_backend);
 
         f(&cuda_ops)
-
     }
 
     /// In-place transpose for 2D tensors

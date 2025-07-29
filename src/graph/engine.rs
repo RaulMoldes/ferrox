@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::number::{CPUNumber,  GPUFloat};
+use crate::backend::number::{CPUNumber, GPUFloat};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships

@@ -11,7 +11,6 @@ pub use cputensor::CPUTensor;
 
 pub mod storage;
 
-
 #[cfg(feature = "cuda")]
 pub use gputensor::GPUTensor;
 
