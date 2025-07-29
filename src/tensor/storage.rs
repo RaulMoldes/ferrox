@@ -816,402 +816,12 @@ impl<T: DeviceRepr> GPUOwnedStorage<T> {
         Self { cuda_data }
     }
 }
-
 #[cfg(feature = "cuda")]
 impl<T> StorageBackend<T> for GPUOwnedStorage<T>
 where
     T: crate::backend::number::GPUFloat + cudarc::driver::DeviceRepr + Clone,
 {
-    fn shape(&self) -> &[usize] {
-        self.cuda_data.shape()
-    }
-
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
-    }
-
-    fn ndim(&self) -> usize {
-        self.cuda_data.shape().len()
-    }
-
-    fn size(&self) -> usize {
-        self.cuda_data.shape().iter().product()
-    }
-
-    fn is_gpu(&self) -> bool {
-        true
-    }
-
-    fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
-        Err("Data is on GPU. Use .to_cpu() to move it first".to_string())
-    }
-
-    fn cpu_data_mut(&mut self) -> Result<&mut ArrayD<T>, String> {
-        Err("Data is on GPU. Use .to_cpu() to move it first".to_string())
-    }
-
-    fn owns_data(&self) -> bool {
-        true
-    }
-
-    fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        Ok(Box::new(self.clone()))
-    }
-
-    // ELEMENT-WISE OPERATIONS USING CUDA BACKEND
-
-    fn add(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        if other.is_gpu() {
-            // Both tensors are on GPU - use CUDA kernels directly
-            let other_gpu = other
-                .as_any()
-                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
-                .ok_or("Failed to cast to GPU storage")?;
-
-            if self.shape() != other_gpu.shape() {
-                return Err(format!(
-                    "Shape mismatch for GPU addition: {:?} vs {:?}",
-                    self.shape(),
-                    other_gpu.shape()
-                ));
-            }
-
-            // Use CUDA operations backend from the CudaTensor
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.add(&self.cuda_data, &other_gpu.cuda_data)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        } else {
-            // Mixed GPU-CPU operation: convert CPU to GPU first
-            let other_data = other.cpu_data()?;
-
-            if self.shape() != other_data.shape() {
-                return Err(format!(
-                    "Shape mismatch for mixed addition: {:?} vs {:?}",
-                    self.shape(),
-                    other_data.shape()
-                ));
-            }
-
-            // Convert CPU ArrayD to CudaTensor and perform operation
-            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.add(&self.cuda_data, &other_cuda)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        }
-    }
-
-    fn sub(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        if other.is_gpu() {
-            let other_gpu = other
-                .as_any()
-                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
-                .ok_or("Failed to cast to GPU storage")?;
-
-            if self.shape() != other_gpu.shape() {
-                return Err(format!(
-                    "Shape mismatch for GPU subtraction: {:?} vs {:?}",
-                    self.shape(),
-                    other_gpu.shape()
-                ));
-            }
-
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.sub(&self.cuda_data, &other_gpu.cuda_data)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        } else {
-            let other_data = other.cpu_data()?;
-
-            if self.shape() != other_data.shape() {
-                return Err(format!(
-                    "Shape mismatch for mixed subtraction: {:?} vs {:?}",
-                    self.shape(),
-                    other_data.shape()
-                ));
-            }
-
-            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.sub(&self.cuda_data, &other_cuda)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        }
-    }
-
-    fn mul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        if other.is_gpu() {
-            let other_gpu = other
-                .as_any()
-                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
-                .ok_or("Failed to cast to GPU storage")?;
-
-            if self.shape() != other_gpu.shape() {
-                return Err(format!(
-                    "Shape mismatch for GPU multiplication: {:?} vs {:?}",
-                    self.shape(),
-                    other_gpu.shape()
-                ));
-            }
-
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.mul(&self.cuda_data, &other_gpu.cuda_data)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        } else {
-            let other_data = other.cpu_data()?;
-
-            if self.shape() != other_data.shape() {
-                return Err(format!(
-                    "Shape mismatch for mixed multiplication: {:?} vs {:?}",
-                    self.shape(),
-                    other_data.shape()
-                ));
-            }
-
-            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.mul(&self.cuda_data, &other_cuda)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        }
-    }
-
-    fn div(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        if other.is_gpu() {
-            let other_gpu = other
-                .as_any()
-                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
-                .ok_or("Failed to cast to GPU storage")?;
-
-            if self.shape() != other_gpu.shape() {
-                return Err(format!(
-                    "Shape mismatch for GPU division: {:?} vs {:?}",
-                    self.shape(),
-                    other_gpu.shape()
-                ));
-            }
-
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.div(&self.cuda_data, &other_gpu.cuda_data)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        } else {
-            let other_data = other.cpu_data()?;
-
-            if self.shape() != other_data.shape() {
-                return Err(format!(
-                    "Shape mismatch for mixed division: {:?} vs {:?}",
-                    self.shape(),
-                    other_data.shape()
-                ));
-            }
-
-            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.div(&self.cuda_data, &other_cuda)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        }
-    }
-
-    fn min(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        if other.is_gpu() {
-            let other_gpu = other
-                .as_any()
-                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
-                .ok_or("Failed to cast to GPU storage")?;
-
-            if self.shape() != other_gpu.shape() {
-                return Err(format!(
-                    "Shape mismatch for GPU min operation: {:?} vs {:?}",
-                    self.shape(),
-                    other_gpu.shape()
-                ));
-            }
-
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.min(&self.cuda_data, &other_gpu.cuda_data)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        } else {
-            let other_data = other.cpu_data()?;
-
-            if self.shape() != other_data.shape() {
-                return Err(format!(
-                    "Shape mismatch for mixed min operation: {:?} vs {:?}",
-                    self.shape(),
-                    other_data.shape()
-                ));
-            }
-
-            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.min(&self.cuda_data, &other_cuda)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        }
-    }
-
-    fn max(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        if other.is_gpu() {
-            let other_gpu = other
-                .as_any()
-                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
-                .ok_or("Failed to cast to GPU storage")?;
-
-            if self.shape() != other_gpu.shape() {
-                return Err(format!(
-                    "Shape mismatch for GPU max operation: {:?} vs {:?}",
-                    self.shape(),
-                    other_gpu.shape()
-                ));
-            }
-
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.max(&self.cuda_data, &other_gpu.cuda_data)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        } else {
-            let other_data = other.cpu_data()?;
-
-            if self.shape() != other_data.shape() {
-                return Err(format!(
-                    "Shape mismatch for mixed max operation: {:?} vs {:?}",
-                    self.shape(),
-                    other_data.shape()
-                ));
-            }
-
-            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.max(&self.cuda_data, &other_cuda)?;
-            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-        }
-    }
-
-    // SCALAR OPERATIONS
-
-    fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.add_scalar(&self.cuda_data, scalar)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.sub_scalar(&self.cuda_data, scalar)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.mul_scalar(&self.cuda_data, scalar)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.div_scalar(&self.cuda_data, scalar)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    // UNARY OPERATIONS
-
-    fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.negate(&self.cuda_data)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.abs(&self.cuda_data)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.sqrt(&self.cuda_data)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
-    fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.clamp(&self.cuda_data, min_val, max_val)?;
-        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
-    }
-
+    // ... existing methods ...
 
     fn greater_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
@@ -1229,12 +839,9 @@ where
                 ));
             }
 
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.greater_equal(&self.cuda_data, &other_gpu.cuda_data)?;
+            let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+                cuda_ops.greater_equal(&self.cuda_data, &other_gpu.cuda_data)
+            })?;
             Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1256,12 +863,9 @@ where
                 ));
             }
 
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.less_equal(&self.cuda_data, &other_gpu.cuda_data)?;
+            let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+                cuda_ops.less_equal(&self.cuda_data, &other_gpu.cuda_data)
+            })?;
             Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1283,12 +887,9 @@ where
                 ));
             }
 
-            let cuda_ops = self
-                .cuda_data
-                .get_cuda_ops()
-                .ok_or("Failed to get CUDA operations backend")?;
-
-            let result_cuda = cuda_ops.equal(&self.cuda_data, &other_gpu.cuda_data)?;
+            let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+                cuda_ops.equal(&self.cuda_data, &other_gpu.cuda_data)
+            })?;
             Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1296,34 +897,24 @@ where
     }
 
     fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.logical_not(&self.cuda_data)?;
+        let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+            cuda_ops.logical_not(&self.cuda_data)
+        })?;
         Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
     fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.in_range(&self.cuda_data, min_val, max_val)?;
+        let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+            cuda_ops.in_range(&self.cuda_data, min_val, max_val)
+        })?;
         Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
     fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let cuda_ops = self
-            .cuda_data
-            .get_cuda_ops()
-            .ok_or("Failed to get CUDA operations backend")?;
-
-        let result_cuda = cuda_ops.sign(&self.cuda_data)?;
+        let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+            cuda_ops.sign(&self.cuda_data)
+        })?;
         Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
-
 
 }

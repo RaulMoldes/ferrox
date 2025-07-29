@@ -708,6 +708,44 @@ where
         Ok(())
     }
 
+
+    /// Get CUDA operations backend for this tensor
+    /// Returns a reference to CudaOps that can perform operations on this tensor
+    pub fn get_cuda_ops(&self) -> Option<crate::backend::cuda::ops::CudaOps> {
+        // Get the global backend manager
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend()?;
+
+        // Create CudaOps instance from the backend's kernels and context
+        Some(crate::backend::cuda::ops::CudaOps::new(
+            cuda_backend.kernels(),
+            cuda_backend,
+        ))
+    }
+
+    /// Alternative implementation if the above doesn't work due to lifetime issues
+    /// This version stores the backend reference needed for operations
+    pub fn with_cuda_ops<F, R>(&self, f: F) -> Result<R, String>
+    where
+        F: FnOnce(&crate::backend::cuda::ops::CudaOps) -> Result<R, String>,
+    {
+        use crate::backend::manager::get_backend;
+
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend()
+            .ok_or("CUDA backend not available")?;
+
+        let cuda_ops = crate::backend::cuda::ops::CudaOps::new(
+            cuda_backend.kernels(),
+            cuda_backend,
+        );
+
+        f(&cuda_ops)
+
+    }
+
     /// In-place transpose for 2D tensors
     pub fn transpose_2d(&mut self) -> Result<(), String> {
         if self.ndim() != 2 {
