@@ -136,8 +136,6 @@ where
         self.data.is_empty()
     }
 
-
-
     ///// SLICING SUPPORT
     /// Get immutable slice view of CPU data
     /// Returns error if tensor is on GPU and not synced to CPU
@@ -160,7 +158,10 @@ where
         self.cuda_storage = None;
         self.device = Device::CPU;
 
-        Ok(self.data.as_slice_mut().expect("ArrayD should be contiguous"))
+        Ok(self
+            .data
+            .as_slice_mut()
+            .expect("ArrayD should be contiguous"))
     }
 
     /// Get slice view with automatic CPU sync
@@ -183,7 +184,10 @@ where
         self.cuda_storage = None;
         self.device = Device::CPU;
 
-        Ok(self.data.as_slice_mut().expect("ArrayD should be contiguous"))
+        Ok(self
+            .data
+            .as_slice_mut()
+            .expect("ArrayD should be contiguous"))
     }
 
     /// Create GPUTensor from existing slice (copies data to CPU)
@@ -192,7 +196,9 @@ where
         if slice.len() != expected_len {
             return Err(format!(
                 "Slice length {} doesn't match shape {:?} (expected {})",
-                slice.len(), shape, expected_len
+                slice.len(),
+                shape,
+                expected_len
             ));
         }
 
@@ -217,7 +223,8 @@ where
         if self.shape() != other.shape() {
             return Err(format!(
                 "Shape mismatch for in-place addition: {:?} vs {:?}",
-                self.shape(), other.shape()
+                self.shape(),
+                other.shape()
             ));
         }
 
@@ -225,7 +232,9 @@ where
         let self_slice = self.as_slice_mut_synced()?;
         let other_slice = if other.is_cuda() && other.data.is_empty() {
             // Other tensor needs sync but we can't mutate it
-            return Err("Cannot perform in-place operation: other tensor on GPU and not synced".to_string());
+            return Err(
+                "Cannot perform in-place operation: other tensor on GPU and not synced".to_string(),
+            );
         } else {
             other.as_slice()?
         };
@@ -245,13 +254,16 @@ where
         if self.shape() != other.shape() {
             return Err(format!(
                 "Shape mismatch for in-place multiplication: {:?} vs {:?}",
-                self.shape(), other.shape()
+                self.shape(),
+                other.shape()
             ));
         }
 
         let self_slice = self.as_slice_mut_synced()?;
         let other_slice = if other.is_cuda() && other.data.is_empty() {
-            return Err("Cannot perform in-place operation: other tensor on GPU and not synced".to_string());
+            return Err(
+                "Cannot perform in-place operation: other tensor on GPU and not synced".to_string(),
+            );
         } else {
             other.as_slice()?
         };
@@ -281,7 +293,8 @@ where
         if self.shape() != other.shape() {
             return Err(format!(
                 "Shape mismatch for copy: {:?} vs {:?}",
-                self.shape(), other.shape()
+                self.shape(),
+                other.shape()
             ));
         }
 
@@ -295,7 +308,6 @@ where
         self_slice.copy_from_slice(other_slice);
         Ok(())
     }
-
 
     /// Conditional selection: where condition is true, use true_vals, else false_vals (CPU only for now)
     pub fn where_condition(

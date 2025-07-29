@@ -9,14 +9,13 @@ use crate::backend::cuda::CudaTensor;
 #[cfg(feature = "cuda")]
 use cudarc::driver::DeviceRepr;
 
-
 use crate::backend::number::GPUNumber;
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
 pub trait StorageBackend<T>: Debug
 where
-    T: crate::backend::number::GPUNumber
+    T: crate::backend::number::GPUNumber,
 {
     /// Get tensor shape
     fn shape(&self) -> &[usize];
@@ -120,7 +119,7 @@ where
         self.data.shape()
     }
 
-    fn as_any(&self) ->  Option<&dyn std::any::Any> {
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
@@ -183,7 +182,7 @@ where
         self.cuda_data.shape()
     }
 
-     fn as_any(&self) ->  Option<&dyn std::any::Any> {
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
@@ -210,8 +209,6 @@ where
     fn owns_data(&self) -> bool {
         true
     }
-
-
 
     fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         Ok(Box::new(self.clone()))

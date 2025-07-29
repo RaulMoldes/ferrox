@@ -1,12 +1,12 @@
 // src/backend/cuda/context.rs
+use super::device::CudaDevice;
+use super::kernels::{CudaKernels, load_all_kernels};
+use super::ops::CudaOps;
+use super::stream_manager::StreamManager;
+use crate::backend::number::CPUNumber;
 #[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream, LaunchConfig};
-use crate::backend::number::CPUNumber;
-use super::kernels::{CudaKernels, load_all_kernels};
-use super::ops::CudaOps;
-use super::device::CudaDevice;
-use super::stream_manager::StreamManager;
 use ndarray::{ArrayD, IxDyn};
 use std::collections::HashMap;
 use std::default::Default;
@@ -53,8 +53,6 @@ impl CudaContextManager {
         Self::new(device)
     }
 
-
-
     // ============= BACKEND TENSOR CREATION OPERATIONS =============
     // These methods provide the backend abstraction
 
@@ -88,7 +86,8 @@ impl CudaContextManager {
             shared_mem_bytes: 0,
         };
 
-        self.kernels.launch_fill(cfg, &mut gpu_data, <T as CPUNumber>::one(), size as i32)?;
+        self.kernels
+            .launch_fill(cfg, &mut gpu_data, <T as CPUNumber>::one(), size as i32)?;
         Ok(CudaTensor::new(gpu_data, shape.to_vec()))
     }
 
@@ -119,7 +118,8 @@ impl CudaContextManager {
             shared_mem_bytes: 0,
         };
 
-        self.kernels.launch_fill(cfg, &mut gpu_data, fill_value, size as i32)?;
+        self.kernels
+            .launch_fill(cfg, &mut gpu_data, fill_value, size as i32)?;
         Ok(CudaTensor::new(gpu_data, shape.to_vec()))
     }
 
@@ -146,7 +146,8 @@ impl CudaContextManager {
             .unwrap()
             .as_secs();
 
-        self.kernels.launch_fill_random(cfg, &mut gpu_data, size as i32, seed)?;
+        self.kernels
+            .launch_fill_random(cfg, &mut gpu_data, size as i32, seed)?;
         Ok(CudaTensor::new(gpu_data, shape.to_vec()))
     }
 
@@ -175,19 +176,21 @@ impl CudaContextManager {
     }
 
     /// Synchronous host to device transfer
-    pub fn host_to_device<T>(&self, data: &[T]) -> Result<CudaSlice<T>, String>  // Changed from Vec<T> to &[T]
+    pub fn host_to_device<T>(&self, data: &[T]) -> Result<CudaSlice<T>, String>
+    // Changed from Vec<T> to &[T]
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
         // Allocate GPU memory first
-        let mut device_buffer = self.default_stream
+        let mut device_buffer = self
+            .default_stream
             .alloc_zeros(data.len())
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
 
         // Copy data from host to device using the correct cudarc API
         unsafe {
             self.default_stream
-                .memcpy_htod(data, &mut device_buffer,)  // data is now &[T]
+                .memcpy_htod(data, &mut device_buffer) // data is now &[T]
                 .map_err(|e| format!("Host to device transfer failed: {}", e))?;
         }
 
@@ -308,7 +311,7 @@ impl CudaContextManager {
             ));
         }
 
-        let cuda_data = self.host_to_device(data)?;  // Pass slice reference
+        let cuda_data = self.host_to_device(data)?; // Pass slice reference
         Ok(CudaTensor::new(cuda_data, shape))
     }
 
@@ -369,13 +372,14 @@ impl CudaContextManager {
     /// Asynchronous host to device transfer using named stream
     pub fn host_to_device_async<T>(
         &self,
-        data: &[T],  // Changed from Vec<T> to &[T]
+        data: &[T], // Changed from Vec<T> to &[T]
         stream_name: Option<&str>,
     ) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        self.stream_manager.host_to_device_async(&self.ctx, data, stream_name)
+        self.stream_manager
+            .host_to_device_async(&self.ctx, data, stream_name)
     }
 
     /// Asynchronous device to host transfer using named stream
@@ -388,13 +392,14 @@ impl CudaContextManager {
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
         if let Some(stream_name) = stream_name {
-            self.stream_manager.device_to_host_async(data, Some(stream_name))
+            self.stream_manager
+                .device_to_host_async(data, Some(stream_name))
         } else {
             // Use default stream for async operation - allocate host buffer and copy
             let mut host_buffer = vec![T::default(); data.len()];
             unsafe {
                 self.default_stream
-                    .memcpy_dtoh(data,&mut host_buffer)
+                    .memcpy_dtoh(data, &mut host_buffer)
                     .map_err(|e| format!("Async device to host transfer failed: {}", e))?;
             }
             Ok(host_buffer)
@@ -428,7 +433,6 @@ where
             strides,
         }
     }
-
 
     /// Create tensor from CPU slice without taking ownership
     /// This allows borrowing external data for GPU transfer
@@ -491,7 +495,7 @@ where
             ));
         }
 
-        let cuda_data = context_manager.host_to_device(&data)?;  // Pass slice reference
+        let cuda_data = context_manager.host_to_device(&data)?; // Pass slice reference
         Ok(Self::new(cuda_data, shape))
     }
 
@@ -512,7 +516,7 @@ where
             ));
         }
 
-        let cuda_data = context_manager.host_to_device_async(&data, stream_name)?;  // Pass slice reference
+        let cuda_data = context_manager.host_to_device_async(&data, stream_name)?; // Pass slice reference
         Ok(Self::new(cuda_data, shape))
     }
 
@@ -640,7 +644,8 @@ where
         if axis > self.shape.len() {
             return Err(format!(
                 "Axis {} out of bounds for tensor with {} dimensions",
-                axis, self.shape.len()
+                axis,
+                self.shape.len()
             ));
         }
 
@@ -667,7 +672,8 @@ where
                 if ax >= self.shape.len() {
                     return Err(format!(
                         "Axis {} out of bounds for tensor with {} dimensions",
-                        ax, self.shape.len()
+                        ax,
+                        self.shape.len()
                     ));
                 }
 
@@ -683,7 +689,8 @@ where
             }
             None => {
                 // Squeeze all dimensions of size 1
-                let indices_to_remove: Vec<usize> = self.shape
+                let indices_to_remove: Vec<usize> = self
+                    .shape
                     .iter()
                     .enumerate()
                     .filter(|&(_, size)| *size == 1)
@@ -719,7 +726,8 @@ where
         if axes.len() != self.ndim() {
             return Err(format!(
                 "Number of axes {} must match tensor dimensions {}",
-                axes.len(), self.ndim()
+                axes.len(),
+                self.ndim()
             ));
         }
 
@@ -728,7 +736,10 @@ where
         sorted_axes.sort_unstable();
         for (i, &axis) in sorted_axes.iter().enumerate() {
             if axis != i {
-                return Err(format!("Invalid or duplicate axis in permutation: {:?}", axes));
+                return Err(format!(
+                    "Invalid or duplicate axis in permutation: {:?}",
+                    axes
+                ));
             }
         }
 

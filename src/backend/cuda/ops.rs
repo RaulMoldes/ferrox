@@ -905,6 +905,4 @@ impl<'a> CudaOps<'a> {
 
         Ok(result)
     }
-
-
 }

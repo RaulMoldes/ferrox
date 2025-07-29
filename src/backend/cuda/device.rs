@@ -16,10 +16,7 @@ impl CudaDevice {
         let context = CudaContext::new(device_id)
             .map_err(|e| format!("Failed to initialize CUDA device {}: {}", device_id, e))?;
 
-        Ok(Self {
-            context,
-            device_id,
-        })
+        Ok(Self { context, device_id })
     }
 
     /// Get the CUDA context for use by other components

@@ -134,16 +134,16 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         ],
     },
     KernelConfig {
-    name: "fill",
-    ptx: FILL_PTX,
-    module: "fill_module",
-    functions: &[
-        "fill",           // f32 version
-        "fill_f64",       // f64 version
-        "fill_random",    // f32 random
-        "fill_random_f64", // f64 random
-    ],
-},
+        name: "fill",
+        ptx: FILL_PTX,
+        module: "fill_module",
+        functions: &[
+            "fill",            // f32 version
+            "fill_f64",        // f64 version
+            "fill_random",     // f32 random
+            "fill_random_f64", // f64 random
+        ],
+    },
     KernelConfig {
         name: "comparison",
         ptx: COMPARISON_PTX,
@@ -333,7 +333,6 @@ impl CudaKernels {
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
     }
-
 
     /// Launch fill kernel with constant value
     pub fn launch_fill<T>(

@@ -1,8 +1,8 @@
 use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
 use crate::backend::{Device, default_device};
+use crate::tensor::storage::{CPUOwnedStorage, StorageBackend};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
-use crate::tensor::storage::{StorageBackend, CPUOwnedStorage};
 
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug)]
@@ -20,32 +20,50 @@ where
 
 impl<T> Clone for CPUTensor<T>
 where
-   T: GPUNumber + Clone,
+    T: GPUNumber + Clone,
 {
-   fn clone(&self) -> Self {
-       let storage = if let Some(storage_ref) = &self.storage {
-           // Try to downcast to CPUOwnedStorage if possible
-           if let Some(any_ref) = storage_ref.as_any() {
-               if let Some(cpu_storage) = any_ref.downcast_ref::<CPUOwnedStorage<T>>() {
-                   Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
-               } else if let Ok(storage) = storage_ref.clone_storage() {
-                   Some(storage)
-               } else {
-                   None
-               }
-           } else {
-               None
-           }
-       } else {
-           None
-       };
+    fn clone(&self) -> Self {
+        let storage = if let Some(storage_ref) = &self.storage {
+            // Try to downcast to CPUOwnedStorage if possible
+            if let Some(any_ref) = storage_ref.as_any() {
+                if let Some(cpu_storage) = any_ref.downcast_ref::<CPUOwnedStorage<T>>() {
+                    Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
+                } else if let Ok(storage) = storage_ref.clone_storage() {
+                    Some(storage)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
-       Self {
-           data: self.data.clone(),
-           device: self.device.clone(),
-           storage,
-       }
-   }
+        Self {
+            data: self.data.clone(),
+            device: self.device.clone(),
+            storage,
+        }
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl<T> CPUTensor<T>
+where
+    T: GPUNumber,
+{
+    /// Helper to eliminate repeated backend access pattern.
+    /// This removes the need to repeatedly call `get_backend()` in every method.
+    /// Allows us to execute a closure with the CUDA backend.
+    fn with_cuda_backend<F, R>(&self, f: F) -> Result<R, String>
+    where
+        F: FnOnce(&crate::backend::cuda::CudaBackend) -> Result<R, String>,
+    {
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+        f(cuda_backend)
+    }
 }
 
 // Main implementation block with basic operations
@@ -54,7 +72,7 @@ where
     T: GPUNumber + Clone,
 {
     // Basically a constructor for the Tensor struct.
-    // It takes an ArrayD<f64> and a Device, and returns a Tensor.
+    // It takes an ArrayD<T> and returns a Tensor with storage backend.
     // The device is set to the default device if not provided.
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
     // We could also take advantage of Rust's default trait to set the device to the default device if not provided.
@@ -63,81 +81,116 @@ where
     // Additionally, I decided to reverse the composition hierarchy as opposite to the course,
     // so the tensor is used to represent data, and is the main layer of abstraction over the device.
     // The graph node is a separate struct (check src/graph/node.rs), which indeed has a data property, that in ferrrox will be a tensor.
-    // In the course, the graph node was the main layer of abstraction over the device, and the tensor inherits from it. The data field of the
+    // In the course, the graph node was the main layer of abstraction over the device, and the tensor inherits from it.
     pub fn new(data: ArrayD<T>) -> Self {
         // Create storage backend from the data
-        let storage = CPUOwnedStorage::new(data.clone());
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
 
         Self {
-            data, // Keep for now
-            device: default_device(),
+            data, // Keep for now - TODO: Remove this field in final migration step
+            device: crate::backend::default_device(),
             storage: Some(Box::new(storage)),
         }
     }
 
-    // Internal method to create tensor with specific storage
-    fn new_with_storage<S>(storage: S) -> Result<Self, String>
-    where
-        S: StorageBackend<T> + 'static,
-    {
-        // Extract data from storage for backward compatibility
-        let data = storage.cpu_data()?.clone();
+    // Internal method to create tensor with specific storage backend
+// This will become the primary constructor once data field is removed
+fn new_with_storage<S>(storage: S) -> Result<Self, String>
+where
+    S: crate::tensor::storage::StorageBackend<T> + 'static,
+{
+    // Extract data from storage for backward compatibility
+    let data = match storage.cpu_data() {
+        Ok(cpu_data) => cpu_data.clone(),
+        Err(_) => {
+            // For GPU storage, create empty CPU data as placeholder
+            ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
+        }
+    };
 
-        Ok(Self {
-            data,
-            device: default_device(),
-            storage: Some(Box::new(storage)),
-        })
-    }
+    Ok(Self {
+        data, // TODO: Remove this field in final migration step
+        device: crate::backend::default_device(),
+        storage: Some(Box::new(storage)),
+    })
+}
 
     // Creates a new tensor with the given data and device.
     // This is useful when you want to create a tensor with a specific device, for example, when you want to use a GPU.
     // In the future, we could also add a method to create a tensor with a specific data type, but for now we will keep it simple.
     // The device is set to the default device if not provided.
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
-    // Ideally,we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as i prefer to focus more on the automatic differentiation engine thing.
-    pub fn new_with_device(data: ArrayD<T>, device: Device) -> Self {
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self { data, device, storage: Some(Box::new(storage)) }
+    // Ideally, we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as I prefer to focus more on the automatic differentiation engine thing.
+    pub fn new_with_device(data: ArrayD<T>, device: crate::backend::Device) -> Self {
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        Self {
+            data, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        }
     }
 
     // Random numbers
+    // Generates a tensor with random numbers from a normal distribution using the storage backend approach
     pub fn randn(shape: &[usize]) -> Self {
-        let device = default_device();
+        let device = crate::backend::default_device();
 
         let data_f64 = device.randn(shape);
-        let data = data_f64.mapv(|x| <T as CPUNumber>::from_f64(x).unwrap());
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self { data, device,   storage: Some(Box::new(storage))}
+        let data =
+            data_f64.mapv(|x| <T as crate::backend::number::CPUNumber>::from_f64(x).unwrap());
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        Self {
+            data, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        }
     }
 
-    pub fn randn_with_device(shape: &[usize], device: Device) -> Self {
+    // Random numbers with specific device
+    pub fn randn_with_device(shape: &[usize], device: crate::backend::Device) -> Self {
         // Generates a tensor with random numbers from a normal distribution.
         let data_f64 = device.randn(shape);
-        let data = data_f64.mapv(|x| <T as CPUNumber>::from_f64(x).unwrap());
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self { data, device, storage: Some(Box::new(storage)) }
+        let data =
+            data_f64.mapv(|x| <T as crate::backend::number::CPUNumber>::from_f64(x).unwrap());
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        Self {
+            data, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        }
     }
 
-    // Random numbers
+    // Random integer numbers
+    // Generates a tensor with random integer numbers using the storage backend approach
     pub fn randint(shape: &[usize]) -> Self {
-        let device = default_device();
+        let device = crate::backend::default_device();
         let data_i64 = device.randint(shape);
-        let data = data_i64.mapv(|x| <T as CPUNumber>::from_i64(x).unwrap());
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self { data, device, storage: Some(Box::new(storage))  }
+        let data =
+            data_i64.mapv(|x| <T as crate::backend::number::CPUNumber>::from_i64(x).unwrap());
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        Self {
+            data, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        }
     }
 
-    pub fn randint_with_device(shape: &[usize], device: Device) -> Self {
+    // Random integer numbers with specific device
+    pub fn randint_with_device(shape: &[usize], device: crate::backend::Device) -> Self {
         // Generates a tensor with random integer numbers.
         let data_i64 = device.randint(shape);
-        let data = data_i64.mapv(|x| <T as CPUNumber>::from_i64(x).unwrap());
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self { data, device, storage: Some(Box::new(storage)) }
+        let data =
+            data_i64.mapv(|x| <T as crate::backend::number::CPUNumber>::from_i64(x).unwrap());
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        Self {
+            data, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        }
     }
 
     // Creates a tensor from a Rust vector. Again we are bound to ndarray backend here, but it is okay for now.
-    // This function takes a vector of f64 and a shape, and returns a tensor with the given shape.
+    // This function takes a vector of T and a shape, and returns a tensor with the given shape using storage backend.
     pub fn from_vec(data: Vec<T>, shape: &[usize]) -> Result<Self, String> {
         let total_elements: usize = shape.iter().product();
         if data.len() != total_elements {
@@ -149,10 +202,73 @@ where
             ));
         }
 
-        match Array::from_shape_vec(IxDyn(shape), data) {
-            Ok(array) => Ok(Self::new(array)),
+        match ndarray::Array::from_shape_vec(ndarray::IxDyn(shape), data) {
+            Ok(array) => {
+                // Create storage backend for the array
+                let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+                Ok(Self {
+                    data: array, // TODO: Remove this field in final migration step
+                    device: crate::backend::default_device(),
+                    storage: Some(Box::new(storage)),
+                })
+            }
             Err(e) => Err(format!("Failed to create tensor: {e}")),
         }
+    }
+
+    // Creates a tensor from a Rust vector with specific device
+    pub fn from_vec_with_device(
+        data: Vec<T>,
+        shape: &[usize],
+        device: crate::backend::Device,
+    ) -> Result<Self, String> {
+        let total_elements: usize = shape.iter().product();
+        if data.len() != total_elements {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                total_elements
+            ));
+        }
+
+        match ndarray::Array::from_shape_vec(ndarray::IxDyn(shape), data) {
+            Ok(array) => {
+                // Create storage backend for the array
+                let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+                Ok(Self {
+                    data: array, // TODO: Remove this field in final migration step
+                    device,
+                    storage: Some(Box::new(storage)),
+                })
+            }
+            Err(e) => Err(format!("Failed to create tensor: {e}")),
+        }
+    }
+
+    // Create tensor from existing storage backend (internal use)
+    // This is the most direct way to create tensors and will become primary after migration
+    pub(crate) fn from_storage_backend<S>(
+        storage: S,
+        device: crate::backend::Device,
+    ) -> Result<Self, String>
+    where
+        S: crate::tensor::storage::StorageBackend<T> + 'static,
+    {
+        // Extract data for backward compatibility
+        let data = match storage.cpu_data() {
+        Ok(cpu_data) => cpu_data.clone(),
+        Err(_) => {
+            // For GPU storage, create empty CPU data as placeholder
+            ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
+        }
+    };
+
+        Ok(Self {
+            data, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        })
     }
 
     // I decided not to implement the empty() function as it is useless in practice.
@@ -163,173 +279,163 @@ where
     // Some utility functions to get information about the tensor.
     // These functions are similar to the ones in PyTorch and TensorFlow, and they return the shape, number of dimensions, length, data, and device of the tensor.
     pub fn shape(&self) -> &[usize] {
-        self.data.shape()
+        self.storage
+            .as_ref()
+            .expect("Tensor must have storage backend")
+            .shape()
     }
 
+    // Get the tensor dimensions from the underlying storage backend
     pub fn ndim(&self) -> usize {
-        self.data.ndim()
+        self.storage
+            .as_ref()
+            .expect("Tensor must have storage backend")
+            .ndim()
     }
 
+    // Get the total tensor size from the underlying storage backend
     pub fn size(&self) -> usize {
-        self.data.len()
+        self.storage
+            .as_ref()
+            .expect("Tensor must have storage backend")
+            .size()
     }
 
-    pub fn len(&self) -> usize {
-        self.data.len()
+    /// Check if tensor is on CUDA
+    pub fn is_cuda(&self) -> bool {
+        if !self.device.is_cuda() {
+            return false;
+        }
+
+        self.storage.as_ref().map(|s| s.is_gpu()).unwrap_or(false)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+    // Get CPU data reference
+    /// This is be the main way to access tensor data
+    pub fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
+        self.storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?
+            .cpu_data()
     }
 
+    /// Get mutable CPU data
+    pub fn cpu_data_mut(&mut self) -> Result<&mut ArrayD<T>, String> {
+        self.storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?
+            .cpu_data_mut()
+    }
+
+    /// Check if tensor owns its data
+    pub fn owns_data(&self) -> bool {
+        self.storage
+            .as_ref()
+            .map(|s| s.owns_data())
+            .unwrap_or(false)
+    }
+
+    /// Deprecated: Legacy data access for backward compatibility
+    /// This will be removed once migration is complete
+    #[deprecated(note = "Use cpu_data() or get_cpu_data() instead")]
     pub fn data(&self) -> &ArrayD<T> {
-        &self.data
+        // Try to get from storage first, fallback to direct field access
+        if let Ok(data) = self.cpu_data() {
+            data
+        } else {
+            &self.data // This will be removed eventually
+        }
     }
 
-    pub fn device(&self) -> &Device {
+    /// Safe data access with GPU->CPU sync when needed
+    pub fn get_cpu_data(&self) -> Result<std::borrow::Cow<ArrayD<T>>, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        // Try to get CPU data directly
+        match storage.cpu_data() {
+            Ok(data) => Ok(std::borrow::Cow::Borrowed(data)),
+            Err(_) if storage.is_gpu() => {
+                // GPU storage needs sync - create temporary CPU data
+                #[cfg(feature = "cuda")]
+                {
+                    if let Some(gpu_storage) = storage.as_any().and_then(|any| {
+                        any.downcast_ref::<crate::tensor::storage::GPUOwnedStorage<T>>()
+                    }) {
+                        use crate::backend::manager::get_backend;
+                        let backend = get_backend();
+                        let cuda_backend =
+                            backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+                        let host_data = gpu_storage.cuda_data.to_vec(cuda_backend)?;
+                        let cpu_array = ndarray::ArrayD::from_shape_vec(
+                            ndarray::IxDyn(gpu_storage.cuda_data.shape()),
+                            host_data,
+                        )
+                        .map_err(|e| format!("Failed to create CPU array: {}", e))?;
+
+                        return Ok(std::borrow::Cow::Owned(cpu_array));
+                    }
+                }
+                Err("Cannot sync GPU data without CUDA feature".to_string())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Get number of elements using storage backend
+    pub fn len(&self) -> usize {
+        self.storage.as_ref().map(|s| s.size()).unwrap_or(0)
+    }
+
+    /// Check if tensor is empty using storage backend
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get device reference
+    pub fn device(&self) -> &crate::backend::Device {
         &self.device
     }
 
-    pub fn into_data(self) -> ArrayD<T> {
-        self.data
-    }
+    /// Extract data from tensor, consuming it
+    /// This method handles both CPU and GPU tensors by syncing to CPU first
+    pub fn into_data(self) -> Result<ArrayD<T>, String> {
+        let storage = self.storage.ok_or("Tensor has no storage backend")?;
 
+        // Try to get CPU data directly
+        match storage.cpu_data() {
+            Ok(data) => Ok(data.clone()),
+            Err(_) if storage.is_gpu() => {
+                // GPU storage - need to sync to CPU first
+                #[cfg(feature = "cuda")]
+                {
+                    if let Some(gpu_storage) = storage.as_any().and_then(|any| {
+                        any.downcast_ref::<crate::tensor::storage::GPUOwnedStorage<T>>()
+                    }) {
+                        use crate::backend::manager::get_backend;
+                        let backend = get_backend();
+                        let cuda_backend =
+                            backend.cuda_backend().ok_or("CUDA backend not available")?;
 
-    /// SLICING SUPPORT
-    ///
-    /// Get immutable slice view of tensor data
-    /// Zero-cost access to underlying memory for efficient operations
-    pub fn as_slice(&self) -> &[T] {
-        self.data.as_slice().expect("ArrayD should always be contiguous for CPUTensor")
-    }
+                        let host_data = gpu_storage.cuda_data.to_vec(cuda_backend)?;
+                        let cpu_array = ndarray::ArrayD::from_shape_vec(
+                            ndarray::IxDyn(gpu_storage.cuda_data.shape()),
+                            host_data,
+                        )
+                        .map_err(|e| format!("Failed to create CPU array: {}", e))?;
 
-
-    // Get mutable slice view of tensor data
-    /// Enables in-place operations without reallocations
-    pub fn as_slice_mut(&mut self) -> &mut [T] {
-        self.data.as_slice_mut().expect("ArrayD should always be contiguous for CPUTensor")
-    }
-
-
-    /// Get slice of specific length starting from offset
-    /// Useful for accessing sub-tensors or specific regions
-    pub fn slice_range(&self, start: usize, len: usize) -> Result<&[T], String> {
-        let full_slice = self.as_slice();
-        if start + len > full_slice.len() {
-            return Err(format!(
-                "Slice range [{}, {}) exceeds tensor size {}",
-                start, start + len, full_slice.len()
-            ));
+                        return Ok(cpu_array);
+                    }
+                }
+                Err("Cannot extract GPU data without CUDA feature".to_string())
+            }
+            Err(e) => Err(format!("Failed to extract data: {}", e)),
         }
-        Ok(&full_slice[start..start + len])
     }
 
-
-    /// Get mutable slice of specific length starting from offset
-    pub fn slice_range_mut(&mut self, start: usize, len: usize) -> Result<&mut [T], String> {
-        let total_len = self.data.len();
-        if start + len > total_len {
-            return Err(format!(
-                "Slice range [{}, {}) exceeds tensor size {}",
-                start, start + len, total_len
-            ));
-        }
-        let full_slice = self.as_slice_mut();
-        Ok(&mut full_slice[start..start + len])
-    }
-
-
-    /// Create tensor from existing slice (copies data)
-    /// Useful for creating tensors from memory pool slices
-    pub fn from_slice(slice: &[T], shape: &[usize]) -> Result<Self, String> {
-        let expected_len: usize = shape.iter().product();
-        if slice.len() != expected_len {
-            return Err(format!(
-                "Slice length {} doesn't match shape {:?} (expected {})",
-                slice.len(), shape, expected_len
-            ));
-        }
-
-        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
-            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
-
-        Ok(Self::new(array))
-    }
-
-    /// In-place element-wise addition using slices
-    /// Zero allocation operation when tensors have same size
-    pub fn add_inplace(&mut self, other: &Self) -> Result<(), String>
-    where
-        T: std::ops::AddAssign + Copy,
-    {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch for in-place addition: {:?} vs {:?}",
-                self.shape(), other.shape()
-            ));
-        }
-
-        let self_slice = self.as_slice_mut();
-        let other_slice = other.as_slice();
-
-        for (a, &b) in self_slice.iter_mut().zip(other_slice.iter()) {
-            *a += b;
-        }
-
-        Ok(())
-    }
-
-    /// In-place element-wise multiplication using slices
-    pub fn mul_inplace(&mut self, other: &Self) -> Result<(), String>
-    where
-        T: std::ops::MulAssign + Copy,
-    {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch for in-place multiplication: {:?} vs {:?}",
-                self.shape(), other.shape()
-            ));
-        }
-
-        let self_slice = self.as_slice_mut();
-        let other_slice = other.as_slice();
-
-        for (a, &b) in self_slice.iter_mut().zip(other_slice.iter()) {
-            *a *= b;
-        }
-
-        Ok(())
-    }
-
-    /// Fill tensor with specific value using slice access
-    /// More efficient than creating new tensor with fill
-    pub fn fill_inplace(&mut self, value: T)
-    where
-        T: Copy,
-    {
-        let slice = self.as_slice_mut();
-        slice.fill(value);
-    }
-
-    /// Copy data from another tensor using slices
-    /// Efficient memory copy without intermediate allocations
-    pub fn copy_from(&mut self, other: &Self) -> Result<(), String>
-    where
-        T: Copy,
-    {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch for copy: {:?} vs {:?}",
-                self.shape(), other.shape()
-            ));
-        }
-
-        let self_slice = self.as_slice_mut();
-        let other_slice = other.as_slice();
-
-        self_slice.copy_from_slice(other_slice);
-        Ok(())
-    }
 
     // Element-wise operations.
     // These are operations that are applied to each element of the tensor.
@@ -728,6 +834,173 @@ where
             .collect();
 
         CPUTensor::from_vec(result_vec, condition.shape())
+    }
+}
+
+
+impl<T> CPUTensor<T>
+where
+    T: GPUNumber + Clone,
+{
+    /// SLICING SUPPORT
+    ///
+    /// Get immutable slice view of tensor data using storage backend
+    /// Zero-cost access to underlying memory for efficient operations
+    pub fn as_slice(&self) -> Result<&[T], String> {
+        let storage = self.storage.as_ref().ok_or("Tensor has no storage backend")?;
+
+        // Only works for CPU storage
+        if storage.is_gpu() {
+            return Err("Cannot get slice from GPU tensor. Use .to_cpu() first".to_string());
+        }
+
+        let cpu_data = storage.cpu_data()?;
+        cpu_data.as_slice()
+            .ok_or("ArrayD is not contiguous - cannot convert to slice".to_string())
+    }
+
+    /// Get mutable slice view of tensor data using storage backend
+    /// Enables in-place operations without reallocations
+    /// Only works for owned CPU storage
+    pub fn as_slice_mut(&mut self) -> Result<&mut [T], String> {
+        let storage = self.storage.as_mut().ok_or("Tensor has no storage backend")?;
+
+        // Only works for CPU storage
+        if storage.is_gpu() {
+            return Err("Cannot get mutable slice from GPU tensor. Use .to_cpu() first".to_string());
+        }
+
+        // Check if storage owns its data
+        if !storage.owns_data() {
+            return Err("Cannot get mutable slice from borrowed storage".to_string());
+        }
+
+        let cpu_data = storage.cpu_data_mut()?;
+        cpu_data.as_slice_mut()
+            .ok_or("ArrayD is not contiguous - cannot convert to mutable slice".to_string())
+    }
+
+    /// Get slice of specific length starting from offset using storage
+    /// Useful for accessing sub-tensors or specific regions
+    pub fn slice_range(&self, start: usize, len: usize) -> Result<&[T], String> {
+        let full_slice = self.as_slice()?;
+        if start + len > full_slice.len() {
+            return Err(format!(
+                "Slice range [{}, {}) exceeds tensor size {}",
+                start,
+                start + len,
+                full_slice.len()
+            ));
+        }
+        Ok(&full_slice[start..start + len])
+    }
+
+    /// Get mutable slice of specific length starting from offset using storage
+    pub fn slice_range_mut(&mut self, start: usize, len: usize) -> Result<&mut [T], String> {
+        let total_len = self.len(); // Uses storage.size()
+        if start + len > total_len {
+            return Err(format!(
+                "Slice range [{}, {}) exceeds tensor size {}",
+                start,
+                start + len,
+                total_len
+            ));
+        }
+        let full_slice = self.as_slice_mut()?;
+        Ok(&mut full_slice[start..start + len])
+    }
+
+    /// Create tensor from existing slice (copies data) using storage backend
+    /// Useful for creating tensors from memory pool slices
+    pub fn from_slice(slice: &[T], shape: &[usize]) -> Result<Self, String> {
+        let expected_len: usize = shape.iter().product();
+        if slice.len() != expected_len {
+            return Err(format!(
+                "Slice length {} doesn't match shape {:?} (expected {})",
+                slice.len(),
+                shape,
+                expected_len
+            ));
+        }
+
+        let array = ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(shape), slice.to_vec())
+            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
+
+        // Create using storage backend
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+        Ok(Self {
+            data: array, // TODO: Remove this field in final migration step
+            device: crate::backend::default_device(),
+            storage: Some(Box::new(storage)),
+        })
+    }
+
+    /// Create tensor from existing slice with specific device
+    pub fn from_slice_with_device(slice: &[T], shape: &[usize], device: crate::backend::Device) -> Result<Self, String> {
+        let expected_len: usize = shape.iter().product();
+        if slice.len() != expected_len {
+            return Err(format!(
+                "Slice length {} doesn't match shape {:?} (expected {})",
+                slice.len(),
+                shape,
+                expected_len
+            ));
+        }
+
+        let array = ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(shape), slice.to_vec())
+            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
+
+        // Create using storage backend
+        let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+        Ok(Self {
+            data: array, // TODO: Remove this field in final migration step
+            device,
+            storage: Some(Box::new(storage)),
+        })
+    }
+
+
+    /// Check if tensor data is contiguous (for slice operations)
+    pub fn is_contiguous(&self) -> bool {
+        if let Ok(data) = self.cpu_data() {
+            data.as_slice().is_some()
+        } else {
+            // GPU tensors are always considered contiguous
+            true
+        }
+    }
+
+
+    /// Clone the tensor into owned storage (converts borrowed to owned)
+    pub fn to_owned(&self) -> Result<Self, String> {
+        let storage = self.storage.as_ref().ok_or("Tensor has no storage backend")?;
+
+        let cpu_data = if storage.is_gpu() {
+            // For GPU storage, sync to CPU first
+            self.get_cpu_data()?.into_owned()
+        } else {
+            storage.cpu_data()?.clone()
+        };
+
+        let owned_storage = crate::tensor::storage::CPUOwnedStorage::new(cpu_data.clone());
+        Ok(Self {
+            data: cpu_data, // TODO: Remove this field in final migration step
+            device: self.device.clone(),
+            storage: Some(Box::new(owned_storage)),
+        })
+    }
+
+
+    /// Create a flattened view of the tensor as 1D
+    /// Returns a new tensor with same data but 1D shape
+    pub fn flatten(&self) -> Result<Self, String> {
+        let cpu_data = self.get_cpu_data()?.into_owned();
+        let total_elements = cpu_data.len();
+
+        let flattened = cpu_data.into_shape(ndarray::IxDyn(&[total_elements]))
+            .map_err(|e| format!("Failed to flatten tensor: {}", e))?;
+
+        Ok(Self::new_with_device(flattened, self.device.clone()))
     }
 }
 
@@ -1455,7 +1728,7 @@ where
         Self {
             data,
             device,
-            storage: Some(Box::new(storage))
+            storage: Some(Box::new(storage)),
         }
     }
 
@@ -1465,18 +1738,8 @@ where
         Self {
             data,
             device,
-            storage: Some(Box::new(storage))
+            storage: Some(Box::new(storage)),
         }
-    }
-}
-
-impl<T> CPUTensor<T>
-where
-    T: GPUNumber + Clone,
-{
-    /// Check if tensor is on CUDA
-    pub fn is_cuda(&self) -> bool {
-        self.device.is_cuda()
     }
 }
 
@@ -1493,7 +1756,7 @@ where
         Self {
             data,
             device,
-            storage: Some(Box::new(storage))
+            storage: Some(Box::new(storage)),
         }
     }
 
@@ -1503,7 +1766,7 @@ where
         Self {
             data,
             device,
-            storage: Some(Box::new(storage))
+            storage: Some(Box::new(storage)),
         }
     }
 }

@@ -1,10 +1,10 @@
 // src/backend/cuda/mod.rs
 #[cfg(feature = "cuda")]
+pub mod context;
+#[cfg(feature = "cuda")]
 pub mod device;
 #[cfg(feature = "cuda")]
 pub mod kernels;
-#[cfg(feature = "cuda")]
-pub mod context;
 #[cfg(feature = "cuda")]
 pub mod ops;
 #[cfg(feature = "cuda")]

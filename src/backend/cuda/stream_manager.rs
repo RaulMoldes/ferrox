@@ -1,13 +1,13 @@
 // src/backend/cuda/stream_manager.rs
 // Stream management helper - does NOT own the CUDA context
-use cudarc::driver::{CudaContext, CudaSlice, CudaStream, ValidAsZeroBits, DeviceRepr};
+use cudarc::driver::{CudaContext, CudaSlice, CudaStream, DeviceRepr, ValidAsZeroBits};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Helper for managing named CUDA streams - used by CudaContextManager
 pub struct StreamManager {
     streams: Arc<Mutex<HashMap<String, Arc<CudaStream>>>>,
-    stream_states: Arc<Mutex<HashMap<String, bool>>> // Track if stream is ready
+    stream_states: Arc<Mutex<HashMap<String, bool>>>, // Track if stream is ready
 }
 
 impl StreamManager {
@@ -39,10 +39,11 @@ impl StreamManager {
         self.streams.lock().unwrap().get(stream_name).cloned()
     }
 
-     /// Check if stream exists and is ready (completed all operations)
+    /// Check if stream exists and is ready (completed all operations)
     pub fn is_stream_ready(&self, stream_name: &str) -> Result<bool, String> {
         let states = self.stream_states.lock().unwrap();
-        states.get(stream_name)
+        states
+            .get(stream_name)
             .copied()
             .ok_or_else(|| format!("Stream '{}' not found", stream_name))
     }
@@ -50,9 +51,9 @@ impl StreamManager {
     /// Synchronize a specific stream (blocking)
     pub fn sync_stream(&self, stream_name: &str) -> Result<(), String> {
         let streams = self.streams.lock().unwrap();
-        let stream = streams.get(stream_name).ok_or_else(|| {
-            format!("Stream '{}' not found", stream_name)
-        })?;
+        let stream = streams
+            .get(stream_name)
+            .ok_or_else(|| format!("Stream '{}' not found", stream_name))?;
 
         stream
             .synchronize()
@@ -76,7 +77,6 @@ impl StreamManager {
         Ok(())
     }
 
-
     /// Get names of all managed streams
     pub fn stream_names(&self) -> Vec<String> {
         let streams = self.streams.lock().unwrap();
@@ -85,10 +85,10 @@ impl StreamManager {
 
     /// Setup parallel streams commonly used in deep learning
     pub fn setup_parallel_streams(&self, ctx: &Arc<CudaContext>) -> Result<(), String> {
-        self.create_stream(ctx, "copy_h2d")?;  // Host to device transfers
-        self.create_stream(ctx, "copy_d2h")?;  // Device to host transfers
-        self.create_stream(ctx, "compute")?;   // Kernel execution
-        self.create_stream(ctx, "memset")?;    // Memory operations
+        self.create_stream(ctx, "copy_h2d")?; // Host to device transfers
+        self.create_stream(ctx, "copy_d2h")?; // Device to host transfers
+        self.create_stream(ctx, "compute")?; // Kernel execution
+        self.create_stream(ctx, "memset")?; // Memory operations
         Ok(())
     }
 
@@ -96,7 +96,7 @@ impl StreamManager {
     pub fn host_to_device_async<T>(
         &self,
         ctx: &Arc<CudaContext>,
-        data: &[T],  // Changed from Vec<T> to &[T] for efficiency
+        data: &[T], // Changed from Vec<T> to &[T] for efficiency
         stream_name: Option<&str>,
     ) -> Result<CudaSlice<T>, String>
     where
@@ -106,7 +106,10 @@ impl StreamManager {
             Some(name) => {
                 let streams = self.streams.lock().unwrap();
                 streams.get(name).cloned().ok_or_else(|| {
-                    format!("Stream '{}' not found. Create it first with create_stream()", name)
+                    format!(
+                        "Stream '{}' not found. Create it first with create_stream()",
+                        name
+                    )
                 })?
             }
             None => ctx.default_stream(),
@@ -120,7 +123,7 @@ impl StreamManager {
         // Copy data from host to device using the correct cudarc API
         unsafe {
             stream
-                .memcpy_htod(data, &mut device_buffer)  // data is now &[T]
+                .memcpy_htod(data, &mut device_buffer) // data is now &[T]
                 .map_err(|e| format!("Async host to device transfer failed: {}", e))?;
         }
 
@@ -138,11 +141,10 @@ impl StreamManager {
     {
         let streams = self.streams.lock().unwrap();
         let stream = match stream_name {
-            Some(name) => {
-                streams.get(name).cloned().ok_or_else(|| {
-                    format!("Stream '{}' not found", name)
-                })?
-            }
+            Some(name) => streams
+                .get(name)
+                .cloned()
+                .ok_or_else(|| format!("Stream '{}' not found", name))?,
             None => return Err("Default stream not accessible from StreamManager".to_string()),
         };
 

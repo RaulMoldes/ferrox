@@ -202,5 +202,4 @@ mod tests {
         let sum_axis1 = tensor.sum(Some(1));
         assert_eq!(sum_axis1.shape(), &[2]);
     }
-
 }

@@ -47,10 +47,9 @@ mod tests {
 
     fn setup_context_manager() -> Option<CudaContextManager> {
         match CudaContextManager::from_device_id(0) {
-                Ok(manager) => Some(manager),
-                Err(_) => None,
-            }
-
+            Ok(manager) => Some(manager),
+            Err(_) => None,
+        }
     }
 
     #[test]
@@ -164,7 +163,6 @@ mod tests {
     #[test]
     fn test_element_wise_operations() {
         if let Some(backend) = setup_cuda_backend() {
-
             let ops = backend.ops();
 
             // Test data
@@ -212,12 +210,8 @@ mod tests {
             let (a_host, b_host) = create_test_vectors(size);
 
             // Allocate GPU memory
-            let a_gpu = backend
-                .host_to_device(&a_host)
-                .unwrap();
-            let b_gpu = backend
-                .host_to_device(&b_host)
-                .unwrap();
+            let a_gpu = backend.host_to_device(&a_host).unwrap();
+            let b_gpu = backend.host_to_device(&b_host).unwrap();
             let mut c_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             // Configure launch parameters for small test
@@ -252,12 +246,8 @@ mod tests {
             let size = 1024;
             let (a_host, b_host) = create_test_vectors(size);
 
-            let a_gpu = backend
-                .host_to_device(&a_host)
-                .unwrap();
-            let b_gpu = backend
-                .host_to_device(&b_host)
-                .unwrap();
+            let a_gpu = backend.host_to_device(&a_host).unwrap();
+            let b_gpu = backend.host_to_device(&b_host).unwrap();
             let mut c_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             // Multi-block configuration
@@ -290,9 +280,7 @@ mod tests {
             let size = 256;
             let input: Vec<f32> = (0..size).map(|i| i as f32).collect(); // All positive
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut output_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             let cfg = LaunchConfig {
@@ -307,9 +295,7 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
             let expected: Vec<f32> = input.iter().map(|&x| x.max(0.0)).collect();
 
             assert_float_eq(&result, &expected, 1e-6);
@@ -322,9 +308,7 @@ mod tests {
             let size = 512;
             let input: Vec<f32> = (0..size).map(|i| i as f32 - 256.0).collect(); // Mix of pos/neg
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut output_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             let cfg = LaunchConfig {
@@ -339,9 +323,7 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
             let expected: Vec<f32> = input.iter().map(|&x| x.max(0.0)).collect();
 
             assert_float_eq(&result, &expected, 1e-6);
@@ -378,9 +360,7 @@ mod tests {
 
             let a_gpu = backend.host_to_device(&a_host).unwrap();
             let b_gpu = backend.host_to_device(&b_host).unwrap();
-            let mut c_gpu = backend
-                .alloc_zeros::<f32>((m * n) as usize)
-                .unwrap();
+            let mut c_gpu = backend.alloc_zeros::<f32>((m * n) as usize).unwrap();
 
             let cfg = LaunchConfig {
                 block_dim: (16, 16, 1),
@@ -476,9 +456,7 @@ mod tests {
             let size = 128;
             let input: Vec<f32> = (0..size).map(|i| i as f32 - 64.0).collect();
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut temp_gpu = backend.alloc_zeros::<f32>(size).unwrap();
             let mut output_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
@@ -501,9 +479,7 @@ mod tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
 
             // Expected: ReLU(input) * 2
             let expected: Vec<f32> = input.iter().map(|&x| x.max(0.0) * 2.0).collect();
@@ -768,9 +744,7 @@ mod kernel_tests {
             let size = 8;
             let input = vec![0.0f32, 1.0, -1.0, 2.5, 0.0, -0.0, 100.0, -50.0];
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut result_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -780,9 +754,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&result_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&result_gpu).unwrap();
             for i in 0..size {
                 let expected = if input[i] == 0.0 { 1.0 } else { 0.0 };
                 assert!((result[i] - expected).abs() < 1e-6);
@@ -796,9 +768,7 @@ mod kernel_tests {
             let size = 9;
             let input = vec![-5.0f32, -1.0, -0.1, 0.0, 0.1, 1.0, 5.0, -0.0, 100.0];
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut result_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -808,9 +778,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&result_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&result_gpu).unwrap();
             let expected = vec![-1.0f32, -1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0];
             assert_f32_eq(&result, &expected, 1e-6);
         }
@@ -822,9 +790,7 @@ mod kernel_tests {
             let size = 6;
             let input = vec![-10.5f64, -0.001, 0.0, 0.001, 10.5, -0.0];
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut result_gpu = backend.alloc_zeros::<f64>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -834,9 +800,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&result_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&result_gpu).unwrap();
             let expected = vec![-1.0f64, -1.0, 0.0, 1.0, 1.0, 0.0];
             assert_f64_eq(&result, &expected, 1e-10);
         }
@@ -850,9 +814,7 @@ mod kernel_tests {
             let min_val = 3.0f32;
             let max_val = 7.0f32;
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut result_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -869,9 +831,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&result_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&result_gpu).unwrap();
             for i in 0..size {
                 let expected = if input[i] >= min_val && input[i] <= max_val {
                     1.0
@@ -893,9 +853,7 @@ mod kernel_tests {
             let min_val = -5.0f32;
             let max_val = 5.0f32;
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut result_gpu = backend.alloc_zeros::<f32>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -912,9 +870,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&result_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&result_gpu).unwrap();
             for i in 0..size {
                 let expected = input[i].max(min_val).min(max_val);
                 assert!((result[i] - expected).abs() < 1e-6);
@@ -930,9 +886,7 @@ mod kernel_tests {
             let min_val = -2.0f64;
             let max_val = 8.0f64;
 
-            let input_gpu = backend
-                .host_to_device(&input)
-                .unwrap();
+            let input_gpu = backend.host_to_device(&input).unwrap();
             let mut result_gpu = backend.alloc_zeros::<f64>(size).unwrap();
 
             let cfg = create_launch_config(size);
@@ -949,9 +903,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&result_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&result_gpu).unwrap();
             let expected = vec![-2.0f64, -2.0, -1.0, 0.0, 1.0, 5.0, 8.0, 8.0];
             assert_f64_eq(&result, &expected, 1e-10);
         }
@@ -1000,13 +952,9 @@ mod kernel_tests {
             let a_host = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
             let b_host = vec![1.0f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
-            let a_gpu = backend
-                .host_to_device(&a_host)
-                .unwrap();
+            let a_gpu = backend.host_to_device(&a_host).unwrap();
             let b_gpu = backend.host_to_device(&b_host).unwrap();
-            let mut c_gpu = backend
-                .alloc_zeros::<f32>((m * n) as usize)
-                .unwrap();
+            let mut c_gpu = backend.alloc_zeros::<f32>((m * n) as usize).unwrap();
 
             let cfg = create_2d_launch_config(m as usize, n as usize);
             backend
@@ -1063,9 +1011,7 @@ mod kernel_tests {
             ];
 
             let input_gpu = backend.host_to_device(&input).unwrap();
-            let mut output_gpu = backend
-                .alloc_zeros::<f32>((rows * cols) as usize)
-                .unwrap();
+            let mut output_gpu = backend.alloc_zeros::<f32>((rows * cols) as usize).unwrap();
 
             let cfg = create_2d_launch_config(rows as usize, cols as usize);
             backend
@@ -1074,9 +1020,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
@@ -1090,9 +1034,7 @@ mod kernel_tests {
             let expected = vec![1.5f64, 4.5, 2.5, 5.5, 3.5, 6.5];
 
             let input_gpu = backend.host_to_device(&input).unwrap();
-            let mut output_gpu = backend
-                .alloc_zeros::<f64>((rows * cols) as usize)
-                .unwrap();
+            let mut output_gpu = backend.alloc_zeros::<f64>((rows * cols) as usize).unwrap();
 
             let cfg = create_2d_launch_config(rows as usize, cols as usize);
             backend
@@ -1101,9 +1043,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
             assert_f64_eq(&result, &expected, 1e-10);
         }
     }
@@ -1145,9 +1085,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
@@ -1187,9 +1125,7 @@ mod kernel_tests {
                 .unwrap();
             backend.synchronize().unwrap();
 
-            let result = backend
-                .device_to_host(&output_gpu)
-                .unwrap();
+            let result = backend.device_to_host(&output_gpu).unwrap();
             assert_f32_eq(&result, &expected, 1e-6);
         }
     }
@@ -1207,16 +1143,15 @@ mod stream_tests {
     /// Helper to create memory manager with streams
     fn setup_stream_manager() -> Option<CudaContextManager> {
         match CudaContextManager::from_device_id(0) {
-                Ok(mut manager) => {
-                    if manager.setup_parallel_streams().is_ok() {
-                        Some(manager)
-                    } else {
-                        None
-                    }
+            Ok(mut manager) => {
+                if manager.setup_parallel_streams().is_ok() {
+                    Some(manager)
+                } else {
+                    None
                 }
-                Err(_) => None,
             }
-
+            Err(_) => None,
+        }
     }
 
     /// Helper function to create a test CUDA backend
