@@ -61,7 +61,7 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr
             + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUNumber
+            + crate::backend::number::GPUFloat
             + 'static,
     {
         let size = shape.iter().product();
@@ -74,7 +74,7 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr
             + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUNumber
+            + crate::backend::number::GPUFloat
             + 'static,
     {
         let size = shape.iter().product();
@@ -95,7 +95,7 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr
             + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUNumber
+            + crate::backend::number::GPUFloat
             + 'static,
     {
         self.zeros(shape)
@@ -106,7 +106,7 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr
             + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUNumber
+            + crate::backend::number::GPUFloat
             + 'static,
     {
         let size = shape.iter().product();
@@ -128,7 +128,7 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr
             + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUNumber
+            + crate::backend::number::GPUFloat
             + 'static,
     {
         let size = shape.iter().product();

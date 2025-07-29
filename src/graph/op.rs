@@ -3,12 +3,12 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
-use crate::backend::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::{CPUFloat, CPUNumber, GPUFloat};
 use crate::tensor::Tensor;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // Defines the interface for operators in the computational graph
     // Compute function computes the output in the computational graph.
@@ -36,7 +36,7 @@ pub struct AddOp;
 
 impl<T> Operator<T> for AddOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -64,7 +64,7 @@ pub struct MulOp;
 
 impl<T> Operator<T> for MulOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -94,7 +94,7 @@ pub struct MatMulOp;
 
 impl<T> Operator<T> for MatMulOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -152,7 +152,7 @@ where
         let zero = <T as CPUNumber>::zero();
         let one = <T as CPUNumber>::one();
 
-        let grad = inputs[0].clamp(zero, one).mul(grad_output)?;
+        let grad = inputs[0].clamp(zero, one)?.mul(grad_output)?;
         Ok(vec![grad])
     }
 
@@ -174,7 +174,7 @@ impl SumOp {
 
 impl<T> Operator<T> for SumOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -216,14 +216,14 @@ where
 #[derive(Debug, Clone)]
 pub struct AddScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     scalar: T,
 }
 
 impl<T> AddScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -232,13 +232,13 @@ where
 
 impl<T> Operator<T> for AddScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("AddScalarOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].add_scalar(self.scalar))
+        inputs[0].add_scalar(self.scalar)
     }
 
     fn gradient(
@@ -257,14 +257,14 @@ where
 #[derive(Debug, Clone)]
 pub struct MulScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     scalar: T,
 }
 
 impl<T> MulScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -273,13 +273,13 @@ where
 
 impl<T> Operator<T> for MulScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("MulScalarOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].mul_scalar(self.scalar))
+        inputs[0].mul_scalar(self.scalar)
     }
 
     fn gradient(
@@ -287,7 +287,7 @@ where
         grad_output: &Tensor<T>,
         _inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
-        Ok(vec![grad_output.mul_scalar(self.scalar)])
+        Ok(vec![grad_output.mul_scalar(self.scalar)?])
     }
 
     fn num_inputs(&self) -> usize {
@@ -298,14 +298,14 @@ where
 #[derive(Debug, Clone)]
 pub struct DivScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     scalar: T,
 }
 
 impl<T> DivScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn new(scalar: T) -> Self {
         let zero = <T as CPUNumber>::zero();
@@ -320,7 +320,7 @@ where
 
 impl<T> Operator<T> for DivScalarOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -332,7 +332,7 @@ where
             return Err("Division by zero: scalar divisor is zero".to_string());
         }
 
-        Ok(inputs[0].div_scalar(self.scalar))
+        inputs[0].div_scalar(self.scalar)
     }
 
     fn gradient(
@@ -349,7 +349,7 @@ where
             return Err("Cannot compute gradient: scalar divisor is zero".to_string());
         }
 
-        Ok(vec![grad_output.div_scalar(self.scalar)])
+        Ok(vec![grad_output.div_scalar(self.scalar)?])
     }
 
     fn num_inputs(&self) -> usize {
@@ -362,7 +362,7 @@ pub struct DivOp;
 
 impl<T> Operator<T> for DivOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -381,7 +381,7 @@ where
         let grad_a = grad_output.mul(&one_over_b)?;
 
         let b_squared = inputs[1].mul(&inputs[1])?;
-        let neg_a_over_b_squared = inputs[0].negate().div(&b_squared)?;
+        let neg_a_over_b_squared = inputs[0].neg()?.div(&b_squared)?;
         let grad_b = grad_output.mul(&neg_a_over_b_squared)?;
 
         Ok(vec![grad_a, grad_b])
@@ -415,7 +415,7 @@ where
         let a = &inputs[0];
         let b = &inputs[1];
         let one = <T as CPUNumber>::one();
-        let b_minus_one = b.add_scalar(-one);
+        let b_minus_one = b.add_scalar(-one)?;
         let a_pow_b_minus_one = a.powf(&b_minus_one)?;
         let grad_a = grad_output.mul(&b.mul(&a_pow_b_minus_one)?)?;
 
@@ -496,13 +496,13 @@ pub struct NegateOp;
 
 impl<T> Operator<T> for NegateOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("NegateOp requires exactly 1 input".to_string());
         }
-        Ok(inputs[0].negate())
+        inputs[0].neg()
     }
 
     fn gradient(
@@ -511,7 +511,7 @@ where
         _inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // d(-x)/dx = -1
-        Ok(vec![grad_output.negate()])
+        Ok(vec![grad_output.neg()?])
     }
 
     fn num_inputs(&self) -> usize {
@@ -532,7 +532,7 @@ impl TransposeOp {
 
 impl<T> Operator<T> for TransposeOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -587,7 +587,7 @@ impl ReshapeOp {
 
 impl<T> Operator<T> for ReshapeOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -627,7 +627,7 @@ impl BroadcastToOp {
 
 impl<T> Operator<T> for BroadcastToOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -688,7 +688,7 @@ impl SummationOp {
 
 impl<T> Operator<T> for SummationOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -751,7 +751,7 @@ pub struct MinOp;
 
 impl<T> Operator<T> for MinOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -808,7 +808,7 @@ pub struct MaxOp;
 
 impl<T> Operator<T> for MaxOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -863,7 +863,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ClampOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     min_val: T,
     max_val: T,
@@ -871,7 +871,7 @@ where
 
 impl<T> ClampOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn new(min_val: T, max_val: T) -> Self {
         if min_val > max_val {
@@ -883,14 +883,14 @@ where
 
 impl<T> Operator<T> for ClampOp<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("ClampOp requires exactly 1 input".to_string());
         }
 
-        Ok(inputs[0].clamp(self.min_val, self.max_val))
+        inputs[0].clamp(self.min_val, self.max_val)
     }
 
     fn gradient(
@@ -955,11 +955,11 @@ where
 
         let eps = <T as CPUFloat>::from_f64(1e-12).unwrap_or(<T as CPUFloat>::epsilon());
         let two_tensor = Tensor::<T>::ones(inputs[0].shape())
-            .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap());
+            .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap())?;
 
         // Create mask for values close to zero
-        let eps_tensor = Tensor::<T>::ones(inputs[0].shape()).mul_scalar(eps);
-        let input_abs = inputs[0].abs();
+        let eps_tensor = Tensor::<T>::ones(inputs[0].shape()).mul_scalar(eps)?;
+        let input_abs = inputs[0].abs()?;
         let is_near_zero = input_abs.less_equal(&eps_tensor)?;
 
         // Compute sqrt for non-zero values
@@ -1001,14 +1001,14 @@ pub struct AbsOp;
 
 impl<T> Operator<T> for AbsOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("AbsOp requires exactly 1 input".to_string());
         }
 
-        Ok(inputs[0].abs())
+        inputs[0].abs()
     }
 
     fn gradient(
@@ -1083,7 +1083,7 @@ impl MaxAlongDimOp {
 
 impl<T> Operator<T> for MaxAlongDimOp
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1196,7 +1196,7 @@ where
 
         // Step 3: Subtract max and compute exponentials: exp(x - max)
         // This should be fused into a sub operation for efficiency. However curently it is not implemented.
-        let negated = broadcasted_max.negate();
+        let negated = broadcasted_max.neg()?;
         let shifted_input = input.add(&negated)?;
 
         let exp_vals = shifted_input.exp();
@@ -1241,7 +1241,7 @@ where
         let broadcasted_sum = expanded_sum.broadcast_to(input.shape())?;
 
         // Compute final gradient: softmax * (grad_output - broadcasted_sum)
-        let negated_sum = broadcasted_sum.negate();
+        let negated_sum = broadcasted_sum.neg()?;
         // This is equivalent to grad_output - sum(softmax * grad_output, dim)
         let grad_diff = grad_output.add(&negated_sum)?;
         let grad_input = softmax_output.mul(&grad_diff)?;

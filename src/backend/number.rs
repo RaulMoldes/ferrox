@@ -17,7 +17,7 @@ use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 /// which is a requirement for some operations like negation and signum.
 /// It includes methods for basic arithmetic operations, assignment operations,
 /// and conversions between different CPUNumber types.
-pub trait CPUNumber: 
+pub trait CPUNumber:
     // Basic arithmetic operations
     Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self> +
     // Assignment operations
@@ -27,62 +27,62 @@ pub trait CPUNumber:
     // Negation
     Neg<Output = Self> +
     // Comparisons
-    PartialOrd + PartialEq +
+    PartialOrd + PartialEq + Neg +
     // Essential traits
     Clone + Copy + Debug + Display + PartialOrd + PartialEq +
     Default +
     // Only conversions that always work without loss
     From<i8> +
-    Sized 
-    + Zero 
+    Sized
+    + Zero
     + One
     + FromPrimitive
     + LinalgScalar + ScalarOperand + 'static
 {
     /// Neutral element for addition (zero)
     fn zero() -> Self;
-    
+
     /// Neutral element for multiplication (one)
     fn one() -> Self;
-    
+
     /// Checks if the value is zero
     fn is_zero(&self) -> bool {
         *self == <Self as CPUNumber>::zero()
     }
-    
+
     /// Checks if the value is one
     fn is_one(&self) -> bool {
         *self == <Self as CPUNumber>::one()
     }
-    
+
     /// Absolute value
     fn abs(self) -> Self;
-    
+
     /// Sign of the number (-1, 0, 1)
     fn signum(self) -> Self;
-    
+
     /// Power using an integer exponent
     fn powi(self, exp: i32) -> Self;
-    
+
     /// Converts to f64 for operations that require floating point
     fn to_f64(self) -> f64;
-    
+
     /// Converts from f64 (may fail for integer types if there's precision loss)
     fn from_f64(value: f64) -> Option<Self>;
 
-    
+
     /// Converts from i32 (may fail if there's precision loss)
     fn from_i32(value: i32) -> Option<Self>;
-    
+
     /// Converts from i16 (may fail if there's precision loss)
     fn from_i16(value: i16) -> Option<Self>;
 
     // Converts from i64 (may fail if there's precision loss)
     fn from_i64(value: i64) -> Option<Self>;
-    
+
     /// Minimum value representable by this type
     fn min_value() -> Self;
-    
+
     /// Maximum value representable by this type
     fn max_value() -> Self;
 }
@@ -460,13 +460,13 @@ impl CPUNumber for i64 {
 }
 
 // CUDA trait implementations - only compiled when cuda feature is enabled
-// These implementations ensure that f32, f64, i32, and i64 can be used with GPUNumber
+// These implementations ensure that f32, f64, i32, and i64 can be used with GPUFloat
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
 #[cfg(feature = "cuda")]
-impl GPUNumber for f32 {}
+impl GPUFloat for f32 {}
 
 #[cfg(feature = "cuda")]
-impl GPUNumber for f64 {}
+impl GPUFloat for f64 {}
 
 #[cfg(feature = "cuda")]
 impl GPUFloat for f32 {}
@@ -475,23 +475,23 @@ impl GPUFloat for f32 {}
 impl GPUFloat for f64 {}
 
 #[cfg(feature = "cuda")]
-impl GPUNumber for i32 {}
+impl GPUFloat for i32 {}
 
 #[cfg(feature = "cuda")]
-impl GPUNumber for i64 {}
+impl GPUFloat for i64 {}
 
 /// CUDA-compatible CPUNumber trait that extends CPUNumber with GPU-specific requirements.
 /// This trait is only available when the "cuda" feature is enabled, allowing the
 /// same code to compile with or without CUDA support.
 #[cfg(feature = "cuda")]
-pub trait GPUNumber: CPUNumber + DeviceRepr + ValidAsZeroBits + Unpin {}
+pub trait GPUFloat: CPUNumber + DeviceRepr + ValidAsZeroBits + Unpin {}
 
 #[cfg(feature = "cuda")]
-pub trait GPUFloat: CPUFloat + GPUNumber {
+pub trait GPUFloat: CPUFloat + GPUFloat {
     // Additional GPU-specific methods can be added here if needed
 }
 
-/// When CUDA is not available, GPUNumber is just an alias for CPUNumber.
+/// When CUDA is not available, GPUFloat is just an alias for CPUNumber.
 /// This allows the same generic bounds to work regardless of CUDA availability.
 #[cfg(not(feature = "cuda"))]
 pub trait GPUNumber: CPUNumber {}

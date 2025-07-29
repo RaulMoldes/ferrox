@@ -1,4 +1,4 @@
-use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::number::{CPUNumber, GPUFloat};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -16,7 +16,7 @@ use crate::nn::Module;
 /// - Batch processing capabilities
 pub trait Loss<T>: Module<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     /// Computes the loss between predictions and targets.
     ///
@@ -116,7 +116,7 @@ impl Default for MSELoss {
 
 impl<T> Module<T> for MSELoss
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -140,7 +140,7 @@ where
 
 impl<T> Loss<T> for MSELoss
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar

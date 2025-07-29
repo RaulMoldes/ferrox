@@ -1,12 +1,12 @@
 
-pub trait CPUFloat: GPUNumber {
+pub trait CPUFloat: GPUFloat {
 
     fn zero() -> Self {
-        <Self as GPUNumber>::from_f64(0.0)
+        <Self as GPUFloat>::from_f64(0.0)
             .expect("Failed to convert 0.0 to CPUFloat type")
     }
     fn one() -> Self {
-        <Self as GPUNumber>::from_f64(1.0)
+        <Self as GPUFloat>::from_f64(1.0)
         .expect("Failed to convert 1.0 to CPUFloat type")
     }
     /// Square root
@@ -47,28 +47,28 @@ pub trait CPUFloat: GPUNumber {
 
     fn to_f64(self) -> f64 {
         // Default implementation for Float types
-        GPUNumber::to_f64(self)
+        GPUFloat::to_f64(self)
     }
 
     fn from_f64(value: f64) -> Option<Self> {
         // Default implementation for Float types
-        GPUNumber::from_f64(value)
+        GPUFloat::from_f64(value)
     }
 
     fn from_i32(value: i32) -> Option<Self> {
         // Default implementation for Float types
-        GPUNumber::from_i32(value)
+        GPUFloat::from_i32(value)
     }
 
     fn from_i16(value: i16) -> Option<Self> {
         // Default implementation for Float types
-        GPUNumber::from_i16(value)
+        GPUFloat::from_i16(value)
     }
 
     fn from_i64(value: i64) -> Option<Self> {
         // Default implementation for Float types
-        GPUNumber::from_i64(value)
+        GPUFloat::from_i64(value)
     }
 
-    
+
 }

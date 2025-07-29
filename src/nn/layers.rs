@@ -1,5 +1,5 @@
 use super::initializers::xavier_uniform;
-use crate::backend::number::GPUNumber;
+use crate::backend::number::GPUFloat;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::{Module, Parameter};
@@ -29,7 +29,7 @@ impl Default for Identity {
 
 impl<T> Module<T> for Identity
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         Ok(input)
@@ -55,7 +55,7 @@ where
 #[derive(Debug)]
 pub struct Linear<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub weight: Parameter<T>,
     pub bias: Option<Parameter<T>>, // Bias is optional as it is common to have layers without bias
@@ -68,7 +68,7 @@ where
 
 impl<T> Linear<T>
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -80,7 +80,7 @@ where
     /// # Arguments
     ///
     /// * `in_features` - Number of input features
-    /// * `out_features` - Number of output features  
+    /// * `out_features` - Number of output features
     /// * `bias` - Whether to include bias term
     ///
     /// # Weight Initialization
@@ -188,7 +188,7 @@ where
 
 impl<T> Module<T> for Linear<T>
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -352,7 +352,7 @@ impl Default for Flatten {
 
 impl<T> Module<T> for Flatten
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -392,7 +392,7 @@ where
 /// Rust does not allow tinheritance of structs.
 pub struct Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     modules: Vec<Box<dyn Module<T>>>,
     training: bool,
@@ -400,7 +400,7 @@ where
 
 impl<T> Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     /// Creates a new empty Sequential container.
     pub fn new() -> Self {
@@ -471,7 +471,7 @@ where
 
 impl<T> Default for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn default() -> Self {
         Self::new()
@@ -480,7 +480,7 @@ where
 
 impl<T> Module<T> for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         let mut current = input;
@@ -521,7 +521,7 @@ where
 // Added index-based access to modules. Utility following the ModuleList impl.
 impl<T> std::ops::Index<usize> for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     type Output = Box<dyn Module<T>>;
 
@@ -531,7 +531,7 @@ where
 }
 impl<T> std::ops::IndexMut<usize> for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.modules[index]
@@ -540,7 +540,7 @@ where
 
 impl<T> IntoIterator for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     type Item = Box<dyn Module<T>>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -551,7 +551,7 @@ where
 }
 impl<T> std::iter::FromIterator<Box<dyn Module<T>>> for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn from_iter<I: IntoIterator<Item = Box<dyn Module<T>>>>(iter: I) -> Self {
         Self {
@@ -563,7 +563,7 @@ where
 
 impl<T> From<Vec<Box<dyn Module<T>>>> for Sequential<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn from(modules: Vec<Box<dyn Module<T>>>) -> Self {
         Self {

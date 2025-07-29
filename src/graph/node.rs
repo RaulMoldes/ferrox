@@ -1,5 +1,5 @@
 use super::op::Operator;
-use crate::backend::GPUNumber;
+use crate::backend::GPUFloat;
 use crate::tensor::Tensor;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -22,7 +22,7 @@ pub type NodeId = usize;
 #[derive(Debug)]
 pub struct Node<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub id: NodeId,
     pub op: Option<Box<dyn Operator<T>>>, // Use Box here to allow dynamic dispatch for different operators
@@ -39,7 +39,7 @@ where
 
 impl<T> Node<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // Create a new leaf node in the graph
     pub fn new(data: Tensor<T>, requires_grad: bool) -> Self {

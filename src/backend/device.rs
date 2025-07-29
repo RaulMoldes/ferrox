@@ -9,7 +9,7 @@
 use ndarray::{Array, ArrayD, IxDyn};
 use rand::Rng;
 
-use super::number::GPUNumber;
+use super::number::GPUFloat;
 
 /// Device abstraction for tensor operations.
 ///
@@ -28,7 +28,7 @@ pub enum Device {
 
 impl Device {
     // Allocate a new array with the given shape and fill it with zeros.
-    pub fn zeros<T: GPUNumber>(&self, shape: &[usize]) -> ArrayD<T> {
+    pub fn zeros<T: GPUFloat>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::zeros(IxDyn(shape)),
             #[cfg(feature = "cuda")]
@@ -41,7 +41,7 @@ impl Device {
     }
 
     // Allocate a new array with the given shape and fill it with ones.
-    pub fn ones<T: GPUNumber>(&self, shape: &[usize]) -> ArrayD<T> {
+    pub fn ones<T: GPUFloat>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::ones(IxDyn(shape)),
             #[cfg(feature = "cuda")]
@@ -103,7 +103,7 @@ impl Device {
     // However ndarray does not have an uninitialized array, so we use zeros for compatibility.
     // If you want to use uninitialized arrays, you can use `Array::uninit` but it is unsafe.
     // For now, we will use `zeros` to keep it safe.
-    pub fn empty<T: GPUNumber + rand_distr::num_traits::Zero>(&self, shape: &[usize]) -> ArrayD<T> {
+    pub fn empty<T: GPUFloat + rand_distr::num_traits::Zero>(&self, shape: &[usize]) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::zeros(IxDyn(shape)), // ndarray doesn't have uninitialized arrays
             #[cfg(feature = "cuda")]
@@ -117,7 +117,7 @@ impl Device {
 
     // Allocate a new array with the given shape and fill it with a specific value.
     // This is similar to numpy.full.
-    pub fn full<T: GPUNumber>(&self, shape: &[usize], fill_value: T) -> ArrayD<T> {
+    pub fn full<T: GPUFloat>(&self, shape: &[usize], fill_value: T) -> ArrayD<T> {
         match self {
             Device::CPU => ArrayD::from_elem(IxDyn(shape), fill_value),
             #[cfg(feature = "cuda")]

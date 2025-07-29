@@ -1,5 +1,5 @@
 use crate::backend::manager::get_backend;
-use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat, GPUFloat};
 use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::borrow::Cow;
@@ -12,7 +12,7 @@ use crate::backend::cuda::CudaTensor;
 #[derive(Debug, Clone)]
 pub struct GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub data: ArrayD<T>,
     pub device: Device,
@@ -22,7 +22,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // Basic constructor - creates a GPU-capable tensor with CPU data initially
     // Similar to CPUTensor but this one can be moved to GPU when needed
@@ -563,7 +563,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn matmul_cpu(&self, other: &Self) -> Result<GPUTensor<T>, String> {
         if self.ndim() != 2 || other.ndim() != 2 {
@@ -651,7 +651,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // Summation operations for GPUTensor
     // These methods handle summation along specified axes or over the entire tensor.
@@ -1094,7 +1094,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn zeros(shape: &[usize]) -> Self {
         let device = default_device();
@@ -1118,7 +1118,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn ones(shape: &[usize]) -> Self {
         let device = default_device();
@@ -1142,7 +1142,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn to_cuda(&self) -> Result<Self, String> {
         if self.is_cuda() {
@@ -1933,7 +1933,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // CPU scalar operations for fallback
     fn add_scalar_cpu(&self, scalar: T) -> GPUTensor<T> {
@@ -2385,7 +2385,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // Read-only access - warns if data might be stale
     pub fn data(&self) -> &ArrayD<T> {
@@ -2462,7 +2462,7 @@ where
 ///-----------------------------------------------------------------------
 impl<T> GPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     /// Convert image patches to column matrix (im2col)
     /// Detailed documentation is available in the CPUTensor impl.
@@ -2846,7 +2846,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> PartialEq for GPUTensor<T>
 where
-    T: GPUNumber + PartialEq,
+    T: GPUFloat + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         // Compare shapes first
@@ -2870,7 +2870,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> Index<usize> for GPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     type Output = T;
 

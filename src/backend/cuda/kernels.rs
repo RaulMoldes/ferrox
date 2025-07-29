@@ -249,7 +249,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
@@ -266,7 +266,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, input, output, &size)
@@ -285,7 +285,7 @@ impl CudaKernels {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(
@@ -314,7 +314,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_add", cfg, a, b, c, size)
     }
@@ -329,7 +329,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
     }
@@ -343,7 +343,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("fill");
         launch_kernel!(self, &kernel_name, cfg, data, &value, &size)
@@ -358,7 +358,7 @@ impl CudaKernels {
         seed: u64,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("fill_random");
         launch_kernel!(self, &kernel_name, cfg, data, &size, &seed)
@@ -374,7 +374,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_div", cfg, a, b, c, size)
     }
@@ -389,7 +389,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_sub", cfg, a, b, c, size)
     }
@@ -404,7 +404,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_pow", cfg, a, b, c, size)
     }
@@ -419,7 +419,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_min", cfg, a, b, c, size)
     }
@@ -434,7 +434,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_max", cfg, a, b, c, size)
     }
@@ -448,7 +448,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_abs", cfg, input, output, size)
     }
@@ -461,7 +461,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_sqrt", cfg, input, output, size)
     }
@@ -474,7 +474,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_exp", cfg, input, output, size)
     }
@@ -487,7 +487,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_log", cfg, input, output, size)
     }
@@ -500,7 +500,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_negate", cfg, input, output, size)
     }
@@ -513,7 +513,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_elementwise("relu", cfg, input, output, size)
     }
@@ -529,7 +529,7 @@ impl CudaKernels {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_reduction(
             "sum_axis", cfg, input, output, outer_size, axis_size, inner_size,
@@ -546,7 +546,7 @@ impl CudaKernels {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_reduction(
             "max_along_dim",
@@ -570,7 +570,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("clamp");
         launch_kernel!(
@@ -596,7 +596,7 @@ impl CudaKernels {
         k: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("matmul");
         launch_kernel!(self, &kernel_name, cfg, a, b, c, &m, &n, &k)
@@ -611,7 +611,7 @@ impl CudaKernels {
         cols: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("transpose_2d");
         launch_kernel!(self, &kernel_name, cfg, input, output, &rows, &cols)
@@ -632,7 +632,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
@@ -649,7 +649,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, input, result, &size)
@@ -667,7 +667,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_comparison("greater_equal", cfg, a, b, result, size)
     }
@@ -683,7 +683,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_comparison("less_equal", cfg, a, b, result, size)
     }
@@ -700,7 +700,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_comparison("equal", cfg, a, b, result, size)
     }
@@ -716,7 +716,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_comparison("logical_not", cfg, input, result, size)
     }
@@ -732,7 +732,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_unary_comparison("sign", cfg, input, result, size)
     }
@@ -751,7 +751,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("in_range");
         launch_kernel!(
@@ -776,7 +776,7 @@ impl CudaKernels {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber,
+        T: crate::backend::number::GPUFloat,
     {
         launch_kernel!(self, kernel_name, cfg, input, output, &size)
     }
@@ -802,7 +802,7 @@ impl CudaKernels {
         pad_w: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
         launch_kernel!(
@@ -845,7 +845,7 @@ impl CudaKernels {
         pad_w: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("conv2d_forward_shared");
         launch_kernel!(
@@ -882,7 +882,7 @@ impl CudaKernels {
         width: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUNumber + 'static,
+        T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("depthwise_separable_conv2d_fused");
         launch_kernel!(

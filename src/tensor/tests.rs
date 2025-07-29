@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
     use crate::Tensor;
-    use crate::backend::GPUNumber;
+    use crate::backend::GPUFloat;
     use crate::backend::cpu;
     use ndarray::Array4;
 
     fn assert_tensors_close<T>(a: &Tensor<T>, b: &Tensor<T>, tolerance: T)
     where
-        T: GPUNumber + Clone + PartialOrd + std::fmt::Debug,
+        T: GPUFloat + Clone + PartialOrd + std::fmt::Debug,
     {
         assert_eq!(a.shape(), b.shape(), "Shapes don't match");
 
@@ -72,9 +72,9 @@ mod tests {
         assert!(exp_result.data().iter().all(|&x| x > 0.0));
 
         // Test Negate
-        let neg_result = input.negate();
+        let neg_result = input.neg();
         let expected_neg = Tensor::from_vec(vec![2.0, 1.0, 0.0, -1.0, -2.0], &[5]).unwrap();
-        assert_eq!(neg_result, expected_neg);
+        assert_eq!(neg_result, Ok(expected_neg));
     }
 
     #[test]
@@ -83,15 +83,15 @@ mod tests {
 
         let add_scalar = tensor.add_scalar(5.0);
         let expected_add = Tensor::from_vec(vec![6.0, 7.0, 8.0, 9.0], &[2, 2]).unwrap();
-        assert_eq!(add_scalar, expected_add);
+        assert_eq!(add_scalar, Ok(expected_add));
 
         let mul_scalar = tensor.mul_scalar(2.0);
         let expected_mul = Tensor::from_vec(vec![2.0, 4.0, 6.0, 8.0], &[2, 2]).unwrap();
-        assert_eq!(mul_scalar, expected_mul);
+        assert_eq!(mul_scalar, Ok(expected_mul));
 
         let div_scalar = tensor.div_scalar(2.0);
         let expected_div = Tensor::from_vec(vec![0.5, 1.0, 1.5, 2.0], &[2, 2]).unwrap();
-        assert_eq!(div_scalar, expected_div);
+        assert_eq!(div_scalar, Ok(expected_div));
     }
 
     #[test]

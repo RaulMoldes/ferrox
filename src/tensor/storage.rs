@@ -9,13 +9,13 @@ use crate::backend::cuda::CudaTensor;
 #[cfg(feature = "cuda")]
 use cudarc::driver::DeviceRepr;
 
-use crate::backend::number::GPUNumber;
+use crate::backend::number::GPUFloat;
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
 pub trait StorageBackend<T>: Debug
 where
-    T: crate::backend::number::GPUNumber,
+    T: crate::backend::number::GPUFloat,
 {
     /// Get tensor shape
     fn shape(&self) -> &[usize];
@@ -44,6 +44,60 @@ where
     fn owns_data(&self) -> bool;
 
     fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise addition: self + other
+    /// Returns new storage with result - doesn't modify inputs
+    fn add(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise subtraction: self - other
+    /// Returns new storage with result - doesn't modify inputs
+    fn sub(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise multiplication: self * other
+    /// Returns new storage with result - doesn't modify inputs
+    fn mul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise division: self / other
+    /// Returns new storage with result - doesn't modify inputs
+    fn div(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise minimum: min(self, other)
+    /// Returns new storage with element-wise minimum values
+    fn min(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise maximum: max(self, other)
+    /// Returns new storage with element-wise maximum values
+    fn max(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Scalar addition: self + scalar
+    /// More efficient than broadcasting scalar to tensor shape
+    fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Scalar multiplication: self * scalar
+    /// More efficient than broadcasting scalar to tensor shape
+    fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Scalar division: self / scalar
+    /// More efficient than broadcasting scalar to tensor shape
+    fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    // Scalar substraction: self - scalar
+    /// More efficient than broadcasting scalar to tensor shape
+    fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise negation: -self
+    /// Unary operation that negates all elements
+    fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise absolute value: |self|
+    /// Unary operation that returns absolute values
+    fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise clamp: clamp(self, min_val, max_val)
+    /// Constrains all values to the range [min_val, max_val]
+    fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
 }
 
 /// Owned CPU storage
@@ -60,7 +114,7 @@ impl<T> CPUOwnedStorage<T> {
 
 impl<T> StorageBackend<T> for CPUOwnedStorage<T>
 where
-    T: crate::backend::number::GPUNumber,
+    T: crate::backend::number::GPUFloat,
 {
     fn shape(&self) -> &[usize] {
         self.data.shape()
@@ -97,6 +151,176 @@ where
     fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         Ok(Box::new(self.clone()))
     }
+
+    fn add(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Get other's CPU data - this handles CPU-CPU operations
+        let other_data = other.cpu_data()?;
+
+        // Shape broadcasting check - ndarray handles this automatically but we validate first
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for addition: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Element-wise addition using ndarray's efficient implementation
+        let result = &self.data + other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn sub(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for subtraction: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result = &self.data - other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn mul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for multiplication: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result = &self.data * other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn div(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for division: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result = &self.data / other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn min(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for min operation: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Use flat iteration for efficiency - works with any dimensional tensor
+        let result_data: Vec<T> = self
+            .data
+            .iter()
+            .zip(other_data.iter())
+            .map(|(&a, &b)| if a <= b { a } else { b })
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
+
+    fn max(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for max operation: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data: Vec<T> = self
+            .data
+            .iter()
+            .zip(other_data.iter())
+            .map(|(&a, &b)| if a >= b { a } else { b })
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
+
+    fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // ndarray's scalar operations are very efficient - no broadcasting overhead
+        let result = &self.data + scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = &self.data * scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // ndarray's scalar operations are very efficient - no broadcasting overhead
+        let result = &self.data - scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = &self.data / scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Unary negation - ndarray handles this efficiently
+        let result = self.data.mapv(|x| -x);
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Element-wise absolute value using mapv for efficiency
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
+
+    fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Element-wise clamping using mapv - efficient vectorized operation
+        let result_data = self.data.mapv(|x| {
+            if x < min_val {
+                min_val
+            } else if x > max_val {
+                max_val
+            } else {
+                x
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_data = self.data.mapv(|x| x.sqrt());
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
 }
 
 /// Borrowed CPU storage - new functionality for non-ownership
@@ -111,9 +335,16 @@ impl<'a, T> CPUBorrowedStorage<'a, T> {
     }
 }
 
+// Clone implementation for borrowed storage
+impl<'a, T> Clone for CPUBorrowedStorage<'a, T> {
+    fn clone(&self) -> Self {
+        Self { data: self.data }
+    }
+}
+
 impl<'a, T> StorageBackend<T> for CPUBorrowedStorage<'a, T>
 where
-    T: crate::backend::number::GPUNumber,
+    T: crate::backend::number::GPUFloat,
 {
     fn shape(&self) -> &[usize] {
         self.data.shape()
@@ -150,12 +381,167 @@ where
     fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         Err("Cannot clone borrowed storage".to_string())
     }
-}
 
-// Clone implementation for borrowed storage
-impl<'a, T> Clone for CPUBorrowedStorage<'a, T> {
-    fn clone(&self) -> Self {
-        Self { data: self.data }
+    fn add(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for addition: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Borrowed storage always creates owned result - no zero-copy for operations
+        let result = self.data + other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn sub(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for subtraction: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result = self.data - other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn mul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for multiplication: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result = self.data * other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn div(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for division: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result = self.data / other_data;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn min(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for min operation: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data: Vec<T> = self
+            .data
+            .iter()
+            .zip(other_data.iter())
+            .map(|(&a, &b)| if a <= b { a } else { b })
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
+
+    fn max(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for max operation: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data: Vec<T> = self
+            .data
+            .iter()
+            .zip(other_data.iter())
+            .map(|(&a, &b)| if a >= b { a } else { b })
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
+
+    fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = self.data + scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = self.data - scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = self.data * scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = self.data / scalar;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result = self.data.mapv(|x| -x);
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
+
+    fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_data = self.data.mapv(|x| {
+            if x < min_val {
+                min_val
+            } else if x > max_val {
+                max_val
+            } else {
+                x
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_data = self.data.mapv(|x| x.sqrt());
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
     }
 }
 
@@ -176,7 +562,7 @@ impl<T: DeviceRepr> GPUOwnedStorage<T> {
 #[cfg(feature = "cuda")]
 impl<T> StorageBackend<T> for GPUOwnedStorage<T>
 where
-    T: crate::backend::number::GPUNumber,
+    T: crate::backend::number::GPUFloat + cudarc::driver::DeviceRepr + Clone,
 {
     fn shape(&self) -> &[usize] {
         self.cuda_data.shape()
@@ -212,5 +598,359 @@ where
 
     fn clone_storage(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         Ok(Box::new(self.clone()))
+    }
+
+    // ELEMENT-WISE OPERATIONS USING CUDA BACKEND
+
+    fn add(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            // Both tensors are on GPU - use CUDA kernels directly
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for GPU addition: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            // Use CUDA operations backend from the CudaTensor
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.add(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU-CPU operation: convert CPU to GPU first
+            let other_data = other.cpu_data()?;
+
+            if self.shape() != other_data.shape() {
+                return Err(format!(
+                    "Shape mismatch for mixed addition: {:?} vs {:?}",
+                    self.shape(),
+                    other_data.shape()
+                ));
+            }
+
+            // Convert CPU ArrayD to CudaTensor and perform operation
+            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.add(&self.cuda_data, &other_cuda)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        }
+    }
+
+    fn sub(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for GPU subtraction: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.sub(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            let other_data = other.cpu_data()?;
+
+            if self.shape() != other_data.shape() {
+                return Err(format!(
+                    "Shape mismatch for mixed subtraction: {:?} vs {:?}",
+                    self.shape(),
+                    other_data.shape()
+                ));
+            }
+
+            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.sub(&self.cuda_data, &other_cuda)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        }
+    }
+
+    fn mul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for GPU multiplication: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.mul(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            let other_data = other.cpu_data()?;
+
+            if self.shape() != other_data.shape() {
+                return Err(format!(
+                    "Shape mismatch for mixed multiplication: {:?} vs {:?}",
+                    self.shape(),
+                    other_data.shape()
+                ));
+            }
+
+            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.mul(&self.cuda_data, &other_cuda)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        }
+    }
+
+    fn div(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for GPU division: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.div(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            let other_data = other.cpu_data()?;
+
+            if self.shape() != other_data.shape() {
+                return Err(format!(
+                    "Shape mismatch for mixed division: {:?} vs {:?}",
+                    self.shape(),
+                    other_data.shape()
+                ));
+            }
+
+            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.div(&self.cuda_data, &other_cuda)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        }
+    }
+
+    fn min(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for GPU min operation: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.min(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            let other_data = other.cpu_data()?;
+
+            if self.shape() != other_data.shape() {
+                return Err(format!(
+                    "Shape mismatch for mixed min operation: {:?} vs {:?}",
+                    self.shape(),
+                    other_data.shape()
+                ));
+            }
+
+            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.min(&self.cuda_data, &other_cuda)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        }
+    }
+
+    fn max(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for GPU max operation: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.max(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            let other_data = other.cpu_data()?;
+
+            if self.shape() != other_data.shape() {
+                return Err(format!(
+                    "Shape mismatch for mixed max operation: {:?} vs {:?}",
+                    self.shape(),
+                    other_data.shape()
+                ));
+            }
+
+            let other_cuda = CudaTensor::from_cpu_array(other_data)?;
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.max(&self.cuda_data, &other_cuda)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        }
+    }
+
+    // SCALAR OPERATIONS
+
+    fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.add_scalar(&self.cuda_data, scalar)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.sub_scalar(&self.cuda_data, scalar)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.mul_scalar(&self.cuda_data, scalar)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.div_scalar(&self.cuda_data, scalar)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    // UNARY OPERATIONS
+
+    fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.negate(&self.cuda_data)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.abs(&self.cuda_data)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.sqrt(&self.cuda_data)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.clamp(&self.cuda_data, min_val, max_val)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 }

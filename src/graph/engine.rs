@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::number::{CPUNumber,  GPUFloat};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships
 #[derive(Debug)]
 pub struct Engine<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // T must implement Clone and Debug traits{
     // Creating a graph is kind of boilerplate in Rust
@@ -27,7 +27,7 @@ where
 
 impl<T> Default for Engine<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     fn default() -> Self {
         Self::new()
@@ -36,7 +36,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn new() -> Self {
         Self {
@@ -72,7 +72,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUNumber, // T must implement Clone and Debug traits
+    T: GPUFloat, // T must implement Clone and Debug traits
 {
     // Create zeros tensor
     pub fn zeros(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
@@ -83,7 +83,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUNumber, // T must implement Clone and Debug traits
+    T: GPUFloat, // T must implement Clone and Debug traits
 {
     // Create ones tensor
 
@@ -94,7 +94,7 @@ where
 }
 impl<T> Engine<T>
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -199,7 +199,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     /// GRAPH OPERATIONS:
     ///
@@ -342,7 +342,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUNumber
+    T: GPUFloat
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -431,7 +431,7 @@ where
     /// - Output shape: [2, 1]
     ///
     /// For input shape [2, 3] and dim=1:
-    /// - Input shape: [2, 3]  
+    /// - Input shape: [2, 3]
     /// - Output shape: [2, 1, 3]
     pub fn expand_dims_at(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
         let input_data = self.nodes[&input].borrow().cached_data.clone();

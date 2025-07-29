@@ -1,14 +1,15 @@
-use crate::backend::number::{CPUNumber, GPUFloat, GPUNumber};
+use crate::backend::number::{CPUNumber, GPUFloat};
 use crate::backend::{Device, default_device};
 use crate::tensor::storage::{CPUOwnedStorage, StorageBackend};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
 
+
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug)]
 pub struct CPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // This `data` field is the main data storage of the tensor on CPU.
     pub data: ArrayD<T>, // As I documented in the device module, this will be changed toa generic type <T>
@@ -20,7 +21,7 @@ where
 
 impl<T> Clone for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn clone(&self) -> Self {
         let storage = if let Some(storage_ref) = &self.storage {
@@ -51,7 +52,7 @@ where
 #[cfg(feature = "cuda")]
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     /// Helper to eliminate repeated backend access pattern.
     /// This removes the need to repeatedly call `get_backend()` in every method.
@@ -69,7 +70,7 @@ where
 // Main implementation block with basic operations
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     // Basically a constructor for the Tensor struct.
     // It takes an ArrayD<T> and returns a Tensor with storage backend.
@@ -248,26 +249,22 @@ where
 
     // Create tensor from existing storage backend (internal use)
     // This is the most direct way to create tensors and will become primary after migration
-    pub(crate) fn from_storage_backend<S>(
-        storage: S,
+    pub(crate) fn from_storage_backend(
+        storage: Box<dyn crate::tensor::storage::StorageBackend<T>>,
         device: crate::backend::Device,
     ) -> Result<Self, String>
-    where
-        S: crate::tensor::storage::StorageBackend<T> + 'static,
     {
-        // Extract data for backward compatibility
         let data = match storage.cpu_data() {
-        Ok(cpu_data) => cpu_data.clone(),
-        Err(_) => {
-            // For GPU storage, create empty CPU data as placeholder
-            ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
-        }
-    };
+            Ok(cpu_data) => cpu_data.clone(),
+            Err(_) => {
+                ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
+            }
+        };
 
         Ok(Self {
-            data, // TODO: Remove this field in final migration step
+            data,
             device,
-            storage: Some(Box::new(storage)),
+            storage: Some(storage),
         })
     }
 
@@ -437,132 +434,155 @@ where
     }
 
 
+}
+
+
+impl <T> CPUTensor<T>
+where
+    T: GPUFloat + Clone,
+{
+
     // Element-wise operations.
     // These are operations that are applied to each element of the tensor.
     // They are easily parallelizable and can be implemented using ndarray's mapv method.
     // The mapv method applies a function to each element of the array and returns a new array with the results.
-    // The mapv operation does not actually parallelize by itself, but it is much more efficient th
-    // - add
-    // - multiply
-    pub fn add(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-        Ok(CPUTensor::new_with_device(
-            &self.data + &other.data,
-            self.device.clone(),
-        ))
+    pub fn add(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        // Use the ElementwiseOps trait - works for both CPU and future CUDA implementations
+        let result_storage = storage.add(other_storage.as_ref())?;
+
+        // Create new tensor with result storage, preserving device context
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn mul(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-        Ok(CPUTensor::new_with_device(
-            &self.data * &other.data,
-            self.device.clone(),
-        ))
+    /// Element-wise subtraction using storage trait
+    pub fn sub(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.sub(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn negate(&self) -> CPUTensor<T> {
-        CPUTensor::new_with_device(self.data.mapv(|x| -x), self.device.clone())
+    /// Element-wise multiplication using storage trait
+    pub fn mul(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.mul(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    pub fn div(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-        Ok(CPUTensor::new_with_device(
-            &self.data / &other.data,
-            self.device.clone(),
-        ))
+    /// Element-wise division using storage trait
+    pub fn div(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.div(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    /// Element-wise minimum between two tensors
-    /// Returns a new tensor with the minimum value at each position
+    /// Element-wise minimum using storage trait
     pub fn min(&self, other: &Self) -> Result<Self, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch in min operation: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
 
-        // Use flat iteration for efficiency - works with any dimensional tensor
-        let result_data: Vec<T> = self
-            .data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(&a, &b)| if a <= b { a } else { b })
-            .collect();
-
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
-
-        Ok(Self::new_with_device(result_array, self.device.clone()))
+        let result_storage = storage.min(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    /// Element-wise maximum between two tensors
-    /// Returns a new tensor with the maximum value at each position
+    /// Element-wise maximum using storage trait
     pub fn max(&self, other: &Self) -> Result<Self, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch in max operation: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
 
-        let result_data: Vec<T> = self
-            .data
-            .iter()
-            .zip(other.data.iter())
-            .map(|(&a, &b)| if a >= b { a } else { b })
-            .collect();
-
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}",))?;
-
-        Ok(Self::new_with_device(result_array, self.device.clone()))
+        let result_storage = storage.max(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    /// Element-wise absolute value
-    /// Returns a new tensor with absolute values
-    pub fn abs(&self) -> Self {
-        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
+    /// Scalar addition - more efficient than broadcasting
+    pub fn add_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
 
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .expect("Shape should match original tensor");
-
-        Self::new_with_device(result_array, self.device.clone())
+        let result_storage = storage.add_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
 
-    // Clamping operation.Clamps the values of the tensor to be within the specified range.
-    pub fn clamp(&self, min_val: T, max_val: T) -> Self {
-        let result_data = self.data.mapv(|x| {
-            if x < min_val {
-                min_val
-            } else if x > max_val {
-                max_val
-            } else {
-                x
-            }
-        });
-        Self::new_with_device(result_data, self.device.clone())
+    /// Scalar multiplication
+    pub fn mul_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.mul_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
     }
+
+    /// Scalar substraction
+    pub fn sub_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.sub_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Scalar division
+    pub fn div_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.div_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Unary negation - replaces your negate() method
+    pub fn neg(&self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.neg()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Element-wise absolute value using storage trait
+    pub fn abs(&self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.abs()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Element-wise clamp using storage trait
+    pub fn clamp(&self, min_val: T, max_val: T) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.clamp(min_val, max_val)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+}
+
+impl <T> CPUTensor<T>
+where
+    T: GPUFloat + Clone,
+{
 
     /// Find maximum values along a specific dimension
     /// Reduces the tensor by one dimension
@@ -840,7 +860,7 @@ where
 
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     /// SLICING SUPPORT
     ///
@@ -1006,7 +1026,7 @@ where
 
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     pub fn matmul(&self, other: &CPUTensor<T>) -> Result<CPUTensor<T>, String>
     where
@@ -1042,24 +1062,6 @@ where
     }
 }
 
-// Implementation for operations requiring ScalarOperand
-impl<T> CPUTensor<T>
-where
-    T: GPUNumber,
-{
-    // Scalar operations
-    pub fn add_scalar(&self, scalar: T) -> CPUTensor<T> {
-        CPUTensor::new_with_device(&self.data + scalar, self.device.clone())
-    }
-
-    pub fn mul_scalar(&self, scalar: T) -> CPUTensor<T> {
-        CPUTensor::new_with_device(&self.data * scalar, self.device.clone())
-    }
-
-    pub fn div_scalar(&self, scalar: T) -> CPUTensor<T> {
-        CPUTensor::new_with_device(&self.data / scalar, self.device.clone())
-    }
-}
 
 // Implementation for floating-point operations
 impl<T> CPUTensor<T>
@@ -1151,7 +1153,7 @@ where
 // Implementation for reduction operations and tensor manipulations
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: GPUFloat + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
 {
     // Reduction operations.
     // As we do not know the shape of the tensor at compile time, we use `ndarray`'s dynamic arrays.
@@ -1391,7 +1393,7 @@ where
 ///-----------------------------------------------------------------------
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     /// Convert image patches to column matrix (im2col)
     /// I am going to try to explain why these is needed.
@@ -1716,7 +1718,7 @@ where
 // Implementation for tensor creation with Zero trait
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber + Clone + rand_distr::num_traits::Zero,
+    T: GPUFloat + Clone + rand_distr::num_traits::Zero,
 {
     // Initialization functions for creating tensors with specific shapes.
     // They all have a `_with_device` variant that allows specifying the device.
@@ -1746,7 +1748,7 @@ where
 // Implementation for tensor creation with One trait
 impl<T> CPUTensor<T>
 where
-    T: GPUNumber,
+    T: GPUFloat,
 {
     // Ones
     pub fn ones(shape: &[usize]) -> Self {
@@ -1774,14 +1776,14 @@ where
 // Implement equality for testing, and because will be useful in the future.
 impl<T> PartialEq for CPUTensor<T>
 where
-    T: GPUNumber + Clone + PartialEq,
+    T: GPUFloat + Clone + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data && self.device == other.device
     }
 }
 
-impl<T> Eq for CPUTensor<T> where T: GPUNumber + Clone + PartialEq {}
+impl<T> Eq for CPUTensor<T> where T: GPUFloat + Clone + PartialEq {}
 
 pub struct CPUTensorIterator<T> {
     data: ndarray::ArrayD<T>,
@@ -1822,7 +1824,7 @@ where
 // Implementation for owned Tensor (consumes the tensor)
 impl<T> IntoIterator for CPUTensor<T>
 where
-    T: GPUNumber + Clone + Copy,
+    T: GPUFloat + Clone + Copy,
 {
     type Item = T;
     type IntoIter = CPUTensorIterator<T>;
@@ -1838,7 +1840,7 @@ where
 // Implementation for borrowed Tensor (&Tensor)
 impl<'a, T> IntoIterator for &'a CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Item = &'a T;
     type IntoIter = ndarray::iter::Iter<'a, T, ndarray::IxDyn>;
@@ -1851,7 +1853,7 @@ where
 // Implementation for mutable borrowed Tensor (&mut Tensor)
 impl<'a, T> IntoIterator for &'a mut CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Item = &'a mut T;
     type IntoIter = ndarray::iter::IterMut<'a, T, ndarray::IxDyn>;
@@ -1866,7 +1868,7 @@ where
 // therefore you could access elements in a multi-dimensional tensor as it was a flat array.
 impl<T> Index<usize> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -1882,7 +1884,7 @@ where
 
 impl<T> IndexMut<usize> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         // Convert flat index to multi-dimensional coordinates
@@ -1897,7 +1899,7 @@ where
 // Implementation for slice of usize (multi-dimensional indexing)
 impl<T> Index<&[usize]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -1908,7 +1910,7 @@ where
 
 impl<T> IndexMut<&[usize]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: &[usize]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -1918,7 +1920,7 @@ where
 // Implementation for Vec<usize> (convenient alternative to slice)
 impl<T> Index<Vec<usize>> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -1929,7 +1931,7 @@ where
 
 impl<T> IndexMut<Vec<usize>> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: Vec<usize>) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -1939,7 +1941,7 @@ where
 // Implementation for arrays of different sizes (up to 6D for common use cases)
 impl<T> Index<[usize; 1]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -1950,7 +1952,7 @@ where
 
 impl<T> IndexMut<[usize; 1]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 1]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -1959,7 +1961,7 @@ where
 
 impl<T> Index<[usize; 2]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -1970,7 +1972,7 @@ where
 
 impl<T> IndexMut<[usize; 2]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 2]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -1979,7 +1981,7 @@ where
 
 impl<T> Index<[usize; 3]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -1990,7 +1992,7 @@ where
 
 impl<T> IndexMut<[usize; 3]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 3]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -1999,7 +2001,7 @@ where
 
 impl<T> Index<[usize; 4]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2010,7 +2012,7 @@ where
 
 impl<T> IndexMut<[usize; 4]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: [usize; 4]) -> &mut Self::Output {
         &mut self.data[IxDyn(&indices)]
@@ -2020,7 +2022,7 @@ where
 // Implementation for tuples (more ergonomic for 2D and 3D)
 impl<T> Index<(usize, usize)> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2031,7 +2033,7 @@ where
 
 impl<T> IndexMut<(usize, usize)> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j]]
@@ -2040,7 +2042,7 @@ where
 
 impl<T> Index<(usize, usize, usize)> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2051,7 +2053,7 @@ where
 
 impl<T> IndexMut<(usize, usize, usize)> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, (i, j, k): (usize, usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j, k]]
@@ -2060,7 +2062,7 @@ where
 
 impl<T> Index<(usize, usize, usize, usize)> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2071,7 +2073,7 @@ where
 
 impl<T> IndexMut<(usize, usize, usize, usize)> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, (i, j, k, l): (usize, usize, usize, usize)) -> &mut Self::Output {
         &mut self.data[[i, j, k, l]]
@@ -2081,7 +2083,7 @@ where
 // Implementation for references to arrays of different sizes
 impl<T> Index<&[usize; 1]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2092,7 +2094,7 @@ where
 
 impl<T> IndexMut<&[usize; 1]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 1]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2101,7 +2103,7 @@ where
 
 impl<T> Index<&[usize; 2]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2112,7 +2114,7 @@ where
 
 impl<T> IndexMut<&[usize; 2]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 2]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2121,7 +2123,7 @@ where
 
 impl<T> Index<&[usize; 3]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2132,7 +2134,7 @@ where
 
 impl<T> IndexMut<&[usize; 3]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 3]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
@@ -2141,7 +2143,7 @@ where
 
 impl<T> Index<&[usize; 4]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     type Output = T;
 
@@ -2152,7 +2154,7 @@ where
 
 impl<T> IndexMut<&[usize; 4]> for CPUTensor<T>
 where
-    T: GPUNumber + Clone,
+    T: GPUFloat + Clone,
 {
     fn index_mut(&mut self, indices: &[usize; 4]) -> &mut Self::Output {
         &mut self.data[IxDyn(indices)]
