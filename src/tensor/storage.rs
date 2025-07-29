@@ -202,6 +202,15 @@ where
         // Reuse unsqueeze implementation - no code duplication
         self.unsqueeze(axis)
     }
+    /// 2D Convolution operation
+/// Performs standard convolution using im2col transformation for efficiency
+/// Returns new storage with convolution result - doesn't modify inputs
+fn conv2d(
+    &self,
+    filter: &dyn StorageBackend<T>,
+    stride: (usize, usize),
+    padding: (usize, usize),
+) -> Result<Box<dyn StorageBackend<T>>, String>;
 }
 
 /// Owned CPU storage
@@ -214,6 +223,140 @@ impl<T> CPUOwnedStorage<T> {
     pub fn new(data: ArrayD<T>) -> Self {
         Self { data }
     }
+}
+
+
+impl<T> CPUOwnedStorage<T>
+where
+    T: crate::backend::number::GPUFloat + Clone,
+{
+    /// Convert image patches to column matrix (im2col) - reused from original impl
+    /// This transforms 4D convolution into efficient 2D matrix multiplication
+    fn im2col(
+        &self,
+        kernel_size: (usize, usize),
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<ArrayD<T>, String> {
+        let input_shape = self.shape();
+        let (batch, channels, in_h, in_w) = (
+            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+        );
+        let (kernel_h, kernel_w) = kernel_size;
+
+        let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
+        let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
+
+        let col_height = channels * kernel_h * kernel_w;
+        let col_width = batch * out_h * out_w;
+
+        let mut col_data = vec![<T as CPUFloat>::zero(); col_height * col_width];
+        let input_data = if let Some(data) = self.data.as_slice() {
+            data
+        }else {
+            return Err("Input data is empty!".to_string());
+        };
+
+        // Extract patches and arrange them as columns for matrix multiplication
+        for b in 0..batch {
+            for c in 0..channels {
+                for ky in 0..kernel_h {
+                    for kx in 0..kernel_w {
+                        let col_row = c * kernel_h * kernel_w + ky * kernel_w + kx;
+
+                        for out_y in 0..out_h {
+                            for out_x in 0..out_w {
+                                let in_y = out_y * stride.0 + ky;
+                                let in_x = out_x * stride.1 + kx;
+                                let col_col = b * out_h * out_w + out_y * out_w + out_x;
+
+                                // Handle padding by checking bounds
+                                if in_y >= padding.0 && in_y < in_h + padding.0
+                                    && in_x >= padding.1 && in_x < in_w + padding.1
+                                {
+                                    let actual_y = in_y - padding.0;
+                                    let actual_x = in_x - padding.1;
+
+                                    if actual_y < in_h && actual_x < in_w {
+                                        let input_idx = b * (channels * in_h * in_w)
+                                            + c * (in_h * in_w)
+                                            + actual_y * in_w
+                                            + actual_x;
+                                        col_data[col_row * col_width + col_col] = input_data[input_idx];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
+            .map_err(|e| format!("Failed to create im2col matrix: {}", e))
+    }
+
+    /// Standard 2D convolution implementation using im2col + GEMM
+    fn conv2d_impl(
+        &self,
+        filter: &ArrayD<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<ArrayD<T>, String> {
+        let input_shape = self.shape();
+        let filter_shape = filter.shape();
+
+        let (batch, in_channels, in_h, in_w) = (
+            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+        );
+        let (out_channels, _, kernel_h, kernel_w) = (
+            filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3],
+        );
+
+        let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
+        let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
+
+        // Transform input to column matrix for efficient GEMM
+        let col_matrix = self.im2col((kernel_h, kernel_w), stride, padding)?;
+
+        // Reshape filter for matrix multiplication
+        let filter_reshaped = filter
+            .clone()
+            .into_shape_with_order(IxDyn(&[out_channels, in_channels * kernel_h * kernel_w]))
+            .map_err(|e| format!("Filter reshape failed: {}", e))?;
+
+        // Perform convolution as matrix multiplication: filter @ col_matrix
+        let im2col_view: ndarray::ArrayView2<T> = col_matrix.view().into_dimensionality().map_err(|e| format!("Shape error: {}", e))?;
+
+        let filter_view: ndarray::ArrayView2<T> = filter_reshaped.view().into_dimensionality().map_err(|e| format!("Shape error: {}", e))?;
+
+        let output_2d = filter_view.dot(&im2col_view);
+
+        // Transpose result from [out_channels, batch * out_h * out_w] to [batch, out_channels, out_h, out_w]
+        let output_data: Vec<T> = if let Some(out_slice) = output_2d.as_slice() {
+            out_slice.to_vec()
+        }else {
+            panic!("Attempted to slice an empty output!")
+        };
+        let mut final_output = vec![<T as CPUFloat>::zero(); batch * out_channels * out_h * out_w];
+
+        for out_c in 0..out_channels {
+            for b in 0..batch {
+                for y in 0..out_h {
+                    for x in 0..out_w {
+                        let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                        let dst_idx = b * (out_channels * out_h * out_w) + out_c * (out_h * out_w) + y * out_w + x;
+                        final_output[dst_idx] = output_data[src_idx];
+                    }
+                }
+            }
+        }
+
+        ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
+            .map_err(|e| format!("Failed to create output tensor: {}", e))
+    }
+
+
 }
 
 impl<T> StorageBackend<T> for CPUOwnedStorage<T>
@@ -688,11 +831,18 @@ where
         // Use reduce_axes with custom max reduction function
         // ndarray doesn't have a direct max_axis function, so we implement our own
         let result = self.reduce(axes, |array, ax| {
+            let first = if let Some(f) = array.first() {
+                f.clone()
+            } else {
+                panic!("Array is empty! Cannot reduce over empty array");
+            };
+
             // Fold along the specified axis to find maximum values
-            array.fold_axis(ax, array.first().unwrap().clone(), |&acc, &x| {
+            array.fold_axis(ax, first, |&acc, &x| {
                 if x > acc { x } else { acc }
             })
         })?;
+
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
     }
 
@@ -700,8 +850,14 @@ where
         // Use reduce_axes with custom min reduction function
         // Similar to max_axes but finding minimum values
         let result = self.reduce(axes, |array, ax| {
+
+            let first = if let Some(f) = array.first() {
+                f.clone()
+            } else {
+                panic!("Array is empty! Cannot reduce over empty array");
+            };
             // Fold along the specified axis to find minimum values
-            array.fold_axis(ax, array.first().unwrap().clone(), |&acc, &x| {
+            array.fold_axis(ax, first, |&acc, &x| {
                 if x < acc { x } else { acc }
             })
         })?;
@@ -849,6 +1005,27 @@ where
             }
         }
     }
+
+    fn conv2d(
+        &self,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Ensure filter is also CPU storage
+        let filter_data = filter.cpu_data()?;
+
+        let input_shape = self.shape();
+        let filter_shape = filter.shape();
+
+        // Validate input dimensions for conv2d
+        if input_shape.len() != 4 || filter_shape.len() != 4 {
+            return Err("Conv2D requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+
+        let result = self.conv2d_impl(filter_data, stride, padding)?;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
 }
 
 impl<T> CPUOwnedStorage<T>
@@ -902,6 +1079,8 @@ where
             }
         }
     }
+
+
 }
 
 /// Borrowed CPU storage - new functionality for non-ownership
@@ -974,6 +1153,138 @@ where
             }
         }
     }
+}
+// Add these private implementation methods to CPUBorrowedStorage
+
+impl<'a, T> CPUBorrowedStorage<'a, T>
+where
+    T: crate::backend::number::GPUFloat,
+{
+    /// Convert image patches to column matrix (im2col) for borrowed data
+    /// Same algorithm as owned version but works with borrowed references
+    fn im2col(
+        &self,
+        kernel_size: (usize, usize),
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<ArrayD<T>, String> {
+        let input_shape = self.shape();
+        let (batch, channels, in_h, in_w) = (
+            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+        );
+        let (kernel_h, kernel_w) = kernel_size;
+
+        let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
+        let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
+
+        let col_height = channels * kernel_h * kernel_w;
+        let col_width = batch * out_h * out_w;
+
+        let mut col_data = vec![<T as CPUFloat>::zero(); col_height * col_width];
+        // Use borrowed data reference instead of owned data
+         let input_data = if let Some(data) = self.data.as_slice() {
+            data
+        }else {
+            return Err("Input data is empty!".to_string());
+        };
+
+        // Same patch extraction logic as owned version
+        for b in 0..batch {
+            for c in 0..channels {
+                for ky in 0..kernel_h {
+                    for kx in 0..kernel_w {
+                        let col_row = c * kernel_h * kernel_w + ky * kernel_w + kx;
+
+                        for out_y in 0..out_h {
+                            for out_x in 0..out_w {
+                                let in_y = out_y * stride.0 + ky;
+                                let in_x = out_x * stride.1 + kx;
+                                let col_col = b * out_h * out_w + out_y * out_w + out_x;
+
+                                // Handle padding by checking bounds
+                                if in_y >= padding.0 && in_y < in_h + padding.0
+                                    && in_x >= padding.1 && in_x < in_w + padding.1
+                                {
+                                    let actual_y = in_y - padding.0;
+                                    let actual_x = in_x - padding.1;
+
+                                    if actual_y < in_h && actual_x < in_w {
+                                        let input_idx = b * (channels * in_h * in_w)
+                                            + c * (in_h * in_w)
+                                            + actual_y * in_w
+                                            + actual_x;
+                                        col_data[col_row * col_width + col_col] = input_data[input_idx];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
+            .map_err(|e| format!("Failed to create im2col matrix: {}", e))
+    }
+
+    /// Standard 2D convolution implementation for borrowed data
+    fn conv2d_impl(
+        &self,
+        filter: &ArrayD<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<ArrayD<T>, String> {
+        let input_shape = self.shape();
+        let filter_shape = filter.shape();
+
+        let (batch, in_channels, in_h, in_w) = (
+            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+        );
+        let (out_channels, _, kernel_h, kernel_w) = (
+            filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3],
+        );
+
+        let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
+        let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
+
+        // Transform borrowed input to column matrix
+        let col_matrix = self.im2col((kernel_h, kernel_w), stride, padding)?;
+
+        // Same reshaping and computation logic as owned version
+        let filter_reshaped = filter
+            .clone()
+            .into_shape_with_order(IxDyn(&[out_channels, in_channels * kernel_h * kernel_w]))
+            .map_err(|e| format!("Filter reshape failed: {}", e))?;
+
+        // Perform convolution as matrix multiplication
+        let im2col_view: ndarray::ArrayView2<T> = col_matrix.view().into_dimensionality().map_err(|e| format!("IM2col reshape failed: {}", e))?;
+        let filter_view: ndarray::ArrayView2<T> = filter_reshaped.view().into_dimensionality().map_err(|e| format!("Filter reshape failed: {}", e))?;
+        let output_2d = filter_view.dot(&im2col_view);
+
+        // Transpose result to correct output layout
+        let output_data: Vec<T> = if let Some(out_slice) = output_2d.as_slice() {
+            out_slice.to_vec()
+        }else {
+            panic!("Attempted to slice an empty output!")
+        };
+        let mut final_output = vec![<T as CPUFloat>::zero(); batch * out_channels * out_h * out_w];
+
+        for out_c in 0..out_channels {
+            for b in 0..batch {
+                for y in 0..out_h {
+                    for x in 0..out_w {
+                        let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                        let dst_idx = b * (out_channels * out_h * out_w) + out_c * (out_h * out_w) + y * out_w + x;
+                        final_output[dst_idx] = output_data[src_idx];
+                    }
+                }
+            }
+        }
+
+        ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
+            .map_err(|e| format!("Failed to create output tensor: {}", e))
+    }
+
 }
 
 impl<'a, T> StorageBackend<T> for CPUBorrowedStorage<'a, T>
@@ -1440,8 +1751,13 @@ where
         // Use reduce_axes with custom max reduction function
         // ndarray doesn't have a direct max_axis function, so we implement our own
         let result = self.reduce(axes, |array, ax| {
+            let first = if let Some(f) = array.first() {
+                f.clone()
+            } else {
+                panic!("Array is empty! Cannot reduce over empty array");
+            };
             // Fold along the specified axis to find maximum values
-            array.fold_axis(ax, array.first().unwrap().clone(), |&acc, &x| {
+            array.fold_axis(ax, first, |&acc, &x| {
                 if x > acc { x } else { acc }
             })
         })?;
@@ -1452,8 +1768,13 @@ where
         // Use reduce_axes with custom min reduction function
         // Similar to max_axes but finding minimum values
         let result = self.reduce(axes, |array, ax| {
+            let first = if let Some(f) = array.first() {
+                f.clone()
+            } else {
+                panic!("Array is empty! Cannot reduce over empty array");
+            };
             // Fold along the specified axis to find minimum values
-            array.fold_axis(ax, array.first().unwrap().clone(), |&acc, &x| {
+            array.fold_axis(ax, first, |&acc, &x| {
                 if x < acc { x } else { acc }
             })
         })?;
@@ -1591,6 +1912,28 @@ where
                 Ok(Box::new(CPUOwnedStorage::new(result)))
             }
         }
+    }
+
+
+    fn conv2d(
+        &self,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Ensure filter is also CPU storage
+        let filter_data = filter.cpu_data()?;
+
+        let input_shape = self.shape();
+        let filter_shape = filter.shape();
+
+        // Validate input dimensions for conv2d
+        if input_shape.len() != 4 || filter_shape.len() != 4 {
+            return Err("Conv2D requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+
+        let result = self.conv2d_impl(filter_data, stride, padding)?;
+        Ok(Box::new(CPUOwnedStorage::new(result)))
     }
 }
 
@@ -2491,6 +2834,32 @@ where
 
                 Ok(Box::new(CPUOwnedStorage::new(result)))
             }
+        }
+    }
+
+    fn conv2d(
+        &self,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if filter.is_gpu() {
+            // Both tensors on GPU - use CUDA kernels
+            let filter_gpu = filter
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast filter to GPU storage")?;
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.conv2d(&self.cuda_data, &filter_gpu.cuda_data, stride, padding)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err("Mixed GPU/CPU convolution not supported - move both tensors to same device".to_string())
         }
     }
 }
