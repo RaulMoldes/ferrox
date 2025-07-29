@@ -98,6 +98,32 @@ where
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+
+       /// Element-wise greater than or equal comparison: self >= other
+    /// Returns new storage with 1.0 for true, 0.0 for false
+    fn greater_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise less than or equal comparison: self <= other
+    /// Returns new storage with 1.0 for true, 0.0 for false
+    fn less_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise equality comparison: self == other
+    /// Returns new storage with 1.0 for true, 0.0 for false
+    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Logical NOT operation: !self
+    /// Flips 0s to 1s and non-zeros to 0s
+    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Range check operation: min_val <= self <= max_val
+    /// Returns new storage with 1.0 for values in range, 0.0 otherwise
+    fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Sign function: sign(self)
+    /// Returns 1.0 for positive, -1.0 for negative, 0.0 for zero
+    fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
 }
 
 /// Owned CPU storage
@@ -321,6 +347,122 @@ where
         let result_data = self.data.mapv(|x| x.sqrt());
         Ok(Box::new(CPUOwnedStorage::new(result_data)))
     }
+
+
+     fn greater_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for greater_equal: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Use ndarray's Zip for efficient element-wise comparison
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| {
+                if a >= b {
+                    <T as crate::backend::number::CPUNumber>::one()
+                } else {
+                    <T as crate::backend::number::CPUNumber>::zero()
+                }
+            });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn less_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for less_equal: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| {
+                if a <= b {
+                    <T as crate::backend::number::CPUNumber>::one()
+                } else {
+                    <T as crate::backend::number::CPUNumber>::zero()
+                }
+            });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for equal: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| {
+                if a == b {
+                    <T as crate::backend::number::CPUNumber>::one()
+                } else {
+                    <T as crate::backend::number::CPUNumber>::zero()
+                }
+            });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Flip 0s to 1s and non-zeros to 0s
+        let result_data = self.data.mapv(|x| {
+            if x == <T as crate::backend::number::CPUNumber>::zero() {
+                <T as crate::backend::number::CPUNumber>::one()
+            } else {
+                <T as crate::backend::number::CPUNumber>::zero()
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Check if values are in range [min_val, max_val]
+        let result_data = self.data.mapv(|x| {
+            if x >= min_val && x <= max_val {
+                <T as crate::backend::number::CPUNumber>::one()
+            } else {
+                <T as crate::backend::number::CPUNumber>::zero()
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Return 1 for positive, -1 for negative, 0 for zero
+        let result_data = self.data.mapv(|x| {
+            if x > <T as crate::backend::number::CPUNumber>::zero() {
+                <T as crate::backend::number::CPUNumber>::one()
+            } else if x < <T as crate::backend::number::CPUNumber>::zero() {
+                -<T as crate::backend::number::CPUNumber>::one()
+            } else {
+                <T as crate::backend::number::CPUNumber>::zero()
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
 }
 
 /// Borrowed CPU storage - new functionality for non-ownership
@@ -543,6 +685,122 @@ where
         let result_data = self.data.mapv(|x| x.sqrt());
         Ok(Box::new(CPUOwnedStorage::new(result_data)))
     }
+
+
+     fn greater_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for greater_equal: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Use ndarray's Zip for efficient element-wise comparison
+        let result_data = ndarray::Zip::from(&*self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| {
+                if a >= b {
+                    <T as crate::backend::number::CPUNumber>::one()
+                } else {
+                    <T as crate::backend::number::CPUNumber>::zero()
+                }
+            });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn less_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for less_equal: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&*self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| {
+                if a <= b {
+                    <T as crate::backend::number::CPUNumber>::one()
+                } else {
+                    <T as crate::backend::number::CPUNumber>::zero()
+                }
+            });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for equal: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        let result_data = ndarray::Zip::from(&*self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| {
+                if a == b {
+                    <T as crate::backend::number::CPUNumber>::one()
+                } else {
+                    <T as crate::backend::number::CPUNumber>::zero()
+                }
+            });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Flip 0s to 1s and non-zeros to 0s
+        let result_data = self.data.mapv(|x| {
+            if x == <T as crate::backend::number::CPUNumber>::zero() {
+                <T as crate::backend::number::CPUNumber>::one()
+            } else {
+                <T as crate::backend::number::CPUNumber>::zero()
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Check if values are in range [min_val, max_val]
+        let result_data = self.data.mapv(|x| {
+            if x >= min_val && x <= max_val {
+                <T as crate::backend::number::CPUNumber>::one()
+            } else {
+                <T as crate::backend::number::CPUNumber>::zero()
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
+    fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Return 1 for positive, -1 for negative, 0 for zero
+        let result_data = self.data.mapv(|x| {
+            if x > <T as crate::backend::number::CPUNumber>::zero() {
+                <T as crate::backend::number::CPUNumber>::one()
+            } else if x < <T as crate::backend::number::CPUNumber>::zero() {
+                -<T as crate::backend::number::CPUNumber>::one()
+            } else {
+                <T as crate::backend::number::CPUNumber>::zero()
+            }
+        });
+
+        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    }
+
 }
 
 #[cfg(feature = "cuda")]
@@ -953,4 +1211,119 @@ where
         let result_cuda = cuda_ops.clamp(&self.cuda_data, min_val, max_val)?;
         Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
+
+
+    fn greater_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            // Both tensors are on GPU - use CUDA kernels
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for greater_equal: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.greater_equal(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
+        }
+    }
+
+    fn less_equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for less_equal: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.less_equal(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
+        }
+    }
+
+    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for equal: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let cuda_ops = self
+                .cuda_data
+                .get_cuda_ops()
+                .ok_or("Failed to get CUDA operations backend")?;
+
+            let result_cuda = cuda_ops.equal(&self.cuda_data, &other_gpu.cuda_data)?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
+        }
+    }
+
+    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.logical_not(&self.cuda_data)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.in_range(&self.cuda_data, min_val, max_val)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+    fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.sign(&self.cuda_data)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+
 }

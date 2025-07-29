@@ -584,6 +584,67 @@ where
     T: GPUFloat + Clone,
 {
 
+
+    /// Element-wise greater than or equal comparison using storage trait
+    pub fn greater_equal(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.greater_equal(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Element-wise less than or equal comparison using storage trait
+    pub fn less_equal(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.less_equal(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Element-wise equality comparison using storage trait
+    pub fn equal(&self, other: &Self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other.storage.as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.equal(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Logical NOT operation using storage trait
+    pub fn logical_not(&self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.logical_not()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Range check operation using storage trait
+    pub fn in_range(&self, min_val: T, max_val: T) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.in_range(min_val, max_val)?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Sign function using storage trait
+    pub fn sign(&self) -> Result<Self, String> {
+        let storage = self.storage.as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.sign()?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
     /// Find maximum values along a specific dimension
     /// Reduces the tensor by one dimension
     pub fn max_along_dim(&self, dim: usize) -> Result<Self, String> {
@@ -669,104 +730,7 @@ where
             .sum()
     }
 
-    // -------------------------------------------------------------------
-    //  Other utility common tensor operations
-    // -------------------------------------------------------------------
-    // Element-wise greater than or equal comparison
-    pub fn greater_equal(&self, other: &Self) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch for greater_equal: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(&other.data)
-            .map_collect(|&a, &b| {
-                if a >= b {
-                    <T as CPUNumber>::one()
-                } else {
-                    <T as CPUNumber>::zero()
-                }
-            });
-
-        Ok(Self::new_with_device(result_data, self.device.clone()))
-    }
-
-    // Element-wise less than or equal comparison
-    pub fn less_equal(&self, other: &Self) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch for less_equal: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(&other.data)
-            .map_collect(|&a, &b| {
-                if a <= b {
-                    <T as CPUNumber>::one()
-                } else {
-                    <T as CPUNumber>::zero()
-                }
-            });
-
-        Ok(Self::new_with_device(result_data, self.device.clone()))
-    }
-
-    // Element-wise equality comparison
-    pub fn equal(&self, other: &Self) -> Result<CPUTensor<T>, String> {
-        if self.shape() != other.shape() {
-            return Err(format!(
-                "Shape mismatch for equal: {:?} vs {:?}",
-                self.shape(),
-                other.shape()
-            ));
-        }
-
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(&other.data)
-            .map_collect(|&a, &b| {
-                if a == b {
-                    <T as CPUNumber>::one()
-                } else {
-                    <T as CPUNumber>::zero()
-                }
-            });
-
-        Ok(Self::new_with_device(result_data, self.device.clone()))
-    }
-
-    // Logical NOT operation (flips 0s and 1s)
-    pub fn logical_not(&self) -> Result<CPUTensor<T>, String> {
-        let result_data = self.data.mapv(|x| {
-            if x == <T as CPUNumber>::zero() {
-                <T as CPUNumber>::one()
-            } else {
-                <T as CPUNumber>::zero()
-            }
-        });
-
-        Ok(Self::new_with_device(result_data, self.device.clone()))
-    }
-
-    // Check if values are in range [min_val, max_val]
-    pub fn in_range(&self, min_val: T, max_val: T) -> Result<CPUTensor<T>, String> {
-        let result_data = self.data.mapv(|x| {
-            if x >= min_val && x <= max_val {
-                <T as CPUNumber>::one()
-            } else {
-                <T as CPUNumber>::zero()
-            }
-        });
-
-        Ok(Self::new_with_device(result_data, self.device.clone()))
-    }
-
+    
     // Expand dimensions by adding a new axis at the specified position
     pub fn expand_dims(&self, axis: usize) -> Result<CPUTensor<T>, String> {
         if axis > self.ndim() {
@@ -781,20 +745,7 @@ where
         Ok(Self::new_with_device(expanded, self.device.clone()))
     }
 
-    // Returns 1 if the value is positive, 0 if it is zero, and -1 if it is negative.
-    pub fn sign(&self) -> CPUTensor<T> {
-        let result_data = self.data.mapv(|x| {
-            if x > <T as CPUNumber>::zero() {
-                <T as CPUNumber>::one()
-            } else if x < <T as CPUNumber>::zero() {
-                -<T as CPUNumber>::one()
-            } else {
-                <T as CPUNumber>::zero()
-            }
-        });
 
-        Self::new_with_device(result_data, self.device.clone())
-    }
 
     // Detach operation - creates a new tensor that shares data but detaches from graph
     // Need to check if this is the right way to do it.
