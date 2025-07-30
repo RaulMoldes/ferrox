@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
 
+    use ndarray::ArrayBase;
+    use ndarray::OwnedRepr;
+
     use crate::graph::{Engine, EngineVisualization, GraphVisualizer, next_node_id};
 
     use crate::tensor::Tensor;
@@ -33,7 +36,7 @@ mod tests {
         // Gradient should have same shape as original tensor
         assert_eq!(grad.shape(), &[2, 3]);
         // Since we're summing, gradient should be all ones
-        assert!(grad.data().iter().all(|&x| (x - 1.0f64).abs() < 1e-6));
+        assert!(grad.all(|x| (x - 1.0f64).abs() < 1e-6).unwrap());
 
         // Test custom transpose gradient
         let mut graph2 = Engine::new();
@@ -48,7 +51,7 @@ mod tests {
 
         let grad2 = graph2.get_gradient(a2).unwrap();
         assert_eq!(grad2.shape(), &[2, 3, 4]);
-        assert!(grad2.data().iter().all(|&x| (x - 1.0).abs() < 1e-6));
+        assert!(grad2.all(|x| (x - 1.0).abs() < 1e-6).unwrap());
     }
 
     #[test]
@@ -180,7 +183,7 @@ mod tests {
         assert_eq!(neg_data, expected_neg);
 
         let exp_data = graph.get_data(exp_result);
-        assert!(exp_data.data().iter().all(|&x| x > 0.0));
+        assert!(exp_data.all(|x| x > 0.0).unwrap());
     }
 
     #[test]
@@ -236,7 +239,7 @@ mod tests {
 
         // Forward pass should work
         let loss_data = graph.get_data(loss);
-        assert!(loss_data.data().iter().next().unwrap() >= &0.0);
+        assert!(loss_data.first().unwrap() >= 0.0);
 
         // Backward pass should work
         graph.backward(loss).unwrap();
@@ -280,7 +283,7 @@ mod tests {
         let sum_all = graph.sum(a, None).unwrap();
         let result = graph.get_data(sum_all);
 
-        assert_eq!(result.data().iter().next().unwrap(), &21.0);
+        assert_eq!(result.first().unwrap(), 21.0);
 
         // Test summation with axes
         let sum_axis0 = graph.summation(a, Some(vec![0])).unwrap();
@@ -453,7 +456,6 @@ mod tests {
         let expected = Tensor::from_vec(vec![0.0, 1.0, 2.0, 3.0, 4.0], &[5]).unwrap();
         assert_eq!(result_data, expected);
     }
-
     #[test]
     fn test_sqrt_negative_error() {
         let mut graph = Engine::new();
@@ -462,9 +464,17 @@ mod tests {
             .tensor_from_vec(vec![1.0, -1.0, 4.0], &[3], true)
             .unwrap();
 
-        let sqrt_result = graph.sqrt(input);
-        assert!(sqrt_result.is_err());
-        assert!(sqrt_result.unwrap_err().contains("negative values"));
+        let sqrt_result = graph.sqrt(input).unwrap();
+
+        let result = graph.get_data(sqrt_result);
+        let result_data: &ndarray::ArrayD<f32> = result.cpu_data().unwrap(); // assuming shape is 1D
+
+        // Valores esperados: 1.0, NaN, 2.0
+        assert_eq!(result_data.len(), 3);
+
+        assert!((result_data[0] - 1.0).abs() < 1e-6); // 1.0
+        assert!(result_data[1].is_nan()); // NaN
+        assert!((result_data[2] - 2.0).abs() < 1e-6); // 2.0
     }
 
     #[test]

@@ -117,22 +117,23 @@ where
 
         // Initialize weight and bias
         let (weight, bias) = if affine {
-            let weight_data = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");; // Initialize γ to 1
-            let bias_data = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");; // Initialize β to 0
+            let weight_data = Tensor::ones(&[num_features]).expect("Failed to create ones tensor"); // Initialize γ to 1
+            let bias_data = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor"); // Initialize β to 0
             (
                 Parameter::new_named(weight_data, "weight".to_string()),
                 Parameter::new_named(bias_data, "bias".to_string()),
             )
         } else {
             // Create dummy parameters that won't be used
-            let dummy_weight = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");;
-            let dummy_bias = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");;
+            let dummy_weight = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");
+            let dummy_bias =
+                Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");
             (Parameter::new(dummy_weight), Parameter::new(dummy_bias))
         };
 
         // Initialize running statistics
-        let running_mean = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");;
-        let running_var = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");; // Initialize to 1
+        let running_mean = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");
+        let running_var = Tensor::ones(&[num_features]).expect("Failed to create ones tensor"); // Initialize to 1
 
         Self {
             num_features,
@@ -188,7 +189,7 @@ where
         for i in 0..self.num_features {
             let old_mean = self.running_mean[i];
             let new_mean = batch_mean[i];
-            self.running_mean.data.as_slice_mut().unwrap()[i] =
+            self.running_mean.as_slice_mut().unwrap()[i] =
                 one_minus_momentum * old_mean + self.momentum * new_mean;
         }
 
@@ -196,7 +197,7 @@ where
         for i in 0..self.num_features {
             let old_var = self.running_var[i];
             let new_var = batch_var[i];
-            self.running_var.data.as_slice_mut().unwrap()[i] =
+            self.running_var.as_slice_mut().unwrap()[i] =
                 one_minus_momentum * old_var + self.momentum * new_var;
         }
     }

@@ -15,7 +15,7 @@ fn clf_network() -> Result<(), Box<dyn std::error::Error>> {
     let mut model = Sequential::new();
     model.add(Box::new(Linear::new(4, 8, true))); // Input layer
     model.add(Box::new(ReLU::new())); // Hidden activation
-    model.add(Box::new(Linear::new(8, 3, true))); // Output layer  
+    model.add(Box::new(Linear::new(8, 3, true))); // Output layer
     model.add(Box::new(Softmax::new(1))); // Softmax for probabilities
 
     println!("Model architecture:");
@@ -160,7 +160,7 @@ fn demonstrate_softmax_properties() -> Result<(), Box<dyn std::error::Error>> {
     let probs1 = softmax.forward(&mut engine, logits1)?;
     let prob_data1 = engine.get_data(probs1);
 
-    let sum: f64 = prob_data1.iter().sum();
+    let sum: f64 = prob_data1.sum(None)?.first()?;
     println!("  Input logits: [1.0, 2.0, 3.0]");
     println!(
         "  Softmax output: [{:.3}, {:.3}, {:.3}]",
@@ -174,7 +174,7 @@ fn demonstrate_softmax_properties() -> Result<(), Box<dyn std::error::Error>> {
     let stable_probs = softmax.forward(&mut engine, large_logits)?;
     let stable_data = engine.get_data(stable_probs);
 
-    let stable_sum: f64 = stable_data.iter().sum();
+    let stable_sum: f64 = stable_data.sum(None)?.first()?;
     println!("  Large input logits: [1000.0, 1001.0, 1002.0]");
     println!(
         "  Stable softmax output: [{:.3}, {:.3}, {:.3}]",
@@ -204,13 +204,12 @@ fn demonstrate_softmax_properties() -> Result<(), Box<dyn std::error::Error>> {
         shift_data[0], shift_data[1], shift_data[2]
     );
 
-    // Check if they're approximately equal
-    let max_diff = orig_data
-        .iter()
-        .zip(shift_data.iter())
-        .map(|(a, b)| (a - b).abs())
-        .fold(0.0, f64::max);
-    println!("  Maximum difference: {:.2e} (should be ~0)", max_diff);
+    let approx_eq = orig_data.zip_all(&shift_data, |a, b| {
+            let diff = if a > b { a - b } else { b - a };
+            diff <= 1e-6
+        }).expect("Error comparing tensors");
+    assert!(approx_eq);
+    println!("Approx equal comparison {:?}", approx_eq);
 
     Ok(())
 }

@@ -380,14 +380,11 @@ where
             ));
         }
 
-        // Use ndarray's fold_axis to find maximum along specified axis
-        let result_data = input_data.data().fold_axis(
-            ndarray::Axis(dim),
-            <T as CPUNumber>::min_value(), // Start with minimum value
-            |&acc, &x| if acc > x { acc } else { x },
-        );
 
-        let result_tensor = Tensor::new_with_device(result_data, input_data.device().clone());
+        let result_tensor = input_data.max_reduce(Some(&[dim])
+        )?;
+
+
 
         // Create operation for gradient computation
         let op = Box::new(MaxAlongDimOp::new(dim));

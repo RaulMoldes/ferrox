@@ -275,9 +275,9 @@ fn test_gpu_chaining_efficiency() {
                 // Only transfer when needed
                 let cpu_result = result2.to_cpu().unwrap();
                 // (1+2)*2 = 6, (2+3)*2 = 10, (3+4)*2 = 14
-                assert!((cpu_result.data()[[0]] - 6.0).abs() < 1e-6);
-                assert!((cpu_result.data()[[1]] - 10.0).abs() < 1e-6);
-                assert!((cpu_result.data()[[2]] - 14.0).abs() < 1e-6);
+                assert!((cpu_result.as_slice()[[0]] - 6.0).abs() < 1e-6);
+                assert!((cpu_result.as_slice()[[1]] - 10.0).abs() < 1e-6);
+                assert!((cpu_result.as_slice()[[2]] - 14.0).abs() < 1e-6);
 
                 println!("GPU chaining test passed!");
             } else {

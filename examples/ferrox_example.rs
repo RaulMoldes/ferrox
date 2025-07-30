@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loss shape: {:?}", graph.get_data(loss).shape());
     println!(
         "Loss value: {:?}",
-        graph.get_data(loss).data().iter().next().unwrap()
+        graph.get_data(loss).as_slice().iter().next().unwrap()
     );
 
     // === GRAPH VISUALIZATION: Initial Forward Pass ===
@@ -47,12 +47,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(x_grad) = graph.get_gradient(x) {
         println!("Gradient w.r.t. x shape: {:?}", x_grad.shape());
-        println!("Gradient w.r.t. x: {:?}", x_grad.data());
+        println!("Gradient w.r.t. x: {:?}", x_grad.as_slice());
     }
 
     if let Some(w_grad) = graph.get_gradient(w) {
         println!("Gradient w.r.t. w shape: {:?}", w_grad.shape());
-        println!("Gradient w.r.t. w: {:?}", w_grad.data());
+        println!("Gradient w.r.t. w: {:?}", w_grad.as_slice());
     }
 
     // === GRAPH VISUALIZATION: After Gradients ===
@@ -83,9 +83,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let div_result = graph.div(a, b)?;
 
     println!("Element-wise operations:");
-    println!("A + B: {:?}", graph.get_data(add_result).data());
-    println!("A * B: {:?}", graph.get_data(mul_result).data());
-    println!("A / B: {:?}", graph.get_data(div_result).data());
+    println!("A + B: {:?}", graph.get_data(add_result).as_slice());
+    println!("A * B: {:?}", graph.get_data(mul_result).as_slice());
+    println!("A / B: {:?}", graph.get_data(div_result).as_slice());
 
     // === GRAPH VISUALIZATION: Element-wise Operations ===
     println!("\n=== GRAPH VISUALIZATION: Element-wise Operations ===");
@@ -96,8 +96,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scalar_mul = graph.mul_scalar(a, 2.0)?;
 
     println!("\nScalar operations:");
-    println!("A + 10: {:?}", graph.get_data(scalar_add).data());
-    println!("A * 2: {:?}", graph.get_data(scalar_mul).data());
+    println!("A + 10: {:?}", graph.get_data(scalar_add).as_slice());
+    println!("A * 2: {:?}", graph.get_data(scalar_mul).as_slice());
 
     // Test activations
     let exp_result = graph.exp(a)?;
@@ -105,9 +105,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let neg_result = graph.negate(a)?;
 
     println!("\nActivations:");
-    println!("exp(A): {:?}", graph.get_data(exp_result).data());
-    println!("log(A+B): {:?}", graph.get_data(log_result).data());
-    println!("-A: {:?}", graph.get_data(neg_result).data());
+    println!("exp(A): {:?}", graph.get_data(exp_result).as_slice());
+    println!("log(A+B): {:?}", graph.get_data(log_result).as_slice());
+    println!("-A: {:?}", graph.get_data(neg_result).as_slice());
 
     // === GRAPH VISUALIZATION: Activation Functions ===
     println!("\n=== GRAPH VISUALIZATION: Activation Functions ===");
@@ -139,9 +139,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sum_axis1 = graph.summation(a, Some(vec![1]))?;
 
     println!("\nSummation operations:");
-    println!("Sum all: {:?}", graph.get_data(sum_all).data());
-    println!("Sum axis 0: {:?}", graph.get_data(sum_axis0).data());
-    println!("Sum axis 1: {:?}", graph.get_data(sum_axis1).data());
+    println!("Sum all: {:?}", graph.get_data(sum_all).as_slice());
+    println!("Sum axis 0: {:?}", graph.get_data(sum_axis0).as_slice());
+    println!("Sum axis 1: {:?}", graph.get_data(sum_axis1).as_slice());
 
     // === GRAPH VISUALIZATION: Reduction Operations ===
     println!("\n=== GRAPH VISUALIZATION: Reduction Operations ===");
@@ -165,10 +165,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nComplex computation gradients:");
     if let Some(a_grad) = graph.get_gradient(a) {
-        println!("Gradient w.r.t. A: {:?}", a_grad.data());
+        println!("Gradient w.r.t. A: {:?}", a_grad.as_slice());
     }
     if let Some(b_grad) = graph.get_gradient(b) {
-        println!("Gradient w.r.t. B: {:?}", b_grad.data());
+        println!("Gradient w.r.t. B: {:?}", b_grad.as_slice());
     }
 
     // === GRAPH VISUALIZATION: Complex Computation With Gradients ===
@@ -212,7 +212,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Neural Network Forward Pass:");
     println!("Input -> Linear(3,2) -> ReLU -> Linear(2,1) -> Exp -> Loss");
-    println!("Final loss: {:?}", graph.get_data(nn_loss).data());
+    println!("Final loss: {:?}", graph.get_data(nn_loss).as_slice());
 
     // === GRAPH VISUALIZATION: Neural Network ===
     println!("\n=== GRAPH VISUALIZATION: Complete Neural Network ===");
@@ -237,13 +237,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nNeural Network Gradients:");
     if let Some(input_grad) = graph.get_gradient(input) {
-        println!("Input gradient: {:?}", input_grad.data());
+        println!("Input gradient: {:?}", input_grad.as_slice());
     }
     if let Some(w1_grad) = graph.get_gradient(weight1) {
         println!("Weight1 gradient shape: {:?}", w1_grad.shape());
     }
     if let Some(w2_grad) = graph.get_gradient(weight2) {
-        println!("Weight2 gradient: {:?}", w2_grad.data());
+        println!("Weight2 gradient: {:?}", w2_grad.as_slice());
     }
 
     // === GRAPH VISUALIZATION: Neural Network With Gradients ===

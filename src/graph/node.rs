@@ -81,7 +81,7 @@ where
             id: next_node_id(),
             op: None,
             inputs: Vec::new(),
-            cached_data: self.cached_data.detach(),
+            cached_data: self.cached_data.detach().expect("Could not detach cached tensor from graph"),
             requires_grad: false,
         }
     }

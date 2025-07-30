@@ -209,16 +209,8 @@ mod tests {
 
         assert!(approx_equal(row1_sum, 1.0, 1e-6));
         assert!(approx_equal(row2_sum, 1.0, 1e-6));
+        assert!(result_data.all(|x| x > 0.0 && x < 1.0).unwrap());
 
-        // Check that all values are positive
-        for &val in result_data.iter() {
-            assert!(val > 0.0, "Softmax output should be positive, got {}", val);
-            assert!(
-                val < 1.0,
-                "Softmax output should be less than 1, got {}",
-                val
-            );
-        }
     }
 
     #[test]
@@ -233,19 +225,10 @@ mod tests {
 
         let output = softmax.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
-
-        // Should not produce NaN or infinity
-        for &val in result_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "Softmax with large inputs produced non-finite value: {}",
-                val
-            );
-            assert!(val > 0.0, "Softmax output should be positive");
-        }
+        assert!(result_data.all(|x :f64| x.is_finite() && x > 0.0).unwrap());
 
         // Should still sum to 1
-        let sum: f64 = result_data.iter().sum();
+        let sum: f64 = result_data.sum(None).expect("Could not apply reduction to tensor").first().unwrap();
         assert!(approx_equal(sum, 1.0, 1e-6));
     }
 
@@ -271,15 +254,8 @@ mod tests {
 
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[1, 3]);
+        assert!(grad.all(|x: f64| x.is_finite()).unwrap());
 
-        // Gradients should be finite
-        for &val in grad.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "Gradient should be finite, got {}",
-                val
-            );
-        }
     }
 
     #[test]
@@ -356,11 +332,8 @@ mod tests {
                 sample_sum
             );
         }
+        assert!(prob_data.all(|prob| prob > 0.0 && prob < 1.0).unwrap());
 
-        // All probabilities should be in valid range
-        for &prob in prob_data.iter() {
-            assert!(prob > 0.0 && prob < 1.0, "Invalid probability: {}", prob);
-        }
     }
 
     #[test]
@@ -446,15 +419,14 @@ mod tests {
         let data2 = graph.get_data(output2);
 
         // Results should be approximately equal
-        for (i, (&val1, &val2)) in data1.iter().zip(data2.iter()).enumerate() {
-            assert!(
-                approx_equal(val1, val2, 1e-10),
-                "Softmax invariance failed at index {}: {} != {}",
-                i,
-                val1,
-                val2
-            );
-        }
+
+        let approx_eq = data1.zip_all(&data2, |a, b| {
+            let diff = if a > b { a - b } else { b - a };
+            diff <= 1e-6
+        }).expect("Error comparing tensors");
+
+        assert!(approx_eq, "Tensors are different!");
+
     }
 
     #[test]
@@ -533,7 +505,7 @@ mod tests {
 
         assert_eq!(param.shape(), &[3, 3]);
         assert_eq!(param.size(), 9);
-        assert!(param.data.iter().all(|&x: &f64| x == 0.5));
+        assert!(param.data.all(|x: f64| x == 0.5).unwrap());
     }
 
     #[test]
@@ -671,9 +643,7 @@ mod tests {
         let result_data = graph.get_data(output);
 
         // All sigmoid outputs should be between 0 and 1
-        for &val in result_data.iter() {
-            assert!(val > 0.0 && val < 1.0);
-        }
+        assert!(result_data.all(|val| val > 0.0 && val < 1.0).unwrap());
 
         // Check specific values
         assert!(result_data[0] < 0.01); // sigmoid(-10) ≈ 0
@@ -707,10 +677,9 @@ mod tests {
         let output = tanh.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
 
-        // All tanh outputs should be between -1 and 1
-        for &val in result_data.iter() {
-            assert!(val > -1.0 && val < 1.0);
-        }
+
+        assert!(result_data.all(|val| val > -1.0 && val < 1.0).unwrap());
+
 
         // Check specific values
         assert!(result_data[0] < -0.99); // tanh(-10) ≈ -1
@@ -1526,15 +1495,9 @@ mod tests {
 
         // Output shape should match input shape
         assert_eq!(output_shape, vec![4, 3]);
+        assert!(output_data.all(|x| x.is_finite()).unwrap());
 
-        // All output values should be finite
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "BatchNorm output should be finite, got {}",
-                val
-            );
-        }
+
 
         // For this specific input, we can verify that the normalization worked
         // The mean of each feature across the batch should be approximately 0
@@ -1595,15 +1558,8 @@ mod tests {
 
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[2, 2]);
+        assert!(grad.all(|x| x.is_finite()).unwrap());
 
-        // Gradients should be finite
-        for &val in grad.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "Gradient should be finite, got {}",
-                val
-            );
-        }
     }
 
     #[test]
@@ -1618,17 +1574,10 @@ mod tests {
 
         let output = bn.forward(&mut graph, large_input).unwrap();
         let output_data = graph.get_data(output);
+        assert!(output_data.all(|val: f64| val.is_finite() && !val.is_nan()).unwrap());
 
-        // Output should be finite despite large inputs
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "BatchNorm should handle large inputs, got {}",
-                val
-            );
-            assert!(!val.is_nan(), "Output should not be NaN");
         }
-    }
+
 
     #[test]
     fn test_batch_norm_1d_error_cases() {
@@ -1689,12 +1638,7 @@ mod tests {
 
         // Output should be finite
         let output_data = graph.get_data(output);
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "3D BatchNorm output should be finite"
-            );
-        }
+        assert!(output_data.all(|x| x.is_finite()).unwrap())
     }
 
     // ============================================================================
@@ -1751,15 +1695,7 @@ mod tests {
 
         // Shape should be preserved
         assert_eq!(output_shape, vec![3, 4]);
-
-        // All outputs should be finite
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "LayerNorm output should be finite, got {}",
-                val
-            );
-        }
+        assert!(output_data.all(|x| x.is_finite()).unwrap());
 
         // For each sample, the mean across the last dimension should be close to 0
         // and the std should be close to 1 (before affine transform)
@@ -1785,12 +1721,8 @@ mod tests {
 
         // Output should be finite
         let output_data = graph.get_data(output);
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "3D LayerNorm output should be finite"
-            );
-        }
+        assert!(output_data.all(|x| x.is_finite()).unwrap());
+
     }
 
     #[test]
@@ -1808,14 +1740,8 @@ mod tests {
 
         let output = ln.forward(&mut graph, input).unwrap();
         let output_data = graph.get_data(output);
+        assert!(output_data.all(|x| x.is_finite()).unwrap())
 
-        // Should still normalize but without affine transformation
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "LayerNorm without affine should be finite"
-            );
-        }
     }
 
     #[test]
@@ -1840,14 +1766,8 @@ mod tests {
 
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[2, 3]);
+        assert!(grad.all(|x| x.is_finite()).unwrap());
 
-        // Gradients should be finite
-        for &val in grad.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "LayerNorm gradient should be finite"
-            );
-        }
     }
 
     #[test]
@@ -1890,14 +1810,8 @@ mod tests {
 
         let output = ln.forward(&mut graph, large_input).unwrap();
         let output_data = graph.get_data(output);
+        assert!(output_data.all(|val| val.is_finite() && !val.is_nan()).unwrap());
 
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "LayerNorm should handle large values"
-            );
-            assert!(!val.is_nan(), "Output should not be NaN");
-        }
 
         // Test with very small values
         let small_input = graph
@@ -1906,13 +1820,8 @@ mod tests {
 
         let output = ln.forward(&mut graph, small_input).unwrap();
         let output_data = graph.get_data(output);
+        assert!(output_data.all(|val| val.is_finite()).unwrap())
 
-        for &val in output_data.iter() {
-            assert!(
-                (val as f64).is_finite(),
-                "LayerNorm should handle small values"
-            );
-        }
     }
 
     #[test]
@@ -1942,7 +1851,7 @@ mod tests {
 
         // Output should be finite
         let output_data = graph.get_data(output);
-        assert!(output_data.iter().all(|&x| x.is_finite()));
+        assert!(output_data.all(|x| x.is_finite()).unwrap());
     }
 
     // ============================================================================
@@ -1971,15 +1880,12 @@ mod tests {
         let ln_data = graph.get_data(ln_output);
 
         // Both should produce finite outputs but different values
-        assert!(bn_data.iter().all(|&x| x.is_finite()));
-        assert!(ln_data.iter().all(|&x| x.is_finite()));
+        assert!(bn_data.all(|x| x.is_finite()).unwrap());
+        assert!(ln_data.all(|x| x.is_finite()).unwrap());
 
         // BatchNorm and LayerNorm should produce different results
         // (they normalize differently)
-        let are_different = bn_data
-            .iter()
-            .zip(ln_data.iter())
-            .any(|(&bn_val, &ln_val)| !approx_equal(bn_val, ln_val, 1e-6));
+        let are_different = bn_data != ln_data;
 
         assert!(
             are_different,

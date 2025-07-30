@@ -177,7 +177,7 @@ where
                     .unwrap_or_else(|err| panic!("Failed to square gradient: {}", err));
 
                 // Sum all elements - we need to access CPU data for this scalar operation
-                if let Ok(cpu_data) = grad_squared.cpu_data() {
+                if let Ok(cpu_data) = grad_squared.as_slice() {
                     for &g_sq in cpu_data.iter() {
                         total_norm_sq += g_sq;
                     }
@@ -249,9 +249,10 @@ where
                 };
 
                 // Initialize momentum buffer if it doesn't exist
-                self.momentum_buffers
-                    .entry(param_node)
-                    .or_insert_with(|| Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
+                self.momentum_buffers.entry(param_node).or_insert_with(|| {
+                    Tensor::zeros(current_params.shape())
+                        .expect("Zeroed tensor failed to be created")
+                });
 
                 let momentum_buffer = self.momentum_buffers.get_mut(&param_node).unwrap();
 
@@ -425,14 +426,23 @@ where
 
                 // Initialize moment estimates if they don't exist
                 if !self.first_moments.contains_key(&param_node) {
-                    self.first_moments
-                        .insert(param_node, Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
-                    self.second_moments
-                        .insert(param_node, Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
+                    self.first_moments.insert(
+                        param_node,
+                        Tensor::zeros(current_params.shape())
+                            .expect("Zeroed tensor failed to be created"),
+                    );
+                    self.second_moments.insert(
+                        param_node,
+                        Tensor::zeros(current_params.shape())
+                            .expect("Zeroed tensor failed to be created"),
+                    );
 
                     if self.amsgrad {
-                        self.max_second_moments
-                            .insert(param_node, Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
+                        self.max_second_moments.insert(
+                            param_node,
+                            Tensor::zeros(current_params.shape())
+                                .expect("Zeroed tensor failed to be created"),
+                        );
                     }
                 }
 
@@ -661,8 +671,8 @@ mod optimizer_tests {
         T: GPUFloat + Clone,
     {
         // Use CPUTensor method to access data instead of direct indexing
-        let cpu_data = tensor.cpu_data().expect("Failed to get CPU data");
-        cpu_data[[0]].clone() // ndarray indexing for scalar
+        let res = tensor.first();
+        res.unwrap()
     }
 
     /// Helper to get vector values from tensor using CPUTensor methods
@@ -670,7 +680,7 @@ mod optimizer_tests {
     where
         T: GPUFloat + Clone,
     {
-        let cpu_data = tensor.cpu_data().expect("Failed to get CPU data");
+        let cpu_data = tensor.as_slice().expect("Failed to get CPU data");
         cpu_data.iter().cloned().collect()
     }
 

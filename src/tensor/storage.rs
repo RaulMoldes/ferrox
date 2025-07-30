@@ -1,10 +1,10 @@
 // src/tensor/storage.rs
-use ndarray::{ArrayD, IxDyn};
 use ndarray::Axis;
-use std::borrow::Cow;
+use ndarray::{ArrayD, IxDyn};
 use rand::Rng;
-use std::fmt::Debug;
 use rand_distr::StandardUniform;
+use std::borrow::Cow;
+use std::fmt::Debug;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -12,7 +12,7 @@ use crate::backend::cuda::CudaTensor;
 #[cfg(feature = "cuda")]
 use cudarc::driver::DeviceRepr;
 
-use crate::backend::number::{GPUFloat, CPUFloat};
+use crate::backend::number::{CPUFloat, GPUFloat};
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
@@ -205,43 +205,27 @@ where
         self.unsqueeze(axis)
     }
     /// 2D Convolution operation
-/// Performs standard convolution using im2col transformation for efficiency
-/// Returns new storage with convolution result - doesn't modify inputs
-fn conv2d(
-    &self,
-    filter: &dyn StorageBackend<T>,
-    stride: (usize, usize),
-    padding: (usize, usize),
-) -> Result<Box<dyn StorageBackend<T>>, String>;
+    /// Performs standard convolution using im2col transformation for efficiency
+    /// Returns new storage with convolution result - doesn't modify inputs
+    fn conv2d(
+        &self,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+    /// Iterator over storage elements - returns owned values
+    /// This is the most flexible iteration method that works for both CPU and GPU
+    fn iter_values(&self) -> Result<Vec<T>, String>;
 
-/// Iterator over storage elements - returns owned values
-/// This is the most flexible iteration method that works for both CPU and GPU
-fn iter_values(&self) -> Result<Vec<T>, String>;
+    /// Get flat index access to elements (if supported by storage)
+    /// Returns None if storage doesn't support flat indexing
+    fn get_flat(&self, index: usize) -> Result<Option<T>, String>;
 
-/// Get flat index access to elements (if supported by storage)
-/// Returns None if storage doesn't support flat indexing
-fn get_flat(&self, index: usize) -> Result<Option<T>, String>;
+    /// Get multi-dimensional index access to elements (if supported)
+    /// Returns None if storage doesn't support multi-dim indexing
+    fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
 
-/// Get multi-dimensional index access to elements (if supported)
-/// Returns None if storage doesn't support multi-dim indexing
-fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
-
-fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
-where Self: Sized;
-
-fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-where
-    Self: Sized;
-
-fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-where
-    Self: Sized;
-
-    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-where
-    Self: Sized,
-    StandardUniform: rand_distr::Distribution<T>;
 
 }
 
@@ -257,7 +241,6 @@ impl<T> CPUOwnedStorage<T> {
     }
 }
 
-
 impl<T> CPUOwnedStorage<T>
 where
     T: crate::backend::number::GPUFloat + Clone,
@@ -272,7 +255,10 @@ where
     ) -> Result<ArrayD<T>, String> {
         let input_shape = self.shape();
         let (batch, channels, in_h, in_w) = (
-            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
         );
         let (kernel_h, kernel_w) = kernel_size;
 
@@ -285,7 +271,7 @@ where
         let mut col_data = vec![<T as CPUFloat>::zero(); col_height * col_width];
         let input_data = if let Some(data) = self.data.as_slice() {
             data
-        }else {
+        } else {
             return Err("Input data is empty!".to_string());
         };
 
@@ -303,8 +289,10 @@ where
                                 let col_col = b * out_h * out_w + out_y * out_w + out_x;
 
                                 // Handle padding by checking bounds
-                                if in_y >= padding.0 && in_y < in_h + padding.0
-                                    && in_x >= padding.1 && in_x < in_w + padding.1
+                                if in_y >= padding.0
+                                    && in_y < in_h + padding.0
+                                    && in_x >= padding.1
+                                    && in_x < in_w + padding.1
                                 {
                                     let actual_y = in_y - padding.0;
                                     let actual_x = in_x - padding.1;
@@ -314,7 +302,8 @@ where
                                             + c * (in_h * in_w)
                                             + actual_y * in_w
                                             + actual_x;
-                                        col_data[col_row * col_width + col_col] = input_data[input_idx];
+                                        col_data[col_row * col_width + col_col] =
+                                            input_data[input_idx];
                                     }
                                 }
                             }
@@ -339,10 +328,16 @@ where
         let filter_shape = filter.shape();
 
         let (batch, in_channels, in_h, in_w) = (
-            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
         );
         let (out_channels, _, kernel_h, kernel_w) = (
-            filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3],
+            filter_shape[0],
+            filter_shape[1],
+            filter_shape[2],
+            filter_shape[3],
         );
 
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
@@ -358,16 +353,22 @@ where
             .map_err(|e| format!("Filter reshape failed: {}", e))?;
 
         // Perform convolution as matrix multiplication: filter @ col_matrix
-        let im2col_view: ndarray::ArrayView2<T> = col_matrix.view().into_dimensionality().map_err(|e| format!("Shape error: {}", e))?;
+        let im2col_view: ndarray::ArrayView2<T> = col_matrix
+            .view()
+            .into_dimensionality()
+            .map_err(|e| format!("Shape error: {}", e))?;
 
-        let filter_view: ndarray::ArrayView2<T> = filter_reshaped.view().into_dimensionality().map_err(|e| format!("Shape error: {}", e))?;
+        let filter_view: ndarray::ArrayView2<T> = filter_reshaped
+            .view()
+            .into_dimensionality()
+            .map_err(|e| format!("Shape error: {}", e))?;
 
         let output_2d = filter_view.dot(&im2col_view);
 
         // Transpose result from [out_channels, batch * out_h * out_w] to [batch, out_channels, out_h, out_w]
         let output_data: Vec<T> = if let Some(out_slice) = output_2d.as_slice() {
             out_slice.to_vec()
-        }else {
+        } else {
             panic!("Attempted to slice an empty output!")
         };
         let mut final_output = vec![<T as CPUFloat>::zero(); batch * out_channels * out_h * out_w];
@@ -376,8 +377,12 @@ where
             for b in 0..batch {
                 for y in 0..out_h {
                     for x in 0..out_w {
-                        let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
-                        let dst_idx = b * (out_channels * out_h * out_w) + out_c * (out_h * out_w) + y * out_w + x;
+                        let src_idx =
+                            out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                        let dst_idx = b * (out_channels * out_h * out_w)
+                            + out_c * (out_h * out_w)
+                            + y * out_w
+                            + x;
                         final_output[dst_idx] = output_data[src_idx];
                     }
                 }
@@ -387,8 +392,6 @@ where
         ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
             .map_err(|e| format!("Failed to create output tensor: {}", e))
     }
-
-
 }
 
 impl<T> StorageBackend<T> for CPUOwnedStorage<T>
@@ -870,9 +873,7 @@ where
             };
 
             // Fold along the specified axis to find maximum values
-            array.fold_axis(ax, first, |&acc, &x| {
-                if x > acc { x } else { acc }
-            })
+            array.fold_axis(ax, first, |&acc, &x| if x > acc { x } else { acc })
         })?;
 
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
@@ -882,16 +883,13 @@ where
         // Use reduce_axes with custom min reduction function
         // Similar to max_axes but finding minimum values
         let result = self.reduce(axes, |array, ax| {
-
             let first = if let Some(f) = array.first() {
                 f.clone()
             } else {
                 panic!("Array is empty! Cannot reduce over empty array");
             };
             // Fold along the specified axis to find minimum values
-            array.fold_axis(ax, first, |&acc, &x| {
-                if x < acc { x } else { acc }
-            })
+            array.fold_axis(ax, first, |&acc, &x| if x < acc { x } else { acc })
         })?;
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
     }
@@ -1094,50 +1092,6 @@ where
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
 
-    fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-        T: rand_distr::num_traits::Zero,
-    {
-        // Create ndarray with zeros directly - more efficient than device layer
-        let data = ndarray::ArrayD::zeros(ndarray::IxDyn(shape));
-        Ok(Box::new(CPUOwnedStorage::new(data)))
-    }
-
-    fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-        T: rand_distr::num_traits::One,
-    {
-        // Create ndarray with ones directly
-        let data = ndarray::ArrayD::ones(ndarray::IxDyn(shape));
-        Ok(Box::new(CPUOwnedStorage::new(data)))
-    }
-
-    fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-    {
-        // Create ndarray filled with specific value
-        let data = ndarray::ArrayD::from_elem(ndarray::IxDyn(shape), value);
-        Ok(Box::new(CPUOwnedStorage::new(data)))
-    }
-
-    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-        StandardUniform: rand_distr::Distribution<T>,
-    {
-        let mut rng = rand::rng();
-        let total_elements: usize = shape.iter().product();
-        let two = <T as CPUFloat>::from_f64(2.0).expect("Cannot cast from f64");
-        let one = <T as CPUFloat>::one();
-        let data: Vec<T> = (0..total_elements)
-                    .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
-                    .collect();
-        let data_array  = ArrayD::from_shape_vec(IxDyn(shape), data).map_err(|e| format!("Failed to create array from data: {}", e))?;
-        Ok(Box::new(CPUOwnedStorage::new(data_array)))
-    }
 }
 
 impl<T> CPUOwnedStorage<T>
@@ -1192,6 +1146,96 @@ where
         }
     }
 
+
+
+
+    pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::Zero,
+    {
+        // Create ndarray with zeros directly - more efficient than device layer
+        let data = ndarray::ArrayD::zeros(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    pub fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::One,
+    {
+        // Create ndarray with ones directly
+        let data = ndarray::ArrayD::ones(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    pub fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+    {
+        // Create ndarray filled with specific value
+        let data = ndarray::ArrayD::from_elem(ndarray::IxDyn(shape), value);
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    pub fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        StandardUniform: rand_distr::Distribution<T>,
+    {
+        let mut rng = rand::rng();
+        let total_elements: usize = shape.iter().product();
+        let two = <T as CPUFloat>::from_f64(2.0).expect("Cannot cast from f64");
+        let one = <T as CPUFloat>::one();
+        let data: Vec<T> = (0..total_elements)
+            .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
+            .collect();
+        let data_array = ArrayD::from_shape_vec(IxDyn(shape), data)
+            .map_err(|e| format!("Failed to create array from data: {}", e))?;
+        Ok(Box::new(CPUOwnedStorage::new(data_array)))
+    }
+
+    /// Conditional selection operation
+    pub fn where_condition(
+        condition: &dyn StorageBackend<T>,
+        true_vals: &dyn StorageBackend<T>,
+        false_vals: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized
+    {
+        // Get data from all three storages
+        let condition_data = condition.cpu_data()?;
+        let true_data = true_vals.cpu_data()?;
+        let false_data = false_vals.cpu_data()?;
+
+        // Validate shapes match
+        if condition_data.shape() != true_data.shape()
+            || condition_data.shape() != false_data.shape()
+        {
+            return Err("Shape mismatch in where_condition".to_string());
+        }
+
+        // Element-wise selection using iterator zip
+        let result_data: Vec<T> = condition_data
+            .iter()
+            .zip(true_data.iter())
+            .zip(false_data.iter())
+            .map(|((&cond, &true_val), &false_val)| {
+                if cond > <T as CPUFloat>::zero() {
+                    true_val
+                } else {
+                    false_val
+                }
+            })
+            .collect();
+
+        // Create result array with same shape
+        let result_array = ndarray::Array::from_shape_vec(condition_data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result: {}", e))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
 
 }
 
@@ -1265,6 +1309,95 @@ where
             }
         }
     }
+
+
+    pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::Zero,
+    {
+        // Create ndarray with zeros directly - more efficient than device layer
+        let data = ndarray::ArrayD::zeros(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    pub fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::One,
+    {
+        // Create ndarray with ones directly
+        let data = ndarray::ArrayD::ones(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    pub fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+    {
+        // Create ndarray filled with specific value
+        let data = ndarray::ArrayD::from_elem(ndarray::IxDyn(shape), value);
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    pub fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        StandardUniform: rand_distr::Distribution<T>,
+    {
+        let mut rng = rand::rng();
+        let total_elements: usize = shape.iter().product();
+        let two = <T as CPUFloat>::from_f64(2.0).expect("Cannot cast from f64");
+        let one = <T as CPUFloat>::one();
+        let data: Vec<T> = (0..total_elements)
+            .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
+            .collect();
+        let data_array = ArrayD::from_shape_vec(IxDyn(shape), data)
+            .map_err(|e| format!("Failed to create array from data: {}", e))?;
+        Ok(Box::new(CPUOwnedStorage::new(data_array)))
+    }
+
+    /// Conditional selection operation
+    pub fn where_condition(
+        condition: &dyn StorageBackend<T>,
+        true_vals: &dyn StorageBackend<T>,
+        false_vals: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized
+    {
+        // Get data from all three storages
+        let condition_data = condition.cpu_data()?;
+        let true_data = true_vals.cpu_data()?;
+        let false_data = false_vals.cpu_data()?;
+
+        // Validate shapes match
+        if condition_data.shape() != true_data.shape()
+            || condition_data.shape() != false_data.shape()
+        {
+            return Err("Shape mismatch in where_condition".to_string());
+        }
+
+        // Element-wise selection using iterator zip
+        let result_data: Vec<T> = condition_data
+            .iter()
+            .zip(true_data.iter())
+            .zip(false_data.iter())
+            .map(|((&cond, &true_val), &false_val)| {
+                if cond > <T as CPUFloat>::zero() {
+                    true_val
+                } else {
+                    false_val
+                }
+            })
+            .collect();
+
+        // Create result array with same shape
+        let result_array = ndarray::Array::from_shape_vec(condition_data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result: {}", e))?;
+
+        Ok(Box::new(CPUOwnedStorage::new(result_array)))
+    }
 }
 // Add these private implementation methods to CPUBorrowedStorage
 
@@ -1282,7 +1415,10 @@ where
     ) -> Result<ArrayD<T>, String> {
         let input_shape = self.shape();
         let (batch, channels, in_h, in_w) = (
-            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
         );
         let (kernel_h, kernel_w) = kernel_size;
 
@@ -1294,9 +1430,9 @@ where
 
         let mut col_data = vec![<T as CPUFloat>::zero(); col_height * col_width];
         // Use borrowed data reference instead of owned data
-         let input_data = if let Some(data) = self.data.as_slice() {
+        let input_data = if let Some(data) = self.data.as_slice() {
             data
-        }else {
+        } else {
             return Err("Input data is empty!".to_string());
         };
 
@@ -1314,8 +1450,10 @@ where
                                 let col_col = b * out_h * out_w + out_y * out_w + out_x;
 
                                 // Handle padding by checking bounds
-                                if in_y >= padding.0 && in_y < in_h + padding.0
-                                    && in_x >= padding.1 && in_x < in_w + padding.1
+                                if in_y >= padding.0
+                                    && in_y < in_h + padding.0
+                                    && in_x >= padding.1
+                                    && in_x < in_w + padding.1
                                 {
                                     let actual_y = in_y - padding.0;
                                     let actual_x = in_x - padding.1;
@@ -1325,7 +1463,8 @@ where
                                             + c * (in_h * in_w)
                                             + actual_y * in_w
                                             + actual_x;
-                                        col_data[col_row * col_width + col_col] = input_data[input_idx];
+                                        col_data[col_row * col_width + col_col] =
+                                            input_data[input_idx];
                                     }
                                 }
                             }
@@ -1350,10 +1489,16 @@ where
         let filter_shape = filter.shape();
 
         let (batch, in_channels, in_h, in_w) = (
-            input_shape[0], input_shape[1], input_shape[2], input_shape[3],
+            input_shape[0],
+            input_shape[1],
+            input_shape[2],
+            input_shape[3],
         );
         let (out_channels, _, kernel_h, kernel_w) = (
-            filter_shape[0], filter_shape[1], filter_shape[2], filter_shape[3],
+            filter_shape[0],
+            filter_shape[1],
+            filter_shape[2],
+            filter_shape[3],
         );
 
         let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
@@ -1369,14 +1514,20 @@ where
             .map_err(|e| format!("Filter reshape failed: {}", e))?;
 
         // Perform convolution as matrix multiplication
-        let im2col_view: ndarray::ArrayView2<T> = col_matrix.view().into_dimensionality().map_err(|e| format!("IM2col reshape failed: {}", e))?;
-        let filter_view: ndarray::ArrayView2<T> = filter_reshaped.view().into_dimensionality().map_err(|e| format!("Filter reshape failed: {}", e))?;
+        let im2col_view: ndarray::ArrayView2<T> = col_matrix
+            .view()
+            .into_dimensionality()
+            .map_err(|e| format!("IM2col reshape failed: {}", e))?;
+        let filter_view: ndarray::ArrayView2<T> = filter_reshaped
+            .view()
+            .into_dimensionality()
+            .map_err(|e| format!("Filter reshape failed: {}", e))?;
         let output_2d = filter_view.dot(&im2col_view);
 
         // Transpose result to correct output layout
         let output_data: Vec<T> = if let Some(out_slice) = output_2d.as_slice() {
             out_slice.to_vec()
-        }else {
+        } else {
             panic!("Attempted to slice an empty output!")
         };
         let mut final_output = vec![<T as CPUFloat>::zero(); batch * out_channels * out_h * out_w];
@@ -1385,8 +1536,12 @@ where
             for b in 0..batch {
                 for y in 0..out_h {
                     for x in 0..out_w {
-                        let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
-                        let dst_idx = b * (out_channels * out_h * out_w) + out_c * (out_h * out_w) + y * out_w + x;
+                        let src_idx =
+                            out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                        let dst_idx = b * (out_channels * out_h * out_w)
+                            + out_c * (out_h * out_w)
+                            + y * out_w
+                            + x;
                         final_output[dst_idx] = output_data[src_idx];
                     }
                 }
@@ -1396,7 +1551,6 @@ where
         ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
             .map_err(|e| format!("Failed to create output tensor: {}", e))
     }
-
 }
 
 impl<'a, T> StorageBackend<T> for CPUBorrowedStorage<'a, T>
@@ -1869,9 +2023,7 @@ where
                 panic!("Array is empty! Cannot reduce over empty array");
             };
             // Fold along the specified axis to find maximum values
-            array.fold_axis(ax, first, |&acc, &x| {
-                if x > acc { x } else { acc }
-            })
+            array.fold_axis(ax, first, |&acc, &x| if x > acc { x } else { acc })
         })?;
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
     }
@@ -1886,9 +2038,7 @@ where
                 panic!("Array is empty! Cannot reduce over empty array");
             };
             // Fold along the specified axis to find minimum values
-            array.fold_axis(ax, first, |&acc, &x| {
-                if x < acc { x } else { acc }
-            })
+            array.fold_axis(ax, first, |&acc, &x| if x < acc { x } else { acc })
         })?;
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
     }
@@ -2026,7 +2176,6 @@ where
         }
     }
 
-
     fn conv2d(
         &self,
         filter: &dyn StorageBackend<T>,
@@ -2083,50 +2232,7 @@ where
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
 
-    fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-        T: rand_distr::num_traits::Zero,
-    {
-        // Create ndarray with zeros directly - more efficient than device layer
-        let data = ArrayD::zeros(ndarray::IxDyn(shape));
-        Ok(Box::new(CPUOwnedStorage::new(data)))
-    }
 
-    fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-        T: rand_distr::num_traits::One,
-    {
-        // Create ndarray with ones directly
-        let data = ArrayD::ones(ndarray::IxDyn(shape));
-        Ok(Box::new(CPUOwnedStorage::new(data)))
-    }
-
-    fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-    {
-        // Create ndarray filled with specific value
-        let data = ArrayD::from_elem(ndarray::IxDyn(shape), value);
-        Ok(Box::new(CPUOwnedStorage::new(data)))
-    }
-
-    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
-    where
-        Self: Sized,
-        StandardUniform: rand_distr::Distribution<T>,
-    {
-        let mut rng = rand::rng();
-        let total_elements: usize = shape.iter().product();
-        let two = <T as CPUFloat>::from_f64(2.0).expect("Cannot cast from f64");
-        let one = <T as CPUFloat>::one();
-        let data: Vec<T> = (0..total_elements)
-                    .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
-                    .collect();
-        let data_array  = ArrayD::from_shape_vec(IxDyn(shape), data).map_err(|e| format!("Failed to create array from data: {}", e))?;
-        Ok(Box::new(CPUOwnedStorage::new(data_array)))
-    }
 }
 
 #[cfg(feature = "cuda")]
@@ -3047,14 +3153,17 @@ where
                 .get_cuda_ops()
                 .ok_or("Failed to get CUDA operations backend")?;
 
-            let result_cuda = cuda_ops.conv2d(&self.cuda_data, &filter_gpu.cuda_data, stride, padding)?;
+            let result_cuda =
+                cuda_ops.conv2d(&self.cuda_data, &filter_gpu.cuda_data, stride, padding)?;
             Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
         } else {
             // Mixed GPU/CPU - fall back to CPU computation
-            Err("Mixed GPU/CPU convolution not supported - move both tensors to same device".to_string())
+            Err(
+                "Mixed GPU/CPU convolution not supported - move both tensors to same device"
+                    .to_string(),
+            )
         }
     }
-
 
     // Note that this ops require moving the data to the CPU
     fn iter_values(&self) -> Result<Vec<T>, String> {
@@ -3101,8 +3210,13 @@ where
         self.get_flat(flat_index)
     }
 
+}
 
-    fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+#[cfg(feature = "cuda")]
+impl <T> GPUOwnedStorage<T>{
+
+
+    pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
         T: cudarc::driver::ValidAsZeroBits,
@@ -3110,50 +3224,65 @@ where
         // Get default CUDA backend from manager
         use crate::backend::manager::get_backend;
         let backend = get_backend();
-        let cuda_backend = backend.cuda_backend()
-            .ok_or("CUDA backend not available")?;
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
         // Create GPU tensor with zeros directly
         let cuda_tensor = cuda_backend.zeros(shape)?;
         Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
     }
 
-    fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    pub fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
     {
         use crate::backend::manager::get_backend;
         let backend = get_backend();
-        let cuda_backend = backend.cuda_backend()
-            .ok_or("CUDA backend not available")?;
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
         // Create GPU tensor with ones directly
         let cuda_tensor = cuda_backend.ones(shape)?;
         Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
     }
 
-    fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    pub fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
     {
         use crate::backend::manager::get_backend;
         let backend = get_backend();
-        let cuda_backend = backend.cuda_backend()
-            .ok_or("CUDA backend not available")?;
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
         // Create GPU tensor filled with value
         let cuda_tensor = cuda_backend.full(shape, value)?;
         Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
     }
 
-    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    pub fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
-        Self: Sized {
+        Self: Sized,
+    {
         let backend = get_backend();
-        let cuda_backend = backend.cuda_backend()
-            .ok_or("CUDA backend not available")?;
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
         let cuda_tensor = cuda_backend.randn(shape, value)?;
         Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
     }
+
+    pub fn where_condition(
+
+        condition: &dyn StorageBackend<T>,
+        true_vals: &dyn StorageBackend<T>,
+        false_vals: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
+        if condition.is_gpu() && true_vals.is_gpu() && false_vals.i_gpu() {
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = cuda_backend.where_condition(condition.cuda_data, true_vals.cuda_data, false_vals.cuda_data);
+        Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
+    } else {
+        Err("Not all provided tensors are on GPU storage")
+    }
+}
 }

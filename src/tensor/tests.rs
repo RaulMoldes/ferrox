@@ -11,8 +11,8 @@ mod tests {
     {
         assert_eq!(a.shape(), b.shape(), "Shapes don't match");
 
-        let a_data = a.data.as_slice().unwrap();
-        let b_data = b.data.as_slice().unwrap();
+        let a_data = a.as_slice().unwrap();
+        let b_data = b.as_slice().unwrap();
 
         for (i, (&val_a, &val_b)) in a_data.iter().zip(b_data.iter()).enumerate() {
             let diff = if val_a > val_b {
@@ -38,7 +38,8 @@ mod tests {
         assert_eq!(tensor.len(), 4);
         assert_eq!(tensor.device(), &cpu());
 
-        let zeros = Tensor::<f64>::zeros_with_device(&[3, 3], cpu()).expect("Failed to create zeroed tensor");
+        let zeros = Tensor::<f64>::zeros_with_device(&[3, 3], cpu())
+            .expect("Failed to create zeroed tensor");
         assert_eq!(zeros.shape(), &[3, 3]);
     }
 
@@ -63,13 +64,13 @@ mod tests {
 
         // Test Sigmoid (should be between 0 and 1)
         let sigmoid_result = input.sigmoid().expect("Error while computing sigmoid");
-        for &val in sigmoid_result.data().iter() {
-            assert!(val >= 0.0 && val <= 1.0);
-        }
+
+        assert!(sigmoid_result.all(|val| val >= 0.0 && val <= 1.0).unwrap());
+
 
         // Test Exp
         let exp_result = input.exp().expect("Error while computing exponentiation");
-        assert!(exp_result.data().iter().all(|&x| x > 0.0));
+        assert!(exp_result.all(|x| x > 0.0).unwrap());
 
         // Test Negate
         let neg_result = input.neg();
@@ -106,7 +107,10 @@ mod tests {
         // Explicit axes transpose
         let transposed_explicit = tensor_2d.transpose(Some(&[1, 0])).unwrap();
         assert_eq!(transposed_explicit.shape(), &[3, 2]);
-        assert_eq!(transposed_default.data(), transposed_explicit.data());
+        assert_eq!(
+            transposed_default.cpu_data(),
+            transposed_explicit.cpu_data()
+        );
 
         // Test 3D transpose
         let tensor_3d = Tensor::from_vec((0..24).map(|x| x as f64).collect(), &[2, 3, 4]).unwrap();
@@ -123,12 +127,12 @@ mod tests {
         let tensor_1d = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
         let transposed_1d = tensor_1d.transpose(None).unwrap();
         assert_eq!(transposed_1d.shape(), &[3]);
-        assert_eq!(transposed_1d.data(), tensor_1d.data());
+        assert_eq!(transposed_1d.cpu_data(), tensor_1d.cpu_data());
 
         let tensor_0d = Tensor::from_vec(vec![42.0], &[]).unwrap();
         let transposed_0d = tensor_0d.transpose(None).unwrap();
         assert_eq!(transposed_0d.shape(), &[]);
-        assert_eq!(transposed_0d.data(), tensor_0d.data());
+        assert_eq!(transposed_0d.cpu_data(), tensor_0d.cpu_data());
     }
 
     #[test]
@@ -165,7 +169,12 @@ mod tests {
 
         // Test unsqueeze
         let unsqueezed = squeezed.unsqueeze(1);
-        assert_eq!(unsqueezed.expect("Error while attempting to unsqueeze").shape(), &[3, 1]);
+        assert_eq!(
+            unsqueezed
+                .expect("Error while attempting to unsqueeze")
+                .shape(),
+            &[3, 1]
+        );
     }
 
     #[test]
@@ -189,11 +198,11 @@ mod tests {
 
         // Test sum
         let sum_all = tensor.sum(None).expect("Reduction error");
-        assert_eq!(sum_all.data().iter().next().unwrap(), &21.0);
+        assert_eq!(sum_all.first().unwrap(), 21.0);
 
         // Test mean
         let mean_all = tensor.mean(None).expect("Reduction error");
-        assert_eq!(mean_all.data().iter().next().unwrap(), &3.5);
+        assert_eq!(mean_all.first().unwrap(), 3.5);
 
         // Test sum along axis
         let sum_axis0 = tensor.sum(Some(&[0])).expect("Reduction error");

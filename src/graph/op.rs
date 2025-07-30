@@ -182,7 +182,7 @@ where
         }
         if let Some(axis) = self.axis {
             inputs[0].sum(Some(&[axis]))
-        }else {
+        } else {
             inputs[0].sum(None)
         }
     }
@@ -1023,24 +1023,27 @@ where
         // Gradient of abs(x):
         // ∂abs(x)/∂x = 1 if x > 0, -1 if x < 0, 0 if x = 0 (by convention)
 
-        let zero = <T as CPUNumber>::zero();
-        let one = <T as CPUNumber>::one();
-        let neg_one = -one;
+        let zero_tensor = Tensor::zeros(&inputs[0].shape())?;
 
-        let grad = Tensor::new_with_device(
-            ndarray::Zip::from(inputs[0].data())
-                .and(grad_output.data())
-                .map_collect(|&x, &grad_out| {
-                    if x > zero {
-                        grad_out
-                    } else if x < zero {
-                        grad_out * neg_one
-                    } else {
-                        zero // x == 0, gradient undefined, use 0 by convention
-                    }
-                }),
-            inputs[0].device().clone(),
-        );
+        // Create comparison masks using existing tensor operations
+        let positive_mask = inputs[0].greater_equal(&zero_tensor)?;  // x > 0
+        let negative_mask = inputs[0].less_equal(&zero_tensor)?;     // x < 0
+
+        // Create gradient tensors
+        let pos_grad = grad_output.clone();                        // +grad_output for positive
+        let neg_grad = grad_output.neg()?;                      // -grad_output for negative
+        let zero_grad = Tensor::zeros(grad_output.shape())?;          // zero for x=0
+
+
+        let grad = Tensor::where_condition(
+        &positive_mask,
+        &pos_grad,
+        &Tensor::where_condition(
+            &negative_mask,
+            &neg_grad,
+            &zero_grad
+        )?
+    )?;
 
         Ok(vec![grad])
     }

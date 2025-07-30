@@ -9,10 +9,8 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, Su
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-use rand_distr::StandardUniform;
 use rand_distr::Distribution;
-
-
+use rand_distr::StandardUniform;
 
 /// Trait that defines the basic operations and properties for CPUNumber types.
 /// This trait is designed to be implemented by both integer and floating-point types,

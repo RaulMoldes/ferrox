@@ -171,7 +171,7 @@ impl GraphVisualizer {
         if self.config.show_values {
             let data = &node.cached_data;
             if data.size() <= self.config.max_tensor_display {
-                write!(label, "\\nData: {:?}", data.data()).unwrap();
+                write!(label, "\\nData: {:?}", data.as_slice()).unwrap();
             }
         }
 
