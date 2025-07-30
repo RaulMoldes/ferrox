@@ -10,7 +10,6 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, Su
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
-
 /// Trait that defines the basic operations and properties for CPUNumber types.
 /// This trait is designed to be implemented by both integer and floating-point types,
 /// providing a common interface for arithmetic operations, comparisons, and conversions.
@@ -460,8 +459,21 @@ impl CPUNumber for i64 {
     }
 }
 
-// CUDA trait implementations - only compiled when cuda feature is enabled
-// These implementations ensure that f32, f64, i32, and i64 can be used with GPUFloat
+// ============= GPU TRAIT DEFINITIONS =============
+
+/// When CUDA is available, GPUFloat extends CPUFloat with GPU-specific requirements
+/// This trait requires both CPUFloat functionality and CUDA compatibility traits
+#[cfg(feature = "cuda")]
+pub trait GPUFloat: CPUFloat + DeviceRepr + ValidAsZeroBits + Unpin + 'static {}
+
+/// When CUDA is not available, GPUFloat is just an alias for CPUFloat
+/// This allows the same generic bounds to work regardless of CUDA availability
+#[cfg(not(feature = "cuda"))]
+pub trait GPUFloat: CPUFloat {}
+
+// ============= CUDA IMPLEMENTATIONS =============
+
+// When CUDA is enabled, implement GPUFloat for all types that satisfy the requirements
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
 #[cfg(feature = "cuda")]
 impl GPUFloat for f32 {}
@@ -475,28 +487,9 @@ impl GPUFloat for i32 {}
 #[cfg(feature = "cuda")]
 impl GPUFloat for i64 {}
 
-/// CUDA-compatible CPUNumber trait that extends CPUNumber with GPU-specific requirements.
-/// This trait is only available when the "cuda" feature is enabled, allowing the
-/// same code to compile with or without CUDA support.
-#[cfg(feature = "cuda")]
-pub trait GPUFloat: CPUNumber + DeviceRepr + ValidAsZeroBits + Unpin {}
+// ============= NON-CUDA IMPLEMENTATIONS =============
 
-#[cfg(feature = "cuda")]
-pub trait GPUFloat: CPUFloat + GPUFloat {
-    // Additional GPU-specific methods can be added here if needed
-}
-
-/// When CUDA is not available, GPUFloat is just an alias for CPUNumber.
-/// This allows the same generic bounds to work regardless of CUDA availability.
-#[cfg(not(feature = "cuda"))]
-pub trait GPUNumber: CPUNumber {}
-
-#[cfg(not(feature = "cuda"))]
-pub trait GPUFloat: CPUFloat {}
-
-// When CUDA is not available, provide blanket implementation for all CPUNumber types
-#[cfg(not(feature = "cuda"))]
-impl<T: CPUNumber> GPUNumber for T {}
-
+// When CUDA is not available, provide blanket implementation for all CPUFloat types
+// This ensures that all CPUFloat types automatically implement GPUFloat
 #[cfg(not(feature = "cuda"))]
 impl<T: CPUFloat> GPUFloat for T {}

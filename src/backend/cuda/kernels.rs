@@ -1,7 +1,7 @@
 // src/backend/cuda/kernels.rs
 #[allow(unused_imports)]
 use cudarc::driver::{
-    CudaStream, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg,
+    CudaFunction, CudaSlice, CudaStream, DeviceSlice, LaunchConfig, PushKernelArg,
 };
 use std::collections::HashMap;
 use std::sync::Arc;

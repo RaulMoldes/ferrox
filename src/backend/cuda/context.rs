@@ -16,14 +16,13 @@ use std::sync::Mutex;
 pub struct ContextManager {
     ctx: Arc<CudaContext>,
     stream_manager: StreamManager,
-    devices: Vec<usize> // List of devices available
+    devices: Vec<usize>, // List of devices available
 }
 
 unsafe impl Send for CudaContextManager {}
 unsafe impl Sync for CudaContextManager {}
 
 impl CudaContextManager {
-
     pub fn new() -> Result<Self, String> {
         self.from_device_id(0)?
     }
@@ -34,18 +33,15 @@ impl CudaContextManager {
         let stream_manager = StreamManager::new(&ctx);
         stream_manager.setup_parallel_streams(&ctx)?;
 
-        if let Some(compute_stream) = stream_manager.get_stream("compute"){
-
+        if let Some(compute_stream) = stream_manager.get_stream("compute") {
             // Initialize and load kernels during context creation
             let mut kernels = KernelManager::new(compute_stream);
             load_all_kernels(&mut kernels)?;
-
         } else {
             let default_stream = ctx.default_stream();
             let mut kernels = KernelManager::new(default_stream);
             load_all_kernels(&mut kernels)?;
         }
-
 
         Ok(Self {
             ctx,
@@ -54,7 +50,6 @@ impl CudaContextManager {
         })
     }
 
-
     // ============= GPU MEMORY MANAGEMENT =============
 
     /// Allocates zeroed memory on the GPU
@@ -62,10 +57,9 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-
-        let stream = match self.stream_manager.get_stream("memset"){
+        let stream = match self.stream_manager.get_stream("memset") {
             Some(memset_stream) => memset_stream,
-            None => self.stream_manager.default_stream()
+            None => self.stream_manager.default_stream(),
         };
 
         stream
@@ -78,10 +72,9 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr,
     {
-
-         let stream = match self.stream_manager.get_stream("memset"){
+        let stream = match self.stream_manager.get_stream("memset") {
             Some(memset_stream) => memset_stream,
-            None => self.stream_manager.default_stream()
+            None => self.stream_manager.default_stream(),
         };
 
         unsafe {
@@ -97,14 +90,12 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-
         self.alloc_zeros(data.len())?;
 
-        let stream = match self.stream_manager.get_stream("copy_h2d"){
+        let stream = match self.stream_manager.get_stream("copy_h2d") {
             Some(h2d_stream) => h2d_stream,
-            None => self.stream_manager.default_stream()
+            None => self.stream_manager.default_stream(),
         };
-
 
         // Copy data from host to device using the correct cudarc API
         unsafe {
@@ -124,9 +115,9 @@ impl CudaContextManager {
         // Allocate host buffer
         let mut host_buffer = vec![T::default(); data.len()];
 
-        let stream = match stream_manager.get_stream("copy_d2h"){
+        let stream = match stream_manager.get_stream("copy_d2h") {
             Some(d2h_stream) => d2h_stream,
-            None => stream_manager.default_stream()
+            None => stream_manager.default_stream(),
         };
 
         // Copy data from device to host using the correct cudarc API
@@ -158,7 +149,8 @@ impl CudaContextManager {
 
         // Copy data from device to device using the correct cudarc API
         unsafe {
-            self.stream_manager.default_stream() // Use default stream as we cannot go async on device to device transfers.
+            self.stream_manager
+                .default_stream() // Use default stream as we cannot go async on device to device transfers.
                 .memcpy_dtod(src, dst)
                 .map_err(|e| format!("Device to device copy failed: {}", e))?;
         }
@@ -170,7 +162,7 @@ impl CudaContextManager {
 
     /// Get device ID (compatibility method for tests)
     pub fn id(&self) -> usize {
-       self.ctx.ordinal()
+        self.ctx.ordinal()
     }
 
     /// Get device name for debugging
@@ -199,8 +191,6 @@ impl CudaContextManager {
             .synchronize()
             .map_err(|e| format!("CUDA synchronization failed: {}", e))
     }
-
-
 
     /// Access to underlying CUDA context
     pub fn context(&self) -> &Arc<CudaContext> {
@@ -353,25 +343,70 @@ where
         }
     }
 
-    /// Create tensor from CPU slice without taking ownership
-    /// This allows borrowing external data for GPU transfer
-    pub fn from_cpu_slice(
+    /// Create tensor from CPU ndarray without taking ownership
+    /// This allows borrowing external ndarray data for GPU transfer
+    pub fn from_cpu_array(
         context_manager: &CudaContextManager,
-        data: &[T],
-        shape: Vec<usize>,
+        array: &ArrayD<T>,
     ) -> Result<Self, String> {
+        let shape = array.shape().to_vec();
         let expected_size = shape.iter().product::<usize>();
-        if data.len() != expected_size {
+
+        // Get contiguous slice from ndarray
+        let data_slice = if array.is_standard_layout() {
+            // Array is already contiguous, can use as_slice directly
+            array
+                .as_slice()
+                .ok_or("Failed to get contiguous slice from ndarray")?
+        } else {
+            // Array is not contiguous, need to make it so
+            return Err("Non-contiguous arrays not supported. Use .to_owned() first.".to_string());
+        };
+
+        if data_slice.len() != expected_size {
             return Err(format!(
-                "Data length {} doesn't match shape {:?} (expected {})",
-                data.len(),
+                "Array size {} doesn't match shape {:?} (expected {})",
+                data_slice.len(),
                 shape,
                 expected_size
             ));
         }
 
-        // Transfer slice data to GPU - this copies the data to GPU
-        let cuda_data = context_manager.host_to_device(data)?;
+        // Transfer ndarray data to GPU - this copies the data to GPU
+        let cuda_data = context_manager.host_to_device(data_slice)?;
+        Ok(Self::new(cuda_data, shape))
+    }
+
+    /// Create tensor from CPU ndarray asynchronously without taking ownership
+    /// Useful for overlapping transfers with computation
+    pub fn from_cpu_array_async(
+        context_manager: &CudaContextManager,
+        array: &ArrayD<T>,
+        stream_name: Option<&str>,
+    ) -> Result<Self, String> {
+        let shape = array.shape().to_vec();
+        let expected_size = shape.iter().product::<usize>();
+
+        // Get contiguous slice from ndarray
+        let data_slice = if array.is_standard_layout() {
+            array
+                .as_slice()
+                .ok_or("Failed to get contiguous slice from ndarray")?
+        } else {
+            return Err("Non-contiguous arrays not supported. Use .to_owned() first.".to_string());
+        };
+
+        if data_slice.len() != expected_size {
+            return Err(format!(
+                "Array size {} doesn't match shape {:?} (expected {})",
+                data_slice.len(),
+                shape,
+                expected_size
+            ));
+        }
+
+        // Async transfer ndarray data to GPU
+        let cuda_data = context_manager.host_to_device_async(data_slice, stream_name)?;
         Ok(Self::new(cuda_data, shape))
     }
 
@@ -630,18 +665,71 @@ where
         Ok(())
     }
 
+    /// In-place transpose - permutes tensor axes without moving data
+    pub fn transpose(&mut self, axes: Option<&[usize]>) -> Result<(), String> {
+        match axes {
+            Some(axes_order) => {
+                // Validate axes specification - same logic as CPU version
+                if axes_order.len() != self.ndim() {
+                    return Err(format!(
+                        "Axes length {} doesn't match tensor dimensions {}",
+                        axes_order.len(),
+                        self.ndim()
+                    ));
+                }
 
-    /// In-place transpose for 2D tensors
-    pub fn transpose(&mut self) -> Result<(), String> {
-        if self.ndim() != 2 {
-            return Err("Transpose only works on 2D tensors".to_string());
+                // Verify axes is valid permutation
+                let mut sorted_axes = axes_order.to_vec();
+                sorted_axes.sort_unstable();
+                let expected: Vec<usize> = (0..self.ndim()).collect();
+                if sorted_axes != expected {
+                    return Err(format!(
+                        "Invalid axes permutation: {:?}. Must be a permutation of 0..{}",
+                        axes_order,
+                        self.ndim()
+                    ));
+                }
+
+                // Reorder shape and strides according to axes - reuse existing permute logic
+                let old_shape = self.shape.clone();
+                let old_strides = self.strides.clone();
+
+                for (new_idx, &old_idx) in axes_order.iter().enumerate() {
+                    self.shape[new_idx] = old_shape[old_idx];
+                    self.strides[new_idx] = old_strides[old_idx];
+                }
+
+                Ok(())
+            }
+            None => {
+                // Default transpose - reverse all axes order like CPU version
+                match self.ndim() {
+                    0 | 1 => {
+                        // 0D and 1D tensors unchanged by transpose
+                        Ok(())
+                    }
+                    2 => {
+                        // 2D matrices
+                        self.shape.swap(0, 1);
+                        self.strides.swap(0, 1);
+                    }
+                    _ => {
+                        // Higher dimensions - create reversed axes permutation
+                        let axes_order: Vec<usize> = (0..self.ndim()).rev().collect();
+
+                        let old_shape = self.shape.clone();
+                        let old_strides = self.strides.clone();
+
+                        for (new_idx, &old_idx) in axes_order.iter().enumerate() {
+                            self.shape[new_idx] = old_shape[old_idx];
+                            self.strides[new_idx] = old_strides[old_idx];
+                        }
+
+                        Ok(())
+                    }
+                }
+            }
         }
-
-        // Swap dimensions and strides
-        self.shape.swap(0, 1);
-        self.strides.swap(0, 1);
-
-        Ok(())
     }
 
     /// In-place permute dimensions

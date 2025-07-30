@@ -93,7 +93,7 @@ mod tests {
     fn test_cuda_tensor_creation() {
         if let Some(manager) = setup_context_manager() {
             let shape = vec![2, 3, 4];
-            let tensor = CudaTensor::<f32>::zeros(&manager, shape.clone());
+            let tensor = CudaTensor::alloc_init(&manager, shape.clone());
 
             assert!(tensor.is_ok());
 

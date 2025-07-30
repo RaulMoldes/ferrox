@@ -21,4 +21,4 @@ pub use device::default_device;
 pub use number::CPUFloat;
 pub use number::CPUNumber;
 pub use number::GPUFloat;
-pub use number::GPUNumber;
+

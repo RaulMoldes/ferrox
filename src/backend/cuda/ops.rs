@@ -106,7 +106,6 @@ impl<'a> CudaOps<'a> {
         self.full(shape, one)
     }
 
-
     pub fn randn<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
     where
         T: cudarc::driver::DeviceRepr
@@ -1003,7 +1002,6 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-
     /// IN - PLACE OPS (THIS DO NOT HAVE AN ASSOCIATED KERNEL SO DO NOT ATTEMPT TO SEARCH FOR IT)
     pub fn squeeze(&self, input: &mut CudaTensor<T>, axis: Option<usize>) -> Result<(), String> {
         input.squeeze(axis)?
@@ -1011,10 +1009,13 @@ impl<'a> CudaOps<'a> {
 
     pub fn unsqueeze(&self, input: &mut CudaTensor<T>, axis: usize) -> Result<(), String> {
         input.unsqueeze(axis)?
-
     }
 
-    pub fn broadcast_to(&self, input: &mut CudaTensor<T>, target_shape: &[usize]) -> Result<(), String> {
+    pub fn broadcast_to(
+        &self,
+        input: &mut CudaTensor<T>,
+        target_shape: &[usize],
+    ) -> Result<(), String> {
         input.broadcast_to(target_shape)?
     }
 
