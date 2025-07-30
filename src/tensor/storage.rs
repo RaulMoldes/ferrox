@@ -116,6 +116,21 @@ where
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+
+    /// Element-wise greater than comparison: self > other
+    /// Returns new storage with 1.0 for true, 0.0 for false
+    fn greater(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// Element-wise less than  comparison: self < other
+    /// Returns new storage with 1.0 for true, 0.0 for false
+    fn less(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
     /// Element-wise equality comparison: self == other
     /// Returns new storage with 1.0 for true, 0.0 for false
     fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
@@ -608,79 +623,37 @@ where
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let other_data = other.cpu_data()?;
-
-        if self.data.shape() != other_data.shape() {
-            return Err(format!(
-                "Shape mismatch for greater_equal: {:?} vs {:?}",
-                self.data.shape(),
-                other_data.shape()
-            ));
-        }
-
-        // Use ndarray's Zip for efficient element-wise comparison
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(other_data)
-            .map_collect(|&a, &b| {
-                if a >= b {
-                    <T as crate::backend::number::CPUNumber>::one()
-                } else {
-                    <T as crate::backend::number::CPUNumber>::zero()
-                }
-            });
-
-        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+        let storage = self.compare(other, |&a, &b| if a >= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
     }
 
     fn less_equal(
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let other_data = other.cpu_data()?;
+        let storage = self.compare(other, |&a, &b| if a <= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
+    }
 
-        if self.data.shape() != other_data.shape() {
-            return Err(format!(
-                "Shape mismatch for less_equal: {:?} vs {:?}",
-                self.data.shape(),
-                other_data.shape()
-            ));
-        }
+    fn greater(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| if a > b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
+    }
 
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(other_data)
-            .map_collect(|&a, &b| {
-                if a <= b {
-                    <T as crate::backend::number::CPUNumber>::one()
-                } else {
-                    <T as crate::backend::number::CPUNumber>::zero()
-                }
-            });
-
-        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+    fn less(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| if a < b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
     }
 
     fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let other_data = other.cpu_data()?;
-
-        if self.data.shape() != other_data.shape() {
-            return Err(format!(
-                "Shape mismatch for equal: {:?} vs {:?}",
-                self.data.shape(),
-                other_data.shape()
-            ));
-        }
-
-        let result_data = ndarray::Zip::from(&self.data)
-            .and(other_data)
-            .map_collect(|&a, &b| {
-                if a == b {
-                    <T as crate::backend::number::CPUNumber>::one()
-                } else {
-                    <T as crate::backend::number::CPUNumber>::zero()
-                }
-            });
-
-        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+        let storage = self.compare(other, |&a, &b| if a == b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
     }
 
     fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -1148,6 +1121,32 @@ where
 
 
 
+     /// Generic comparison method using ndarray::Zip for efficiency
+    /// This is a helper method to avoid code duplication in comparison operations
+    fn compare<F>(&self, other: &dyn StorageBackend<T>, comparison_fn: F) -> Result<CPUOwnedStorage<T>, String>
+    where
+        F: Fn(&T, &T) -> T,
+    {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for comparison: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Use ndarray's Zip for efficient element-wise comparison
+        let result_data = ndarray::Zip::from(&self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| comparison_fn(&a, &b));
+
+        // Return the owned storage result
+        Ok(CPUOwnedStorage::new(result_data))
+    }
+
+
 
     pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
@@ -1308,6 +1307,32 @@ where
                 Ok(CPUOwnedStorage::new(result))
             }
         }
+    }
+
+
+     /// Generic comparison method using ndarray::Zip for efficiency
+    /// This is a helper method to avoid code duplication in comparison operations
+    fn compare<F>(&self, other: &dyn StorageBackend<T>, comparison_fn: F) -> Result<CPUOwnedStorage<T>, String>
+    where
+        F: Fn(&T, &T) -> T,
+    {
+        let other_data = other.cpu_data()?;
+
+        if self.data.shape() != other_data.shape() {
+            return Err(format!(
+                "Shape mismatch for comparison: {:?} vs {:?}",
+                self.data.shape(),
+                other_data.shape()
+            ));
+        }
+
+        // Use ndarray's Zip for efficient element-wise comparison
+        let result_data = ndarray::Zip::from(&*self.data)
+            .and(other_data)
+            .map_collect(|&a, &b| comparison_fn(&a, &b));
+
+        // Return the owned storage result
+        Ok(CPUOwnedStorage::new(result_data))
     }
 
 
@@ -1759,79 +1784,38 @@ where
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let other_data = other.cpu_data()?;
-
-        if self.data.shape() != other_data.shape() {
-            return Err(format!(
-                "Shape mismatch for greater_equal: {:?} vs {:?}",
-                self.data.shape(),
-                other_data.shape()
-            ));
-        }
-
-        // Use ndarray's Zip for efficient element-wise comparison
-        let result_data = ndarray::Zip::from(&*self.data)
-            .and(other_data)
-            .map_collect(|&a, &b| {
-                if a >= b {
-                    <T as crate::backend::number::CPUNumber>::one()
-                } else {
-                    <T as crate::backend::number::CPUNumber>::zero()
-                }
-            });
-
-        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+        let storage = self.compare(other, |&a, &b| if a >= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
     }
 
     fn less_equal(
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let other_data = other.cpu_data()?;
+        let storage = self.compare(other, |&a, &b| if a <= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
+    }
 
-        if self.data.shape() != other_data.shape() {
-            return Err(format!(
-                "Shape mismatch for less_equal: {:?} vs {:?}",
-                self.data.shape(),
-                other_data.shape()
-            ));
-        }
+    fn greater(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| if a > b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
+    }
 
-        let result_data = ndarray::Zip::from(&*self.data)
-            .and(other_data)
-            .map_collect(|&a, &b| {
-                if a <= b {
-                    <T as crate::backend::number::CPUNumber>::one()
-                } else {
-                    <T as crate::backend::number::CPUNumber>::zero()
-                }
-            });
+    fn less(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| if a < b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
 
-        Ok(Box::new(CPUOwnedStorage::new(result_data)))
     }
 
     fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let other_data = other.cpu_data()?;
-
-        if self.data.shape() != other_data.shape() {
-            return Err(format!(
-                "Shape mismatch for equal: {:?} vs {:?}",
-                self.data.shape(),
-                other_data.shape()
-            ));
-        }
-
-        let result_data = ndarray::Zip::from(&*self.data)
-            .and(other_data)
-            .map_collect(|&a, &b| {
-                if a == b {
-                    <T as crate::backend::number::CPUNumber>::one()
-                } else {
-                    <T as crate::backend::number::CPUNumber>::zero()
-                }
-            });
-
-        Ok(Box::new(CPUOwnedStorage::new(result_data)))
+        let storage = self.compare(other, |&a, &b| if a == b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        Ok(Box::new(storage))
     }
 
     fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -2642,6 +2626,62 @@ where
 
         let result_cuda = cuda_ops.clamp(&self.cuda_data, min_val, max_val)?;
         Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+    }
+
+
+    fn greater(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            // Both tensors are on GPU - use CUDA kernels
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for greater_equal: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+                cuda_ops.greater(&self.cuda_data, &other_gpu.cuda_data)
+            })?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
+        }
+    }
+
+    fn less(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if other.is_gpu() {
+            let other_gpu = other
+                .as_any()
+                .and_then(|any| any.downcast_ref::<GPUOwnedStorage<T>>())
+                .ok_or("Failed to cast to GPU storage")?;
+
+            if self.shape() != other_gpu.shape() {
+                return Err(format!(
+                    "Shape mismatch for less_equal: {:?} vs {:?}",
+                    self.shape(),
+                    other_gpu.shape()
+                ));
+            }
+
+            let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
+                cuda_ops.less(&self.cuda_data, &other_gpu.cuda_data)
+            })?;
+            Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
+        } else {
+            Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
+        }
     }
 
     fn greater_equal(

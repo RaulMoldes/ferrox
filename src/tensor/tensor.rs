@@ -50,14 +50,24 @@ impl<T> Tensor<T>
 where
     T: GPUFloat + Clone,
 {
-    /// Get first element value - useful for reduced tensors like mean
+    /// Get first element value safely. Useful for reduced tensors like mean
     pub fn first(&self) -> Result<T, String> {
-        let cpu_data = self.cpu_data()?;
-        if cpu_data.is_empty() {
-            return Err("Cannot get first element of empty tensor".to_string());
+        let data = self.cpu_data()?;
+
+        // Handle 0-dimensional arrays (scalars from reductions)
+        if data.ndim() == 0 {
+            // For 0-dimensional arrays, use iter().next() instead of indexing
+            data.iter().next()
+                .copied()
+                .ok_or_else(|| "Empty 0-dimensional array".to_string())
+        } else if data.len() > 0 {
+            // For regular arrays, get first element
+            data.iter().next()
+                .copied()
+                .ok_or_else(|| "Empty array".to_string())
+        } else {
+            Err("Cannot get first element from empty tensor".to_string())
         }
-        // More explicit than iter().next().unwrap()
-        Ok(cpu_data[[0]].clone())
     }
 }
 
@@ -614,6 +624,38 @@ impl<T> Tensor<T>
 where
     T: GPUFloat + Clone,
 {
+
+
+
+     /// Element-wise greater than  comparison using storage trait
+    pub fn greater(&self, other: &Self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other
+            .storage
+            .as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.greater(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    /// Element-wise less than  comparison using storage trait
+    pub fn less(&self, other: &Self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other
+            .storage
+            .as_ref()
+            .ok_or("Other tensor has no storage backend")?;
+
+        let result_storage = storage.less(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device.clone())
+    }
     /// Element-wise greater than or equal comparison using storage trait
     pub fn greater_equal(&self, other: &Self) -> Result<Self, String> {
         let storage = self

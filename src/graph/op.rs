@@ -1026,8 +1026,8 @@ where
         let zero_tensor = Tensor::zeros(&inputs[0].shape())?;
 
         // Create comparison masks using existing tensor operations
-        let positive_mask = inputs[0].greater_equal(&zero_tensor)?;  // x > 0
-        let negative_mask = inputs[0].less_equal(&zero_tensor)?;     // x < 0
+        let positive_mask = inputs[0].greater(&zero_tensor)?;  // x > 0
+        let negative_mask = inputs[0].less(&zero_tensor)?;     // x < 0
 
         // Create gradient tensors
         let pos_grad = grad_output.clone();                        // +grad_output for positive
