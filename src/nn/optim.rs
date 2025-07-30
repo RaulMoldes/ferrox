@@ -251,7 +251,7 @@ where
                 // Initialize momentum buffer if it doesn't exist
                 self.momentum_buffers
                     .entry(param_node)
-                    .or_insert_with(|| Tensor::zeros(current_params.shape()));
+                    .or_insert_with(|| Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
 
                 let momentum_buffer = self.momentum_buffers.get_mut(&param_node).unwrap();
 
@@ -426,13 +426,13 @@ where
                 // Initialize moment estimates if they don't exist
                 if !self.first_moments.contains_key(&param_node) {
                     self.first_moments
-                        .insert(param_node, Tensor::zeros(current_params.shape()));
+                        .insert(param_node, Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
                     self.second_moments
-                        .insert(param_node, Tensor::zeros(current_params.shape()));
+                        .insert(param_node, Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
 
                     if self.amsgrad {
                         self.max_second_moments
-                            .insert(param_node, Tensor::zeros(current_params.shape()));
+                            .insert(param_node, Tensor::zeros(current_params.shape()).expect("Zeroed tensor failed to be created"));
                     }
                 }
 

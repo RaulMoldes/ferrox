@@ -95,7 +95,7 @@ where
 
         // Initialize bias to zeros if requested
         let bias_param = if bias {
-            let bias_data = Tensor::zeros(&[out_features]);
+            let bias_data = Tensor::zeros(&[out_features]).expect("Failed to create zeroed tensor");;
             Some(Parameter::new(bias_data))
         } else {
             None
@@ -129,7 +129,7 @@ where
         let weight = Parameter::from_init(&[out_features, in_features], weight_init);
 
         let bias_param = if bias {
-            let bias_data = Tensor::zeros(&[out_features]);
+            let bias_data = Tensor::zeros(&[out_features]).expect("Failed to create zeroed tensor");;
             Some(Parameter::new(bias_data))
         } else {
             None

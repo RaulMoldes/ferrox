@@ -8,7 +8,7 @@ use crate::tensor::Tensor;
 /// applied to a vector space. These affine transformations or affine applications can be defined as a linear transformation followed by a translation.
 ///
 /// ```text
-/// y = Ax + b   
+/// y = Ax + b
 /// ```
 /// where `A` is a matrix, `x` is the input vector, `b` is a bias vector, and `y` is the output vector.
 /// These can be understood also as a rotation, scaling, shearing, or translation of the input vector.
@@ -20,7 +20,7 @@ use crate::tensor::Tensor;
 /// The objective of these parameters is to
 /// allow the model to learn the optimal scale and shift for each feature,
 /// which can help the model to adapt better to the data distribution.
-///  
+///
 /// Batch Normalization layer.
 ///
 /// Applies batch normalization over a batch of inputs as described in the paper
@@ -117,22 +117,22 @@ where
 
         // Initialize weight and bias
         let (weight, bias) = if affine {
-            let weight_data = Tensor::ones(&[num_features]); // Initialize γ to 1
-            let bias_data = Tensor::zeros(&[num_features]); // Initialize β to 0
+            let weight_data = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");; // Initialize γ to 1
+            let bias_data = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");; // Initialize β to 0
             (
                 Parameter::new_named(weight_data, "weight".to_string()),
                 Parameter::new_named(bias_data, "bias".to_string()),
             )
         } else {
             // Create dummy parameters that won't be used
-            let dummy_weight = Tensor::ones(&[num_features]);
-            let dummy_bias = Tensor::zeros(&[num_features]);
+            let dummy_weight = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");;
+            let dummy_bias = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");;
             (Parameter::new(dummy_weight), Parameter::new(dummy_bias))
         };
 
         // Initialize running statistics
-        let running_mean = Tensor::zeros(&[num_features]);
-        let running_var = Tensor::ones(&[num_features]); // Initialize to 1
+        let running_mean = Tensor::zeros(&[num_features]).expect("Failed to create zeroed tensor");;
+        let running_var = Tensor::ones(&[num_features]).expect("Failed to create ones tensor");; // Initialize to 1
 
         Self {
             num_features,
@@ -458,16 +458,16 @@ where
 
         // Initialize weight and bias
         let (weight, bias) = if elementwise_affine {
-            let weight_data = Tensor::ones(&[total_size]); // Initialize γ to 1
-            let bias_data = Tensor::zeros(&[total_size]); // Initialize β to 0
+            let weight_data = Tensor::ones(&[total_size]).expect("Failed to create ones tensor"); // Initialize γ to 1
+            let bias_data = Tensor::zeros(&[total_size]).expect("Failed to create zeroed tensor"); // Initialize β to 0
             (
                 Parameter::new_named(weight_data, "weight".to_string()),
                 Parameter::new_named(bias_data, "bias".to_string()),
             )
         } else {
             // Create dummy parameters
-            let dummy_weight = Tensor::ones(&[total_size]);
-            let dummy_bias = Tensor::zeros(&[total_size]);
+            let dummy_weight = Tensor::ones(&[total_size]).expect("Failed to create zeroed tensor");
+            let dummy_bias = Tensor::zeros(&[total_size]).expect("Failed to create zeroed tensor");
             (Parameter::new(dummy_weight), Parameter::new(dummy_bias))
         };
 

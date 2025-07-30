@@ -38,7 +38,7 @@ mod tests {
         assert_eq!(tensor.len(), 4);
         assert_eq!(tensor.device(), &cpu());
 
-        let zeros = Tensor::<f64>::zeros_with_device(&[3, 3], cpu());
+        let zeros = Tensor::<f64>::zeros_with_device(&[3, 3], cpu()).expect("Failed to create zeroed tensor");
         assert_eq!(zeros.shape(), &[3, 3]);
     }
 

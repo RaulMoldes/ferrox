@@ -76,7 +76,7 @@ where
 {
     // Create zeros tensor
     pub fn zeros(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
-        let tensor = Tensor::zeros(shape);
+        let tensor = Tensor::zeros(shape).expect("Failed to create zeroed tensor");
         self.create_tensor(tensor, requires_grad)
     }
 }
@@ -88,7 +88,7 @@ where
     // Create ones tensor
 
     pub fn ones(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
-        let tensor = Tensor::ones(shape);
+        let tensor = Tensor::ones(shape).expect("Failed to create ones Tensor");
         self.create_tensor(tensor, requires_grad)
     }
 }
@@ -123,7 +123,7 @@ where
             Some(grad) => grad,
             None => {
                 let output_data = self.nodes[&output_tensor].borrow().cached_data.clone();
-                Tensor::ones(output_data.shape())
+                Tensor::ones(output_data.shape())?
             }
         };
 

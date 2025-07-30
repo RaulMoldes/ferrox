@@ -3,6 +3,8 @@ use crate::backend::{Device, default_device};
 use crate::tensor::storage::{CPUOwnedStorage, StorageBackend};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use std::ops::{Index, IndexMut};
+use rand_distr::Distribution;
+use rand::distr::StandardUniform;
 
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug)]
@@ -48,23 +50,68 @@ where
     }
 }
 
-#[cfg(feature = "cuda")]
+
 impl<T> CPUTensor<T>
 where
-    T: GPUFloat,
+    T: GPUFloat + Clone + rand_distr::num_traits::One,
 {
-    /// Helper to eliminate repeated backend access pattern.
-    /// This removes the need to repeatedly call `get_backend()` in every method.
-    /// Allows us to execute a closure with the CUDA backend.
-    fn with_cuda_backend<F, R>(&self, f: F) -> Result<R, String>
-    where
-        F: FnOnce(&crate::backend::cuda::CudaBackend) -> Result<R, String>,
+
+     pub fn zeros(shape: &[usize]) -> Result<Self, String> {
+        let device = default_device();
+        let storage = CPUOwnedStorage::<T>::zeros(shape)?;
+        Self::from_storage_backend(storage, device)
+    }
+
+    pub fn zeros_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
+        let storage = CPUOwnedStorage::<T>::zeros(shape)?;
+        Self::from_storage_backend(storage, device)
+    }
+
+    // New ones implementation using storage backend
+    pub fn ones(shape: &[usize]) -> Result<Self, String> {
+        let device = default_device();
+        let storage = CPUOwnedStorage::<T>::ones(shape)?;
+        Self::from_storage_backend(storage, device)
+    }
+
+    pub fn ones_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
+        let storage = CPUOwnedStorage::<T>::ones(shape)?;
+        Self::from_storage_backend(storage, device)
+    }
+
+    // Additional initialization method for completeness
+    pub fn full(shape: &[usize], value: T) -> Result<Self, String> {
+        let device = default_device();
+        let storage = CPUOwnedStorage::<T>::full(shape, value)?;
+        Self::from_storage_backend(storage, device)
+    }
+
+    // Random normal distribution initialization using storage backend
+    pub fn randn(shape: &[usize]) -> Result<Self, String>
+    where StandardUniform: Distribution<T>
     {
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-        f(cuda_backend)
+        let device = default_device();
+        let storage = CPUOwnedStorage::<T>::randn(shape)?;
+        Self::from_storage_backend(storage, device)
+    }
+
+    pub fn randn_with_device(shape: &[usize], device: Device) -> Result<Self, String>
+    where StandardUniform: Distribution<T>
+    {
+        // Choose storage type based on device
+        let storage: Box<dyn StorageBackend<T>> = match device {
+            Device::CPU => CPUOwnedStorage::<T>::randn(shape)?,
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_) => {
+                // Use GPU storage for CUDA devices
+                crate::tensor::storage::GPUOwnedStorage::<T>::randn(shape)?
+            }
+        };
+
+        Self::from_storage_backend(storage, device)
     }
 }
+
 
 // Main implementation block with basic operations
 impl<T> CPUTensor<T>
@@ -130,35 +177,7 @@ where
         }
     }
 
-    // Random numbers
-    // Generates a tensor with random numbers from a normal distribution using the storage backend approach
-    pub fn randn(shape: &[usize]) -> Self {
-        let device = crate::backend::default_device();
 
-        let data_f64 = device.randn(shape);
-        let data =
-            data_f64.mapv(|x| <T as crate::backend::number::CPUNumber>::from_f64(x).unwrap());
-        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
-        Self {
-            data, // TODO: Remove this field in final migration step
-            device,
-            storage: Some(Box::new(storage)),
-        }
-    }
-
-    // Random numbers with specific device
-    pub fn randn_with_device(shape: &[usize], device: crate::backend::Device) -> Self {
-        // Generates a tensor with random numbers from a normal distribution.
-        let data_f64 = device.randn(shape);
-        let data =
-            data_f64.mapv(|x| <T as crate::backend::number::CPUNumber>::from_f64(x).unwrap());
-        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
-        Self {
-            data, // TODO: Remove this field in final migration step
-            device,
-            storage: Some(Box::new(storage)),
-        }
-    }
 
     // Random integer numbers
     // Generates a tensor with random integer numbers using the storage backend approach
@@ -673,6 +692,43 @@ where
 
         let result_storage = storage.equal(other_storage.as_ref())?;
         Self::from_storage_backend(result_storage, self.device.clone())
+    }
+
+    // Check if all elements are equal between tensors - efficient shortcut for PartialEq
+    /// Returns true if all corresponding elements are equal, false otherwise
+    pub fn all_equal(&self, other: &Self) -> Result<bool, String> {
+        // Early exit checks
+        if self.device != other.device {
+            return Ok(false);
+        }
+
+        if self.shape() != other.shape() {
+            return Ok(false);
+        }
+
+        // For small tensors, direct comparison might be faster
+        if self.size() <= 1000 {
+            return match (self.cpu_data(), other.cpu_data()) {
+                (Ok(self_data), Ok(other_data)) => {
+                    Ok(self_data == other_data)
+                }
+                _ => {
+                    // For GPU tensors or other cases, use the equal method
+                    let equal_tensor = self.equal(other)?;
+                    let equal_data = equal_tensor.cpu_data()?;
+
+                    // Check if all elements are 1.0 (true)
+                    Ok(equal_data.iter().all(|&x| x == crate::backend::number::CPUNumber::one()))
+                }
+            };
+        }
+
+        // For larger tensors, use the optimized equal method
+        let equal_tensor = self.equal(other)?;
+        let equal_data = equal_tensor.cpu_data()?;
+
+        // Check if all elements are 1.0 (true)
+        Ok(equal_data.iter().all(|&x| x == crate::backend::number::CPUNumber::one()))
     }
 
     /// Logical NOT operation using storage trait
@@ -1254,78 +1310,10 @@ where
 
 }
 
-// Implementation for tensor creation with Zero trait
-impl<T> CPUTensor<T>
-where
-    T: GPUFloat + Clone + rand_distr::num_traits::Zero,
-{
-    // Initialization functions for creating tensors with specific shapes.
-    // They all have a `_with_device` variant that allows specifying the device.
-    // Zeroes
-    pub fn zeros(shape: &[usize]) -> Self {
-        let device = default_device();
-        let data = device.zeros(shape);
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self {
-            data,
-            device,
-            storage: Some(Box::new(storage)),
-        }
-    }
 
-    pub fn zeros_with_device(shape: &[usize], device: Device) -> Self {
-        let data = device.zeros(shape);
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self {
-            data,
-            device,
-            storage: Some(Box::new(storage)),
-        }
-    }
-}
-
-// Implementation for tensor creation with One trait
-impl<T> CPUTensor<T>
-where
-    T: GPUFloat,
-{
-    // Ones
-    pub fn ones(shape: &[usize]) -> Self {
-        let device = default_device();
-        let data = device.ones(shape);
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self {
-            data,
-            device,
-            storage: Some(Box::new(storage)),
-        }
-    }
-
-    pub fn ones_with_device(shape: &[usize], device: Device) -> Self {
-        let data = device.ones(shape);
-        let storage = CPUOwnedStorage::new(data.clone());
-        Self {
-            data,
-            device,
-            storage: Some(Box::new(storage)),
-        }
-    }
-}
-
-// Implement equality for testing, and because will be useful in the future.
-impl<T> PartialEq for CPUTensor<T>
-where
-    T: GPUFloat + Clone + PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.data == other.data && self.device == other.device
-    }
-}
-
-impl<T> Eq for CPUTensor<T> where T: GPUFloat + Clone + PartialEq {}
-
+/// ITERATOR METHODS
 pub struct CPUTensorIterator<T> {
-    data: ndarray::ArrayD<T>,
+    values: Vec<T>,
     index: usize,
 }
 
@@ -1336,8 +1324,8 @@ where
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.data.len() {
-            let item = self.data.as_slice().unwrap()[self.index];
+        if self.index < self.values.len() {
+            let item = self.values[self.index];
             self.index += 1;
             Some(item)
         } else {
@@ -1346,7 +1334,7 @@ where
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.data.len().saturating_sub(self.index);
+        let remaining = self.values.len().saturating_sub(self.index);
         (remaining, Some(remaining))
     }
 }
@@ -1356,11 +1344,11 @@ where
     T: Copy,
 {
     fn len(&self) -> usize {
-        self.data.len().saturating_sub(self.index)
+        self.values.len().saturating_sub(self.index)
     }
 }
 
-// Implementation for owned Tensor (consumes the tensor)
+// Owned tensor iteration using storage backend
 impl<T> IntoIterator for CPUTensor<T>
 where
     T: GPUFloat + Clone + Copy,
@@ -1369,14 +1357,18 @@ where
     type IntoIter = CPUTensorIterator<T>;
 
     fn into_iter(self) -> Self::IntoIter {
+        let storage = self.storage.expect("Tensor must have storage backend");
+        // Use storage backend to get values instead of direct data access
+        let values = storage.iter_values().unwrap_or_else(|_| Vec::new());
+
         CPUTensorIterator {
-            data: self.data,
+            values,
             index: 0,
         }
     }
 }
 
-// Implementation for borrowed Tensor (&Tensor)
+// For borrowed tensors, we must work with CPU data through storage backend
 impl<'a, T> IntoIterator for &'a CPUTensor<T>
 where
     T: GPUFloat + Clone,
@@ -1385,11 +1377,13 @@ where
     type IntoIter = ndarray::iter::Iter<'a, T, ndarray::IxDyn>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.data.iter()
+        // Must use storage backend - no fallback since data field is removed
+        self.cpu_data()
+            .expect("Tensor must have valid CPU storage for iteration")
+            .iter()
     }
 }
 
-// Implementation for mutable borrowed Tensor (&mut Tensor)
 impl<'a, T> IntoIterator for &'a mut CPUTensor<T>
 where
     T: GPUFloat + Clone,
@@ -1398,10 +1392,12 @@ where
     type IntoIter = ndarray::iter::IterMut<'a, T, ndarray::IxDyn>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.data.iter_mut()
+        // Must use storage backend - no fallback since data field is removed
+        self.cpu_data_mut()
+            .expect("Tensor must have valid mutable CPU storage for iteration")
+            .iter_mut()
     }
 }
-
 // Implementation for single usize index (flat indexing for any dimensional tensor)
 // This attempts to mimic the behavior of NumPy's flat indexing,
 // therefore you could access elements in a multi-dimensional tensor as it was a flat array.
@@ -1699,3 +1695,31 @@ where
         &mut self.data[IxDyn(indices)]
     }
 }
+
+
+
+
+impl<T> PartialEq for CPUTensor<T>
+where
+    T: GPUFloat + Clone + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        // Use the optimized all_equal method which leverages CUDA kernels when available
+        // This provides the best performance for both CPU and GPU tensors
+        match self.all_equal(other) {
+            Ok(result) => result,
+            Err(_) => {
+                // Fallback to basic comparison if all_equal fails
+                // This should rarely happen but provides safety
+                self.device == other.device
+                    && self.shape() == other.shape()
+                    && match (self.cpu_data(), other.cpu_data()) {
+                        (Ok(self_data), Ok(other_data)) => self_data == other_data,
+                        _ => false,
+                    }
+            }
+        }
+    }
+}
+
+impl<T> Eq for CPUTensor<T> where T: GPUFloat + Clone + PartialEq {}

@@ -2,7 +2,9 @@
 use ndarray::{ArrayD, IxDyn};
 use ndarray::Axis;
 use std::borrow::Cow;
+use rand::Rng;
 use std::fmt::Debug;
+use rand_distr::StandardUniform;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaTensor;
@@ -211,6 +213,36 @@ fn conv2d(
     stride: (usize, usize),
     padding: (usize, usize),
 ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+
+/// Iterator over storage elements - returns owned values
+/// This is the most flexible iteration method that works for both CPU and GPU
+fn iter_values(&self) -> Result<Vec<T>, String>;
+
+/// Get flat index access to elements (if supported by storage)
+/// Returns None if storage doesn't support flat indexing
+fn get_flat(&self, index: usize) -> Result<Option<T>, String>;
+
+/// Get multi-dimensional index access to elements (if supported)
+/// Returns None if storage doesn't support multi-dim indexing
+fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
+
+fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+where Self: Sized;
+
+fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+where
+    Self: Sized;
+
+fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+where
+    Self: Sized;
+
+    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+where
+    Self: Sized,
+    StandardUniform: rand_distr::Distribution<T>;
+
 }
 
 /// Owned CPU storage
@@ -1025,6 +1057,86 @@ where
 
         let result = self.conv2d_impl(filter_data, stride, padding)?;
         Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn iter_values(&self) -> Result<Vec<T>, String> {
+        // Efficient cloning of all values for iteration
+        Ok(self.data.iter().cloned().collect())
+    }
+
+    fn get_flat(&self, index: usize) -> Result<Option<T>, String> {
+        // Flat indexing using ndarray's slice functionality
+        match self.data.as_slice() {
+            Some(slice) => {
+                if index < slice.len() {
+                    Ok(Some(slice[index]))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => Err("Data is not contiguous for flat indexing".to_string()),
+        }
+    }
+
+    fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String> {
+        // Multi-dimensional indexing using ndarray
+        if indices.len() != self.data.ndim() {
+            return Ok(None);
+        }
+
+        // Check bounds before accessing
+        for (i, &idx) in indices.iter().enumerate() {
+            if idx >= self.data.shape()[i] {
+                return Ok(None);
+            }
+        }
+
+        Ok(Some(self.data[ndarray::IxDyn(indices)]))
+    }
+
+    fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::Zero,
+    {
+        // Create ndarray with zeros directly - more efficient than device layer
+        let data = ndarray::ArrayD::zeros(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::One,
+    {
+        // Create ndarray with ones directly
+        let data = ndarray::ArrayD::ones(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+    {
+        // Create ndarray filled with specific value
+        let data = ndarray::ArrayD::from_elem(ndarray::IxDyn(shape), value);
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        StandardUniform: rand_distr::Distribution<T>,
+    {
+        let mut rng = rand::rng();
+        let total_elements: usize = shape.iter().product();
+        let two = <T as CPUFloat>::from_f64(2.0).expect("Cannot cast from f64");
+        let one = <T as CPUFloat>::one();
+        let data: Vec<T> = (0..total_elements)
+                    .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
+                    .collect();
+        let data_array  = ArrayD::from_shape_vec(IxDyn(shape), data).map_err(|e| format!("Failed to create array from data: {}", e))?;
+        Ok(Box::new(CPUOwnedStorage::new(data_array)))
     }
 }
 
@@ -1934,6 +2046,86 @@ where
 
         let result = self.conv2d_impl(filter_data, stride, padding)?;
         Ok(Box::new(CPUOwnedStorage::new(result)))
+    }
+
+    fn iter_values(&self) -> Result<Vec<T>, String> {
+        // Efficient cloning of all values for iteration
+        Ok(self.data.iter().cloned().collect())
+    }
+
+    fn get_flat(&self, index: usize) -> Result<Option<T>, String> {
+        // Flat indexing using ndarray's slice functionality
+        match self.data.as_slice() {
+            Some(slice) => {
+                if index < slice.len() {
+                    Ok(Some(slice[index]))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => Err("Data is not contiguous for flat indexing".to_string()),
+        }
+    }
+
+    fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String> {
+        // Multi-dimensional indexing using ndarray
+        if indices.len() != self.data.ndim() {
+            return Ok(None);
+        }
+
+        // Check bounds before accessing
+        for (i, &idx) in indices.iter().enumerate() {
+            if idx >= self.data.shape()[i] {
+                return Ok(None);
+            }
+        }
+
+        Ok(Some(self.data[ndarray::IxDyn(indices)]))
+    }
+
+    fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::Zero,
+    {
+        // Create ndarray with zeros directly - more efficient than device layer
+        let data = ArrayD::zeros(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: rand_distr::num_traits::One,
+    {
+        // Create ndarray with ones directly
+        let data = ArrayD::ones(ndarray::IxDyn(shape));
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+    {
+        // Create ndarray filled with specific value
+        let data = ArrayD::from_elem(ndarray::IxDyn(shape), value);
+        Ok(Box::new(CPUOwnedStorage::new(data)))
+    }
+
+    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        StandardUniform: rand_distr::Distribution<T>,
+    {
+        let mut rng = rand::rng();
+        let total_elements: usize = shape.iter().product();
+        let two = <T as CPUFloat>::from_f64(2.0).expect("Cannot cast from f64");
+        let one = <T as CPUFloat>::one();
+        let data: Vec<T> = (0..total_elements)
+                    .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
+                    .collect();
+        let data_array  = ArrayD::from_shape_vec(IxDyn(shape), data).map_err(|e| format!("Failed to create array from data: {}", e))?;
+        Ok(Box::new(CPUOwnedStorage::new(data_array)))
     }
 }
 
@@ -2861,5 +3053,107 @@ where
             // Mixed GPU/CPU - fall back to CPU computation
             Err("Mixed GPU/CPU convolution not supported - move both tensors to same device".to_string())
         }
+    }
+
+
+    // Note that this ops require moving the data to the CPU
+    fn iter_values(&self) -> Result<Vec<T>, String> {
+        // Use cuda_data to get ops for CPU sync
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        self.cuda_data.to_vec(cuda_ops)
+    }
+
+    fn get_flat(&self, index: usize) -> Result<Option<T>, String> {
+        // GPU flat access requires CPU sync - expensive operation
+        if index >= self.size() {
+            return Ok(None);
+        }
+
+        let values = self.iter_values()?;
+        Ok(Some(values[index]))
+    }
+
+    fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String> {
+        // GPU multi-dimensional access
+        if indices.len() != self.shape().len() {
+            return Ok(None);
+        }
+
+        // Check bounds
+        for (i, &idx) in indices.iter().enumerate() {
+            if idx >= self.shape()[i] {
+                return Ok(None);
+            }
+        }
+
+        // Convert multi-dim indices to flat index
+        let mut flat_index = 0;
+        let mut stride = 1;
+        for i in (0..indices.len()).rev() {
+            flat_index += indices[i] * stride;
+            stride *= self.shape()[i];
+        }
+
+        self.get_flat(flat_index)
+    }
+
+
+    fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+        T: cudarc::driver::ValidAsZeroBits,
+    {
+        // Get default CUDA backend from manager
+        use crate::backend::manager::get_backend;
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend()
+            .ok_or("CUDA backend not available")?;
+
+        // Create GPU tensor with zeros directly
+        let cuda_tensor = cuda_backend.zeros(shape)?;
+        Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
+    }
+
+    fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+    {
+        use crate::backend::manager::get_backend;
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend()
+            .ok_or("CUDA backend not available")?;
+
+        // Create GPU tensor with ones directly
+        let cuda_tensor = cuda_backend.ones(shape)?;
+        Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
+    }
+
+    fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized,
+    {
+        use crate::backend::manager::get_backend;
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend()
+            .ok_or("CUDA backend not available")?;
+
+        // Create GPU tensor filled with value
+        let cuda_tensor = cuda_backend.full(shape, value)?;
+        Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
+    }
+
+    fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        Self: Sized {
+        let backend = get_backend();
+        let cuda_backend = backend.cuda_backend()
+            .ok_or("CUDA backend not available")?;
+
+        let cuda_tensor = cuda_backend.randn(shape, value)?;
+        Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
     }
 }

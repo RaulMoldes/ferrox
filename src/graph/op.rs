@@ -381,7 +381,7 @@ where
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // d(a/b)/da = 1/b, d(a/b)/db = -a/b^2
-        let one_over_b = Tensor::ones(inputs[1].shape()).div(&inputs[1])?;
+        let one_over_b = Tensor::ones(inputs[1].shape())?.div(&inputs[1])?;
         let grad_a = grad_output.mul(&one_over_b)?;
 
         let b_squared = inputs[1].mul(&inputs[1])?;
@@ -485,7 +485,7 @@ where
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // d(ln(x))/dx = 1/x
-        let one_over_x = Tensor::ones(inputs[0].shape()).div(&inputs[0])?;
+        let one_over_x = Tensor::ones(inputs[0].shape())?.div(&inputs[0])?;
         let grad = grad_output.mul(&one_over_x)?;
         Ok(vec![grad])
     }
@@ -958,11 +958,11 @@ where
         // Special case: at x = 0, we return 0 instead of infinity
 
         let eps = <T as CPUFloat>::from_f64(1e-12).unwrap_or(<T as CPUFloat>::epsilon());
-        let two_tensor = Tensor::<T>::ones(inputs[0].shape())
+        let two_tensor = Tensor::<T>::ones(inputs[0].shape())?
             .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap())?;
 
         // Create mask for values close to zero
-        let eps_tensor = Tensor::<T>::ones(inputs[0].shape()).mul_scalar(eps)?;
+        let eps_tensor = Tensor::<T>::ones(inputs[0].shape())?.mul_scalar(eps)?;
         let input_abs = inputs[0].abs()?;
         let is_near_zero = input_abs.less_equal(&eps_tensor)?;
 
@@ -974,7 +974,7 @@ where
         let raw_grad = grad_output.div(&denominator)?;
 
         // Apply mask to set gradient to zero where input is near zero
-        let zero_tensor = Tensor::<T>::zeros(inputs[0].shape());
+        let zero_tensor = Tensor::<T>::zeros(inputs[0].shape())?;
         let grad = Tensor::where_condition(&is_near_zero, &zero_tensor, &raw_grad)?;
 
         Ok(vec![grad])
