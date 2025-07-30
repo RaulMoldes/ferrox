@@ -1,7 +1,7 @@
 // src/backend/cuda/kernels.rs
 #[allow(unused_imports)]
 use cudarc::driver::{
-    CudaContext, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg,
+    CudaStream, CudaFunction, CudaSlice, DeviceSlice, LaunchConfig, PushKernelArg,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,8 +10,7 @@ use std::sync::Arc;
 pub const ELEMENTWISE_PTX: &[u8] = include_bytes!("../../../kernels/elementwise.ptx");
 pub const ACTIVATIONS_PTX: &[u8] = include_bytes!("../../../kernels/activations.ptx");
 pub const MATMUL_PTX: &[u8] = include_bytes!("../../../kernels/matmul.ptx");
-pub const REDUCES_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
-pub const TRANSPOSE_PTX: &[u8] = include_bytes!("../../../kernels/transpose.ptx");
+pub const REDUCTION_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 pub const CONVOLUTIONS_PTX: &[u8] = include_bytes!("../../../kernels/convolutions.ptx");
 pub const FILL_PTX: &[u8] = include_bytes!("../../../kernels/fill.ptx");
@@ -19,13 +18,13 @@ pub const FILL_PTX: &[u8] = include_bytes!("../../../kernels/fill.ptx");
 // Generic kernel launch macro
 macro_rules! launch_kernel {
     ($self:expr, $kernel_name:expr, $cfg:expr, $( $arg:expr ),* $(,)? ) => {{
-        let ctx = $self.device();
+        let stream = $self.stream();
         let kernel = $self
             .get_function_cloned($kernel_name)
             .ok_or_else(|| format!("{} kernel not found", $kernel_name))?;
 
         unsafe {
-            ctx.default_stream()
+            stream
                 .launch_builder(&kernel)
                 $( .arg($arg) )*  // Sin &, como estaba originalmente
                 .launch($cfg)
@@ -100,38 +99,32 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
     },
     KernelConfig {
         name: "reduces",
-        ptx: REDUCES_PTX,
+        ptx: REDUCTION_PTX,
         module: "reduces_module",
         functions: &[
-            "sum_axis",
-            "max_along_dim",
-            "sum_axis_f64",
-            "max_along_dim_f64",
-        ],
-    },
-    KernelConfig {
-        name: "transpose",
-        ptx: TRANSPOSE_PTX,
-        module: "transpose_module",
-        functions: &[
-            "transpose_2d",
-            "transpose_2d_f64",
-            "transpose_2d_shared",
-            "transpose_2d_shared_f64",
+            "reduce_sum_all",
+            "reduce_max_all",
+            "reduce_min_all",
+            "reduce_prod_all",
+            "reduce_sum_axes",
+            "reduce_max_axes",
+            "reduce_min_axes",
+            "reduce_prod_axes",
+            "reduce_sum_all_f64",
+            "reduce_max_all_f64",
+            "reduce_min_all_f64",
+            "reduce_prod_all_f64",
+            "reduce_sum_axes_f64",
+            "reduce_max_axes_f64",
+            "reduce_min_axes_f64",
+            "reduce_prod_axes_f64",
         ],
     },
     KernelConfig {
         name: "convolutions",
         ptx: CONVOLUTIONS_PTX,
         module: "convolutions_module",
-        functions: &[
-            "conv2d_forward",
-            "conv2d_forward_f64",
-            "conv2d_forward_shared",
-            "conv2d_forward_shared_f64",
-            "depthwise_separable_conv2d_fused",
-            "depthwise_separable_conv2d_fused_f64",
-        ],
+        functions: &["conv2d_forward", "conv2d_forward_f64"],
     },
     KernelConfig {
         name: "fill",
@@ -153,6 +146,10 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "greater_equal_f64",
             "less_equal",
             "less_equal_f64",
+            "greater",
+            "greater_f64",
+            "less",
+            "less_f64",
             "equal",
             "equal_f64",
             "logical_not",
@@ -163,20 +160,22 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "sign_f64",
             "clamp",
             "clamp_f64",
+            "where_condition",
+            "where_condition_f64",
         ],
     },
 ];
 
 /// CUDA kernel manager
-pub struct CudaKernels {
-    device: Arc<CudaContext>,
+pub struct KernelManager {
+    stream: Arc<CudaStream>,
     functions: HashMap<String, CudaFunction>,
 }
 
-impl CudaKernels {
-    pub fn new(device: Arc<CudaContext>) -> Self {
+impl KernelManager {
+    pub fn new(stream: Arc<CudaStream>) -> Self {
         Self {
-            device,
+            stream,
             functions: HashMap::new(),
         }
     }
@@ -272,11 +271,30 @@ impl CudaKernels {
         launch_kernel!(self, &kernel_name, cfg, input, output, &size)
     }
 
-    /// Generic launcher for reduction operations along tensor dimensions
-    /// These are critical for implementing neural network operations efficiently
-    fn launch_reduction<T>(
+    // ===== GENERIC REDUCTION LAUNCHERS =====
+
+    /// Generic launcher for full reduction operations (all elements -> scalar)
+    /// Handles sum_all, max_all, min_all, prod_all automatically
+    fn launch_reduce_all<T>(
         &self,
-        kernel_base: &str,
+        operation: &str, // "sum", "max", "min", "prod"
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(&format!("reduce_{}_all", operation));
+        launch_kernel!(self, &kernel_name, cfg, input, output, &size)
+    }
+
+    /// Generic launcher for axis reduction operations (along specific axes)
+    /// Handles sum_axes, max_axes, min_axes, prod_axes automatically
+    fn launch_reduce_axes<T>(
+        &self,
+        operation: &str, // "sum", "max", "min", "prod"
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
@@ -287,7 +305,7 @@ impl CudaKernels {
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        let kernel_name = self.get_kernel_name::<T>(kernel_base);
+        let kernel_name = self.get_kernel_name::<T>(&format!("reduce_{}_axes", operation));
         launch_kernel!(
             self,
             &kernel_name,
@@ -298,6 +316,74 @@ impl CudaKernels {
             &axis_size,
             &inner_size
         )
+    }
+
+    /// Generic binary comparison launcher - automatically dispatches to f32/f64 kernels
+    /// This is the core pattern for all element-wise comparison operations in our ML framework
+    /// The kernel selection happens at compile time based on the tensor's data type
+    fn launch_binary_comparison<T>(
+        &self,
+        kernel_base: &str,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(kernel_base);
+        launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
+    }
+
+    /// Generic unary comparison launcher for operations like logical_not, sign
+    /// Essential for activation function derivatives and boolean tensor operations
+    fn launch_unary_comparison<T>(
+        &self,
+        kernel_base: &str,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(kernel_base);
+        launch_kernel!(self, &kernel_name, cfg, input, result, &size)
+    }
+
+    // ===== PUBLIC API - FILL OPERATIONS =====
+
+    /// Launch fill kernel with constant value
+    pub fn launch_fill<T>(
+        &self,
+        cfg: LaunchConfig,
+        data: &mut CudaSlice<T>,
+        value: T,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("fill");
+        launch_kernel!(self, &kernel_name, cfg, data, &value, &size)
+    }
+
+    /// Launch random fill kernel
+    pub fn launch_fill_random<T>(
+        &self,
+        cfg: LaunchConfig,
+        data: &mut CudaSlice<T>,
+        size: i32,
+        seed: u64,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("fill_random");
+        launch_kernel!(self, &kernel_name, cfg, data, &size, &seed)
     }
 
     // ===== PUBLIC API - BINARY ELEMENTWISE OPERATIONS =====
@@ -332,36 +418,6 @@ impl CudaKernels {
         T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
-    }
-
-    /// Launch fill kernel with constant value
-    pub fn launch_fill<T>(
-        &self,
-        cfg: LaunchConfig,
-        data: &mut CudaSlice<T>,
-        value: T,
-        size: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>("fill");
-        launch_kernel!(self, &kernel_name, cfg, data, &value, &size)
-    }
-
-    /// Launch random fill kernel
-    pub fn launch_fill_random<T>(
-        &self,
-        cfg: LaunchConfig,
-        data: &mut CudaSlice<T>,
-        size: i32,
-        seed: u64,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>("fill_random");
-        launch_kernel!(self, &kernel_name, cfg, data, &size, &seed)
     }
 
     /// Element-wise tensor division: result[i] = a[i] / b[i]
@@ -505,6 +561,36 @@ impl CudaKernels {
         self.launch_unary_elementwise("elementwise_negate", cfg, input, output, size)
     }
 
+    // ===== ACTIVATION FUNCTIONS =====
+
+    /// Launch sigmoid activation: result[i] = 1 / (1 + exp(-input[i]))
+    pub fn launch_sigmoid<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_unary_elementwise("sigmoid", cfg, input, output, size)
+    }
+
+    /// Launch hyperbolic tangent activation: result[i] = tanh(input[i])
+    pub fn launch_tanh<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_unary_elementwise("hyperbolic_tangent", cfg, input, output, size)
+    }
+
     pub fn launch_relu<T>(
         &self,
         cfg: LaunchConfig,
@@ -518,25 +604,24 @@ impl CudaKernels {
         self.launch_unary_elementwise("relu", cfg, input, output, size)
     }
 
-    // Reduction operations
-    pub fn launch_sum_axis<T>(
+    // ===== PUBLIC REDUCTION API - USING GENERIC LAUNCHERS =====
+
+    /// Launch sum reduction for all elements (produces scalar)
+    pub fn launch_sum_all<T>(
         &self,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
-        outer_size: i32,
-        axis_size: i32,
-        inner_size: i32,
+        size: i32,
     ) -> Result<(), String>
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        self.launch_reduction(
-            "sum_axis", cfg, input, output, outer_size, axis_size, inner_size,
-        )
+        self.launch_reduce_all("sum", cfg, input, output, size)
     }
 
-    pub fn launch_max_along_dim<T>(
+    /// Launch sum reduction along specific axes
+    pub fn launch_sum_axes<T>(
         &self,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
@@ -548,14 +633,98 @@ impl CudaKernels {
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        self.launch_reduction(
-            "max_along_dim",
-            cfg,
-            input,
-            output,
-            outer_size,
-            axis_size,
-            inner_size,
+        self.launch_reduce_axes("sum", cfg, input, output, outer_size, axis_size, inner_size)
+    }
+
+    /// Launch max reduction for all elements (produces scalar)
+    pub fn launch_max_all<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_reduce_all("max", cfg, input, output, size)
+    }
+
+    /// Launch max reduction along specific axes
+    pub fn launch_max_axes<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        outer_size: i32,
+        axis_size: i32,
+        inner_size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_reduce_axes("max", cfg, input, output, outer_size, axis_size, inner_size)
+    }
+
+    /// Launch min reduction for all elements (produces scalar)
+    pub fn launch_min_all<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_reduce_all("min", cfg, input, output, size)
+    }
+
+    /// Launch min reduction along specific axes
+    pub fn launch_min_axes<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        outer_size: i32,
+        axis_size: i32,
+        inner_size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_reduce_axes("min", cfg, input, output, outer_size, axis_size, inner_size)
+    }
+
+    /// Launch product reduction for all elements (produces scalar)
+    pub fn launch_prod_all<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_reduce_all("prod", cfg, input, output, size)
+    }
+
+    /// Launch product reduction along specific axes
+    pub fn launch_prod_axes<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        outer_size: i32,
+        axis_size: i32,
+        inner_size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_reduce_axes(
+            "prod", cfg, input, output, outer_size, axis_size, inner_size,
         )
     }
 
@@ -602,59 +771,7 @@ impl CudaKernels {
         launch_kernel!(self, &kernel_name, cfg, a, b, c, &m, &n, &k)
     }
 
-    pub fn launch_transpose_2d<T>(
-        &self,
-        cfg: LaunchConfig,
-        input: &CudaSlice<T>,
-        output: &mut CudaSlice<T>,
-        rows: i32,
-        cols: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>("transpose_2d");
-        launch_kernel!(self, &kernel_name, cfg, input, output, &rows, &cols)
-    }
-
-    // ===== COMPARISON OPERATIONS =====
-
-    /// Generic binary comparison launcher - automatically dispatches to f32/f64 kernels
-    /// This is the core pattern for all element-wise comparison operations in our ML framework
-    /// The kernel selection happens at compile time based on the tensor's data type
-    fn launch_binary_comparison<T>(
-        &self,
-        kernel_base: &str,
-        cfg: LaunchConfig,
-        a: &CudaSlice<T>,
-        b: &CudaSlice<T>,
-        result: &mut CudaSlice<T>,
-        size: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>(kernel_base);
-        launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
-    }
-
-    /// Generic unary comparison launcher for operations like logical_not, sign
-    /// Essential for activation function derivatives and boolean tensor operations
-    fn launch_unary_comparison<T>(
-        &self,
-        kernel_base: &str,
-        cfg: LaunchConfig,
-        input: &CudaSlice<T>,
-        result: &mut CudaSlice<T>,
-        size: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>(kernel_base);
-        launch_kernel!(self, &kernel_name, cfg, input, result, &size)
-    }
-
+    // ===== COMPARISON OPERATIONS (PUBLIC API) =====
     /// Element-wise greater-than-or-equal comparison: result[i] = (a[i] >= b[i]) ? 1.0 : 0.0
     /// Critical for gradient clipping and ReLU derivative computation
     /// Returns 1.0 for true, 0.0 for false - standard convention for boolean tensors in ML
@@ -686,6 +803,37 @@ impl CudaKernels {
         T: crate::backend::number::GPUFloat + 'static,
     {
         self.launch_binary_comparison("less_equal", cfg, a, b, result, size)
+    }
+
+    // Elementwise greater than comparison
+    pub fn launch_greater<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_binary_comparison("greater", cfg, a, b, result, size)
+    }
+
+    /// Element-wise less-than comparison: result[i] = (a[i] < b[i]) ? 1.0 : 0.0
+    /// Used in loss function computations and threshold-based operations
+    pub fn launch_less<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        b: &CudaSlice<T>,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+    {
+        self.launch_binary_comparison("less", cfg, a, b, result, size)
     }
 
     /// Element-wise equality comparison: result[i] = (a[i] == b[i]) ? 1.0 : 0.0
@@ -766,36 +914,24 @@ impl CudaKernels {
         )
     }
 
-    // Keep existing unified activation launcher
-    pub fn launch_activation<T>(
-        &self,
-        kernel_name: &str,
-        cfg: LaunchConfig,
-        input: &CudaSlice<T>,
-        output: &mut CudaSlice<T>,
-        size: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat,
-    {
-        launch_kernel!(self, kernel_name, cfg, input, output, &size)
-    }
-
     /// CONVOLUTIONAL KERNELS
-    // Add to CudaKernels impl block
+    /// Launch 2D convolution with bias support
     pub fn launch_conv2d_forward<T>(
         &self,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         filter: &CudaSlice<T>,
+        bias: Option<&CudaSlice<T>>,
         output: &mut CudaSlice<T>,
-        batch: i32,
+        batch_size: i32,
         in_channels: i32,
-        input_h: i32,
-        input_w: i32,
+        in_height: i32,
+        in_width: i32,
         out_channels: i32,
-        filter_h: i32,
-        filter_w: i32,
+        out_height: i32,
+        out_width: i32,
+        kernel_height: i32,
+        kernel_width: i32,
         stride_h: i32,
         stride_w: i32,
         pad_h: i32,
@@ -805,20 +941,27 @@ impl CudaKernels {
         T: crate::backend::number::GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
+
+        // Handle bias as raw pointer (kernel expects nullable pointer)
+        let bias_ptr = bias.map(|b| b.as_ptr()).unwrap_or(std::ptr::null());
+
         launch_kernel!(
             self,
             &kernel_name,
             cfg,
             input,
             filter,
+            &bias_ptr,
             output,
-            &batch,
+            &batch_size,
             &in_channels,
-            &input_h,
-            &input_w,
+            &in_height,
+            &in_width,
             &out_channels,
-            &filter_h,
-            &filter_w,
+            &out_height,
+            &out_width,
+            &kernel_height,
+            &kernel_width,
             &stride_h,
             &stride_w,
             &pad_h,
@@ -826,82 +969,8 @@ impl CudaKernels {
         )
     }
 
-    pub fn launch_conv2d_forward_shared<T>(
-        &self,
-        cfg: LaunchConfig,
-        input: &CudaSlice<T>,
-        filter: &CudaSlice<T>,
-        output: &mut CudaSlice<T>,
-        batch: i32,
-        in_channels: i32,
-        input_h: i32,
-        input_w: i32,
-        out_channels: i32,
-        filter_h: i32,
-        filter_w: i32,
-        stride_h: i32,
-        stride_w: i32,
-        pad_h: i32,
-        pad_w: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>("conv2d_forward_shared");
-        launch_kernel!(
-            self,
-            &kernel_name,
-            cfg,
-            input,
-            filter,
-            output,
-            &batch,
-            &in_channels,
-            &input_h,
-            &input_w,
-            &out_channels,
-            &filter_h,
-            &filter_w,
-            &stride_h,
-            &stride_w,
-            &pad_h,
-            &pad_w
-        )
-    }
-
-    pub fn launch_depthwise_separable_conv2d_fused<T>(
-        &self,
-        cfg: LaunchConfig,
-        input: &CudaSlice<T>,
-        depthwise_filter: &CudaSlice<T>,
-        pointwise_filter: &CudaSlice<T>,
-        output: &mut CudaSlice<T>,
-        batch: i32,
-        channels: i32,
-        height: i32,
-        width: i32,
-    ) -> Result<(), String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>("depthwise_separable_conv2d_fused");
-        launch_kernel!(
-            self,
-            &kernel_name,
-            cfg,
-            input,
-            depthwise_filter,
-            pointwise_filter,
-            output,
-            &batch,
-            &channels,
-            &height,
-            &width
-        )
-    }
-
-    pub fn device(&self) -> &Arc<CudaContext> {
-        &self.device
+    pub fn get_stream(&self) -> &Arc<CudaStream> {
+        &self.stream
     }
 
     pub fn loaded_kernels(&self) -> Vec<&String> {

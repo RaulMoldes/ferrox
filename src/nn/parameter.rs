@@ -109,7 +109,9 @@ where
     /// Creates a detached copy of this parameter (no gradient tracking).
     /// Useful for inference or when you want to stop gradient flow.
     pub fn detach(&self) -> Tensor<T> {
-        self.data.detach().expect("Could not detach Tensor from graph")
+        self.data
+            .detach()
+            .expect("Could not detach Tensor from graph")
     }
 }
 

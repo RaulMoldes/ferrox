@@ -380,11 +380,7 @@ where
             ));
         }
 
-
-        let result_tensor = input_data.max_reduce(Some(&[dim])
-        )?;
-
-
+        let result_tensor = input_data.max_reduce(Some(&[dim]))?;
 
         // Create operation for gradient computation
         let op = Box::new(MaxAlongDimOp::new(dim));

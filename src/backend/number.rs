@@ -9,8 +9,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, Su
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-use rand_distr::Distribution;
-use rand_distr::StandardUniform;
+
 
 /// Trait that defines the basic operations and properties for CPUNumber types.
 /// This trait is designed to be implemented by both integer and floating-point types,
@@ -464,12 +463,6 @@ impl CPUNumber for i64 {
 // CUDA trait implementations - only compiled when cuda feature is enabled
 // These implementations ensure that f32, f64, i32, and i64 can be used with GPUFloat
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
-#[cfg(feature = "cuda")]
-impl GPUFloat for f32 {}
-
-#[cfg(feature = "cuda")]
-impl GPUFloat for f64 {}
-
 #[cfg(feature = "cuda")]
 impl GPUFloat for f32 {}
 

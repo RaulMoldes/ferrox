@@ -116,20 +116,13 @@ where
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-
     /// Element-wise greater than comparison: self > other
     /// Returns new storage with 1.0 for true, 0.0 for false
-    fn greater(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Element-wise less than  comparison: self < other
     /// Returns new storage with 1.0 for true, 0.0 for false
-    fn less(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Element-wise equality comparison: self == other
     /// Returns new storage with 1.0 for true, 0.0 for false
@@ -240,8 +233,6 @@ where
     /// Get multi-dimensional index access to elements (if supported)
     /// Returns None if storage doesn't support multi-dim indexing
     fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
-
-
 }
 
 /// Owned CPU storage
@@ -623,7 +614,13 @@ where
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a >= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        let storage = self.compare(other, |&a, &b| {
+            if a >= b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
@@ -631,28 +628,46 @@ where
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a <= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        let storage = self.compare(other, |&a, &b| {
+            if a <= b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
-    fn greater(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a > b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| {
+            if a > b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
-    fn less(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a < b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| {
+            if a < b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
     fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a == b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        let storage = self.compare(other, |&a, &b| {
+            if a == b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
@@ -1064,7 +1079,6 @@ where
 
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
-
 }
 
 impl<T> CPUOwnedStorage<T>
@@ -1119,11 +1133,13 @@ where
         }
     }
 
-
-
-     /// Generic comparison method using ndarray::Zip for efficiency
+    /// Generic comparison method using ndarray::Zip for efficiency
     /// This is a helper method to avoid code duplication in comparison operations
-    fn compare<F>(&self, other: &dyn StorageBackend<T>, comparison_fn: F) -> Result<CPUOwnedStorage<T>, String>
+    fn compare<F>(
+        &self,
+        other: &dyn StorageBackend<T>,
+        comparison_fn: F,
+    ) -> Result<CPUOwnedStorage<T>, String>
     where
         F: Fn(&T, &T) -> T,
     {
@@ -1145,8 +1161,6 @@ where
         // Return the owned storage result
         Ok(CPUOwnedStorage::new(result_data))
     }
-
-
 
     pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
@@ -1201,7 +1215,7 @@ where
         false_vals: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>
     where
-        Self: Sized
+        Self: Sized,
     {
         // Get data from all three storages
         let condition_data = condition.cpu_data()?;
@@ -1235,7 +1249,6 @@ where
 
         Ok(Box::new(CPUOwnedStorage::new(result_array)))
     }
-
 }
 
 /// Borrowed CPU storage - new functionality for non-ownership
@@ -1309,10 +1322,13 @@ where
         }
     }
 
-
-     /// Generic comparison method using ndarray::Zip for efficiency
+    /// Generic comparison method using ndarray::Zip for efficiency
     /// This is a helper method to avoid code duplication in comparison operations
-    fn compare<F>(&self, other: &dyn StorageBackend<T>, comparison_fn: F) -> Result<CPUOwnedStorage<T>, String>
+    fn compare<F>(
+        &self,
+        other: &dyn StorageBackend<T>,
+        comparison_fn: F,
+    ) -> Result<CPUOwnedStorage<T>, String>
     where
         F: Fn(&T, &T) -> T,
     {
@@ -1334,7 +1350,6 @@ where
         // Return the owned storage result
         Ok(CPUOwnedStorage::new(result_data))
     }
-
 
     pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
@@ -1389,7 +1404,7 @@ where
         false_vals: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>
     where
-        Self: Sized
+        Self: Sized,
     {
         // Get data from all three storages
         let condition_data = condition.cpu_data()?;
@@ -1784,7 +1799,13 @@ where
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a >= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        let storage = self.compare(other, |&a, &b| {
+            if a >= b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
@@ -1792,29 +1813,46 @@ where
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a <= b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        let storage = self.compare(other, |&a, &b| {
+            if a <= b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
-    fn greater(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a > b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| {
+            if a > b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
-    fn less(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a < b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let storage = self.compare(other, |&a, &b| {
+            if a < b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
-
     }
 
     fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let storage = self.compare(other, |&a, &b| if a == b { <T as CPUFloat>::one() } else { <T as CPUFloat>::zero() })?;
+        let storage = self.compare(other, |&a, &b| {
+            if a == b {
+                <T as CPUFloat>::one()
+            } else {
+                <T as CPUFloat>::zero()
+            }
+        })?;
         Ok(Box::new(storage))
     }
 
@@ -2215,19 +2253,17 @@ where
 
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
-
-
 }
 
 #[cfg(feature = "cuda")]
 /// GPU storage - your existing pattern
 #[derive(Debug, Clone)]
-pub struct GPUOwnedStorage<T: cudarc::driver::DeviceRepr> {
+pub struct GPUOwnedStorage<T: cudarc::driver::DeviceRepr + GPUFloat> {
     pub cuda_data: CudaTensor<T>,
 }
 
 #[cfg(feature = "cuda")]
-impl<T: DeviceRepr> GPUOwnedStorage<T> {
+impl<T: DeviceRepr + GPUFloat> GPUOwnedStorage<T> {
     pub fn new(cuda_data: CudaTensor<T>) -> Self {
         Self { cuda_data }
     }
@@ -2628,11 +2664,7 @@ where
         Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
-
-    fn greater(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
             // Both tensors are on GPU - use CUDA kernels
             let other_gpu = other
@@ -2657,10 +2689,7 @@ where
         }
     }
 
-    fn less(
-        &self,
-        other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
@@ -2675,9 +2704,9 @@ where
                 ));
             }
 
-            let result_cuda = self.cuda_data.with_cuda_ops(|cuda_ops| {
-                cuda_ops.less(&self.cuda_data, &other_gpu.cuda_data)
-            })?;
+            let result_cuda = self
+                .cuda_data
+                .with_cuda_ops(|cuda_ops| cuda_ops.less(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -2947,8 +2976,8 @@ where
                     .map(|&ax| self.shape()[ax])
                     .product::<usize>() as f64;
 
-                let divisor_scalar =
-                    T::from_f64(1.0 / divisor).ok_or("Failed to convert divisor to tensor type")?;
+                let divisor_scalar = <T as GPUFloat>::from_f64(1.0 / divisor)
+                    .ok_or("Failed to convert divisor to tensor type")?;
 
                 // Create scalar tensor and divide
                 let divisor_tensor = cuda_ops.full(&[], divisor_scalar)?;
@@ -3034,20 +3063,19 @@ where
     }
 
     fn broadcast_to(&self, target_shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String> {
-        // Use ndarray's efficient broadcasting - handles all broadcasting rules automatically
-        match self.data.broadcast(target_shape) {
-            Some(broadcasted) => Ok(Box::new(CPUOwnedStorage::new(broadcasted.to_owned()))),
-            None => Err(format!(
-                "Cannot broadcast {:?} to {:?}",
-                self.data.shape(),
-                target_shape
-            )),
-        }
+        // Use CUDA ops for broadcasting on GPU
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.broadcast_to(&self.cuda_data, target_shape)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
     fn reshape(&self, new_shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Validate total elements remain the same
-        let total_elements: usize = self.data.shape().iter().product();
+        let total_elements: usize = self.shape().iter().product();
         let new_total_elements: usize = new_shape.iter().product();
 
         if total_elements != new_total_elements {
@@ -3057,120 +3085,120 @@ where
             ));
         }
 
-        // Use ndarray's efficient reshape with order preservation
-        match self.data.clone().into_shape_with_order(IxDyn(new_shape)) {
-            Ok(reshaped) => Ok(Box::new(CPUOwnedStorage::new(reshaped))),
-            Err(e) => Err(format!("Failed to reshape tensor: {e}")),
-        }
+        // Use CUDA ops for reshape operation
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.reshape(&self.cuda_data, new_shape)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
     fn transpose(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
         match axes {
             Some(axes_order) => {
                 // Validate axes specification
-                if axes_order.len() != self.data.ndim() {
+                if axes_order.len() != self.ndim() {
                     return Err(format!(
                         "Axes length {} doesn't match tensor dimensions {}",
                         axes_order.len(),
-                        self.data.ndim()
+                        self.ndim()
                     ));
                 }
 
-                // Verify axes is valid permutation (contains each index 0..ndim exactly once)
-                let mut sorted_axes = axes_order.to_vec();
-                sorted_axes.sort_unstable();
-                let expected: Vec<usize> = (0..self.data.ndim()).collect();
-                if sorted_axes != expected {
-                    return Err(format!(
-                        "Invalid axes permutation: {:?}. Must be a permutation of 0..{}",
-                        axes_order,
-                        self.data.ndim()
-                    ));
-                }
-
-                // Perform transpose with specified axes order
-                let transposed = self.data.clone().permuted_axes(axes_order);
-                Ok(Box::new(CPUOwnedStorage::new(transposed)))
+                // Use CUDA ops for custom transpose
+                let result_cuda = cuda_ops.transpose(&self.cuda_data, Some(axes_order))?;
+                Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
             }
             None => {
-                // Default transpose - reverse all axes order
-                match self.data.ndim() {
-                    0 | 1 => {
-                        // 0D and 1D tensors unchanged by transpose
-                        Ok(Box::new(self.clone()))
-                    }
-                    2 => {
-                        // 2D matrices use efficient reversed_axes
-                        let transposed = self.data.clone().reversed_axes();
-                        Ok(Box::new(CPUOwnedStorage::new(transposed)))
-                    }
-                    _ => {
-                        // Higher dimensions require explicit axis permutation
-                        let axes_order: Vec<usize> = (0..self.data.ndim()).rev().collect();
-                        let transposed = self.data.clone().permuted_axes(axes_order.as_slice());
-                        Ok(Box::new(CPUOwnedStorage::new(transposed)))
-                    }
-                }
+                // Default transpose using CUDA ops
+                let result_cuda = cuda_ops.transpose(&self.cuda_data, None)?;
+                Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
             }
         }
+    }
+
+    fn reshape(&self, new_shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Validate total elements remain the same
+        let total_elements: usize = self.shape().iter().product();
+        let new_total_elements: usize = new_shape.iter().product();
+
+        if total_elements != new_total_elements {
+            return Err(format!(
+                "Cannot reshape tensor with {} elements to shape with {} elements",
+                total_elements, new_total_elements
+            ));
+        }
+
+        // Use CUDA ops for reshape operation on GPU
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.reshape(&self.cuda_data, new_shape)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
     fn unsqueeze(&self, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Validate axis bounds - can insert at positions 0..ndim (inclusive)
-        if axis > self.data.ndim() {
+        if axis > self.ndim() {
             return Err(format!(
                 "Axis {} out of bounds for tensor with {} dimensions",
                 axis,
-                self.data.ndim()
+                self.ndim()
             ));
         }
 
-        // Insert new dimension of size 1 at specified axis
-        let expanded = self.data.clone().insert_axis(Axis(axis));
-        Ok(Box::new(CPUOwnedStorage::new(expanded)))
+        // Use CUDA ops for unsqueeze operation
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
+        let result_cuda = cuda_ops.unsqueeze(&self.cuda_data, axis)?;
+        Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
     }
 
     fn squeeze(&self, axis: Option<usize>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let cuda_ops = self
+            .cuda_data
+            .get_cuda_ops()
+            .ok_or("Failed to get CUDA operations backend")?;
+
         match axis {
             Some(ax) => {
                 // Squeeze specific axis - validate it exists and has size 1
-                if ax >= self.data.ndim() {
+                if ax >= self.ndim() {
                     return Err(format!(
                         "Axis {} out of bounds for tensor with {} dimensions",
                         ax,
-                        self.data.ndim()
+                        self.ndim()
                     ));
                 }
 
-                if self.data.shape()[ax] != 1 {
+                if self.shape()[ax] != 1 {
                     return Err(format!(
                         "Cannot squeeze axis {} with size {}",
                         ax,
-                        self.data.shape()[ax]
+                        self.shape()[ax]
                     ));
                 }
 
-                let squeezed = self.data.clone().remove_axis(Axis(ax));
-                Ok(Box::new(CPUOwnedStorage::new(squeezed)))
+                // Use CUDA ops for single axis squeeze
+                let result_cuda = cuda_ops.squeeze(&self.cuda_data, Some(ax))?;
+                Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
             }
             None => {
-                // Remove all dimensions of size 1
-                let mut result = self.data.clone();
-                let mut axes_to_remove = Vec::new();
-
-                // Collect axes with size 1
-                for (i, &size) in self.data.shape().iter().enumerate() {
-                    if size == 1 {
-                        axes_to_remove.push(i);
-                    }
-                }
-
-                // Remove axes in reverse order to maintain valid indices
-                for &ax in axes_to_remove.iter().rev() {
-                    result = result.remove_axis(Axis(ax));
-                }
-
-                Ok(Box::new(CPUOwnedStorage::new(result)))
+                // Remove all dimensions of size 1 using CUDA ops
+                let result_cuda = cuda_ops.squeeze(&self.cuda_data, None)?;
+                Ok(Box::new(GPUOwnedStorage::new(result_cuda)))
             }
         }
     }
@@ -3249,13 +3277,10 @@ where
 
         self.get_flat(flat_index)
     }
-
 }
 
 #[cfg(feature = "cuda")]
-impl <T> GPUOwnedStorage<T>{
-
-
+impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUOwnedStorage<T> {
     pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
@@ -3309,20 +3334,22 @@ impl <T> GPUOwnedStorage<T>{
     }
 
     pub fn where_condition(
+        condition: &GPUOwnedStorage<T>,
+        true_vals: &GPUOwnedStorage<T>,
+        false_vals: &GPUOwnedStorage<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if condition.is_gpu() && true_vals.is_gpu() && false_vals.is_gpu() {
+            let backend = get_backend();
+            let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
 
-        condition: &dyn StorageBackend<T>,
-        true_vals: &dyn StorageBackend<T>,
-        false_vals: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
-        if condition.is_gpu() && true_vals.is_gpu() && false_vals.i_gpu() {
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        let cuda_tensor = cuda_backend.where_condition(condition.cuda_data, true_vals.cuda_data, false_vals.cuda_data);
-        Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
-    } else {
-        Err("Not all provided tensors are on GPU storage")
+            let cuda_tensor = cuda_backend.where_condition(
+                condition.cuda_data,
+                true_vals.cuda_data,
+                false_vals.cuda_data,
+            );
+            Ok(Box::new(GPUOwnedStorage::new(cuda_tensor)))
+        } else {
+            Err("Not all provided tensors are on GPU storage".to_string())
+        }
     }
-}
 }

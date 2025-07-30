@@ -204,10 +204,12 @@ fn demonstrate_softmax_properties() -> Result<(), Box<dyn std::error::Error>> {
         shift_data[0], shift_data[1], shift_data[2]
     );
 
-    let approx_eq = orig_data.zip_all(&shift_data, |a, b| {
+    let approx_eq = orig_data
+        .zip_all(&shift_data, |a, b| {
             let diff = if a > b { a - b } else { b - a };
             diff <= 1e-6
-        }).expect("Error comparing tensors");
+        })
+        .expect("Error comparing tensors");
     assert!(approx_eq);
     println!("Approx equal comparison {:?}", approx_eq);
 

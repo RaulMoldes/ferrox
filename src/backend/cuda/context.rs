@@ -1,6 +1,5 @@
 // src/backend/cuda/context.rs
-use super::device::CudaDevice;
-use super::kernels::{CudaKernels, load_all_kernels};
+use super::kernels::{KernelManager, load_all_kernels};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
 use crate::backend::number::CPUNumber;
@@ -14,142 +13,47 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Enhanced CUDA context manager that serves as the main backend abstraction
-/// This replaces the CudaBackend functionality from device.rs
-pub struct CudaContextManager {
+pub struct ContextManager {
     ctx: Arc<CudaContext>,
-    default_stream: Arc<CudaStream>,
-    kernels: CudaKernels,
-    stream_manager: StreamManager, // StreamManager is owned by ContextManager
+    stream_manager: StreamManager,
+    devices: Vec<usize> // List of devices available
 }
 
 unsafe impl Send for CudaContextManager {}
 unsafe impl Sync for CudaContextManager {}
 
 impl CudaContextManager {
+
+    pub fn new() -> Result<Self, String> {
+        self.from_device_id(0)?
+    }
+
     /// Creates a new CUDA context manager with full backend capabilities
-    pub fn new(device: CudaDevice) -> Result<Self, String> {
-        let ctx = device.context();
-        let default_stream = ctx.default_stream();
+    pub fn from_device_id(device: usize) -> Result<Self, String> {
+        let ctx = CudaContext::new(device);
+        let stream_manager = StreamManager::new(&ctx);
+        stream_manager.setup_parallel_streams(&ctx)?;
 
-        // Initialize and load kernels during context creation
-        let mut kernels = CudaKernels::new(ctx.clone());
-        load_all_kernels(&mut kernels)?;
+        if let Some(compute_stream) = stream_manager.get_stream("compute"){
 
-        // Create stream manager
-        let stream_manager = StreamManager::new();
+            // Initialize and load kernels during context creation
+            let mut kernels = KernelManager::new(compute_stream);
+            load_all_kernels(&mut kernels)?;
+
+        } else {
+            let default_stream = ctx.default_stream();
+            let mut kernels = KernelManager::new(default_stream);
+            load_all_kernels(&mut kernels)?;
+        }
+
 
         Ok(Self {
             ctx,
-            default_stream,
             kernels,
             stream_manager,
         })
     }
 
-    /// Create context manager directly from device ID
-    pub fn from_device_id(device_id: usize) -> Result<Self, String> {
-        let device = CudaDevice::new(device_id)?;
-        Self::new(device)
-    }
-
-    // ============= BACKEND TENSOR CREATION OPERATIONS =============
-    // These methods provide the backend abstraction
-
-    /// Create zeroed tensor data on GPU
-    pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUFloat
-            + 'static,
-    {
-        let size = shape.iter().product();
-        let gpu_data = self.alloc_zeros(size)?;
-        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
-    }
-
-    /// Create ones tensor data directly on GPU
-    pub fn ones<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUFloat
-            + 'static,
-    {
-        let size = shape.iter().product();
-        let mut gpu_data = unsafe { self.alloc(size)? };
-
-        let cfg = LaunchConfig {
-            block_dim: (256, 1, 1),
-            grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        self.kernels
-            .launch_fill(cfg, &mut gpu_data, <T as CPUNumber>::one(), size as i32)?;
-        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
-    }
-
-    pub fn empty<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUFloat
-            + 'static,
-    {
-        self.zeros(shape)
-    }
-
-    /// Create tensor filled with specific value directly on GPU
-    pub fn full<T>(&self, shape: &[usize], fill_value: T) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUFloat
-            + 'static,
-    {
-        let size = shape.iter().product();
-        let mut gpu_data = unsafe { self.alloc(size)? };
-
-        let cfg = LaunchConfig {
-            block_dim: (256, 1, 1),
-            grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        self.kernels
-            .launch_fill(cfg, &mut gpu_data, fill_value, size as i32)?;
-        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
-    }
-
-    /// Create random tensor data directly on GPU using CUDA kernels
-    pub fn randn<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUFloat
-            + 'static,
-    {
-        let size = shape.iter().product();
-        let mut gpu_data = unsafe { self.alloc(size)? };
-
-        let cfg = LaunchConfig {
-            block_dim: (256, 1, 1),
-            grid_dim: (((size + 255) / 256).try_into().unwrap(), 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        // Use current timestamp as seed for randomness
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        self.kernels
-            .launch_fill_random(cfg, &mut gpu_data, size as i32, seed)?;
-        Ok(CudaTensor::new(gpu_data, shape.to_vec()))
-    }
 
     // ============= GPU MEMORY MANAGEMENT =============
 
@@ -158,7 +62,13 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        self.default_stream
+
+        let stream = match self.stream_manager.get_stream("memset"){
+            Some(memset_stream) => memset_stream,
+            None => self.stream_manager.default_stream()
+        };
+
+        stream
             .alloc_zeros(size)
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
     }
@@ -168,8 +78,14 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr,
     {
+
+         let stream = match self.stream_manager.get_stream("memset"){
+            Some(memset_stream) => memset_stream,
+            None => self.stream_manager.default_stream()
+        };
+
         unsafe {
-            self.default_stream
+            stream
                 .alloc(size)
                 .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
         }
@@ -181,15 +97,18 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        // Allocate GPU memory first
-        let mut device_buffer = self
-            .default_stream
-            .alloc_zeros(data.len())
-            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
+
+        self.alloc_zeros(data.len())?;
+
+        let stream = match self.stream_manager.get_stream("copy_h2d"){
+            Some(h2d_stream) => h2d_stream,
+            None => self.stream_manager.default_stream()
+        };
+
 
         // Copy data from host to device using the correct cudarc API
         unsafe {
-            self.default_stream
+            stream
                 .memcpy_htod(data, &mut device_buffer) // data is now &[T]
                 .map_err(|e| format!("Host to device transfer failed: {}", e))?;
         }
@@ -205,9 +124,14 @@ impl CudaContextManager {
         // Allocate host buffer
         let mut host_buffer = vec![T::default(); data.len()];
 
+        let stream = match stream_manager.get_stream("copy_d2h"){
+            Some(d2h_stream) => d2h_stream,
+            None => stream_manager.default_stream()
+        };
+
         // Copy data from device to host using the correct cudarc API
         unsafe {
-            self.default_stream
+            stream
                 .memcpy_dtoh(data, &mut host_buffer)
                 .map_err(|e| format!("Device to host transfer failed: {}", e))?;
         }
@@ -234,7 +158,7 @@ impl CudaContextManager {
 
         // Copy data from device to device using the correct cudarc API
         unsafe {
-            self.default_stream
+            self.stream_manager.default_stream() // Use default stream as we cannot go async on device to device transfers.
                 .memcpy_dtod(src, dst)
                 .map_err(|e| format!("Device to device copy failed: {}", e))?;
         }
@@ -246,14 +170,12 @@ impl CudaContextManager {
 
     /// Get device ID (compatibility method for tests)
     pub fn id(&self) -> usize {
-        // Since we don't store device_id anymore, return 0 as default
-        // In a real implementation, you could query this from the context
-        0
+       self.ctx.ordinal()
     }
 
     /// Get device name for debugging
     pub fn name(&self) -> String {
-        "CUDA context".to_string()
+        self.ctx.name()
     }
 
     /// Access to kernel manager
@@ -278,17 +200,14 @@ impl CudaContextManager {
             .map_err(|e| format!("CUDA synchronization failed: {}", e))
     }
 
-    /// Get default stream
-    pub fn default_stream(&self) -> Arc<CudaStream> {
-        self.default_stream.clone()
-    }
+
 
     /// Access to underlying CUDA context
     pub fn context(&self) -> &Arc<CudaContext> {
         &self.ctx
     }
 
-    /// Create CUDA tensor from CPU data (backend functionality)
+    /// Create CUDA tensor from CPU data
     pub fn create_tensor_from_cpu<T>(
         &self,
         data: &[T],
@@ -543,7 +462,10 @@ where
     }
 
     /// Create zeroed CUDA tensor
-    pub fn zeros(context_manager: &CudaContextManager, shape: Vec<usize>) -> Result<Self, String> {
+    pub fn alloc_init(
+        context_manager: &CudaContextManager,
+        shape: Vec<usize>,
+    ) -> Result<Self, String> {
         let size = shape.iter().product();
         let data = context_manager.alloc_zeros(size)?;
         Ok(Self::new(data, shape))
@@ -708,43 +630,11 @@ where
         Ok(())
     }
 
-    /// Get CUDA operations backend for this tensor
-    /// Returns a reference to CudaOps that can perform operations on this tensor
-    pub fn get_cuda_ops(&self) -> Option<crate::backend::cuda::ops::CudaOps> {
-        // Get the global backend manager
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend()?;
-
-        // Create CudaOps instance from the backend's kernels and context
-        Some(crate::backend::cuda::ops::CudaOps::new(
-            cuda_backend.kernels(),
-            cuda_backend,
-        ))
-    }
-
-    /// Alternative implementation if the above doesn't work due to lifetime issues
-    /// This version stores the backend reference needed for operations
-    pub fn with_cuda_ops<F, R>(&self, f: F) -> Result<R, String>
-    where
-        F: FnOnce(&crate::backend::cuda::ops::CudaOps) -> Result<R, String>,
-    {
-        use crate::backend::manager::get_backend;
-
-        let backend = get_backend();
-        let cuda_backend = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-        let cuda_ops =
-            crate::backend::cuda::ops::CudaOps::new(cuda_backend.kernels(), cuda_backend);
-
-        f(&cuda_ops)
-    }
 
     /// In-place transpose for 2D tensors
-    pub fn transpose_2d(&mut self) -> Result<(), String> {
+    pub fn transpose(&mut self) -> Result<(), String> {
         if self.ndim() != 2 {
-            return Err("Transpose_2d only works on 2D tensors".to_string());
+            return Err("Transpose only works on 2D tensors".to_string());
         }
 
         // Swap dimensions and strides

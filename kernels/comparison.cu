@@ -2,16 +2,12 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #include <float.h>
+#include "globals.cuh"
 // CUDA kernels for comparison operations
-
-// Helper function to get global thread index
-__device__ inline int get_global_idx() {
-    return blockIdx.x * blockDim.x + threadIdx.x;
-}
 
 extern "C" __global__ void clamp(
     const float* input,
-    float* output, 
+    float* output,
     float min_val,
     float max_val,
     int size
@@ -28,7 +24,7 @@ extern "C" __global__ void clamp(
 
 extern "C" __global__ void clamp_f64(
     const double* input,
-    double* output, 
+    double* output,
     double min_val,
     double max_val,
     int size
@@ -54,6 +50,19 @@ extern "C" __global__ void greater_equal(
     }
 }
 
+
+extern "C" __global__ void greater(
+    const float* a,
+    const float* b,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] > b[idx]) ? 1.0f : 0.0f;
+    }
+}
+
 extern "C" __global__ void greater_equal_f64(
     const double* a,
     const double* b,
@@ -63,6 +72,19 @@ extern "C" __global__ void greater_equal_f64(
     int idx = get_global_idx();
     if (idx < size) {
         result[idx] = (a[idx] >= b[idx]) ? 1.0 : 0.0;
+    }
+}
+
+
+extern "C" __global__ void greater_f64(
+    const double* a,
+    const double* b,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] > b[idx]) ? 1.0 : 0.0;
     }
 }
 
@@ -89,6 +111,33 @@ extern "C" __global__ void less_equal_f64(
         result[idx] = (a[idx] <= b[idx]) ? 1.0 : 0.0;
     }
 }
+
+
+
+extern "C" __global__ void less(
+    const float* a,
+    const float* b,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] < b[idx]) ? 1.0f : 0.0f;
+    }
+}
+
+extern "C" __global__ void less_f64(
+    const double* a,
+    const double* b,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] < b[idx]) ? 1.0 : 0.0;
+    }
+}
+
 
 extern "C" __global__ void equal(
     const float* a,
@@ -171,7 +220,7 @@ extern "C" __global__ void sign(
     int size
 ) {
     int idx = get_global_idx();
-    
+
     if (idx < size) {
         float x = input[idx];
         if (x > 0.0f) {
@@ -190,7 +239,7 @@ extern "C" __global__ void sign_f64(
     int size
 ) {
     int idx = get_global_idx();
-    
+
     if (idx < size) {
         double x = input[idx];
         if (x > 0.0) {
@@ -201,4 +250,35 @@ extern "C" __global__ void sign_f64(
             result[idx] = 0.0;  // x == 0
         }
     }
+}
+
+extern "C" __global__ void where_condition(
+    const float* condition,
+    const float* true_val,
+    const float* false_val,
+    float* output,
+    int size
+)
+{
+    int idx = get_global_idx();
+    if (idx < size) {
+        output[idx] = (condition[idx] > 0) ? true_val[idx] : false_val[idx];
+    }
+
+}
+
+
+extern "C" __global__ void where_condition_f64(
+    const double* condition,
+    const double* true_val,
+    const double* false_val,
+    double* output,
+    int size
+)
+{
+    int idx = get_global_idx();
+    if (idx < size) {
+        output[idx] = (condition[idx] > 0) ? true_val[idx] : false_val[idx];
+    }
+
 }

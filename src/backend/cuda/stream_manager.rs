@@ -6,17 +6,24 @@ use std::sync::{Arc, Mutex};
 
 /// Helper for managing named CUDA streams - used by CudaContextManager
 pub struct StreamManager {
+    default_stream: Arc<CudaStream>,
     streams: Arc<Mutex<HashMap<String, Arc<CudaStream>>>>,
     stream_states: Arc<Mutex<HashMap<String, bool>>>, // Track if stream is ready
 }
 
 impl StreamManager {
     /// Create new empty stream manager
-    pub fn new() -> Self {
+    pub fn new(ctx: &Arc<CudaContext>) -> Self {
+        let default_stream = ctx.default_stream();
         Self {
+            default_stream,
             streams: Arc::new(Mutex::new(HashMap::new())),
             stream_states: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub fn default_stream(&self) -> Arc<CudaStream> {
+        self.default_stream.clone()
     }
 
     /// Create or get a named stream using provided context
@@ -121,11 +128,10 @@ impl StreamManager {
             .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
 
         // Copy data from host to device using the correct cudarc API
-        unsafe {
-            stream
-                .memcpy_htod(data, &mut device_buffer) // data is now &[T]
-                .map_err(|e| format!("Async host to device transfer failed: {}", e))?;
-        }
+
+        stream
+            .memcpy_htod(data, &mut device_buffer) // data is now &[T]
+            .map_err(|e| format!("Async host to device transfer failed: {}", e))?;
 
         Ok(device_buffer)
     }
@@ -152,11 +158,9 @@ impl StreamManager {
         let mut host_buffer = vec![T::default(); data.len()];
 
         // Copy data from device to host using the correct cudarc API
-        unsafe {
-            stream
-                .memcpy_dtoh(data, &mut host_buffer)
-                .map_err(|e| format!("Async device to host transfer failed: {}", e))?;
-        }
+        stream
+            .memcpy_dtoh(data, &mut host_buffer)
+            .map_err(|e| format!("Async device to host transfer failed: {}", e))?;
 
         Ok(host_buffer)
     }

@@ -210,7 +210,6 @@ mod tests {
         assert!(approx_equal(row1_sum, 1.0, 1e-6));
         assert!(approx_equal(row2_sum, 1.0, 1e-6));
         assert!(result_data.all(|x| x > 0.0 && x < 1.0).unwrap());
-
     }
 
     #[test]
@@ -225,10 +224,14 @@ mod tests {
 
         let output = softmax.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
-        assert!(result_data.all(|x :f64| x.is_finite() && x > 0.0).unwrap());
+        assert!(result_data.all(|x: f64| x.is_finite() && x > 0.0).unwrap());
 
         // Should still sum to 1
-        let sum: f64 = result_data.sum(None).expect("Could not apply reduction to tensor").first().unwrap();
+        let sum: f64 = result_data
+            .sum(None)
+            .expect("Could not apply reduction to tensor")
+            .first()
+            .unwrap();
         assert!(approx_equal(sum, 1.0, 1e-6));
     }
 
@@ -255,7 +258,6 @@ mod tests {
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[1, 3]);
         assert!(grad.all(|x: f64| x.is_finite()).unwrap());
-
     }
 
     #[test]
@@ -333,7 +335,6 @@ mod tests {
             );
         }
         assert!(prob_data.all(|prob| prob > 0.0 && prob < 1.0).unwrap());
-
     }
 
     #[test]
@@ -420,13 +421,14 @@ mod tests {
 
         // Results should be approximately equal
 
-        let approx_eq = data1.zip_all(&data2, |a, b| {
-            let diff = if a > b { a - b } else { b - a };
-            diff <= 1e-6
-        }).expect("Error comparing tensors");
+        let approx_eq = data1
+            .zip_all(&data2, |a, b| {
+                let diff = if a > b { a - b } else { b - a };
+                diff <= 1e-6
+            })
+            .expect("Error comparing tensors");
 
         assert!(approx_eq, "Tensors are different!");
-
     }
 
     #[test]
@@ -677,9 +679,7 @@ mod tests {
         let output = tanh.forward(&mut graph, input).unwrap();
         let result_data = graph.get_data(output);
 
-
         assert!(result_data.all(|val| val > -1.0 && val < 1.0).unwrap());
-
 
         // Check specific values
         assert!(result_data[0] < -0.99); // tanh(-10) ≈ -1
@@ -1497,8 +1497,6 @@ mod tests {
         assert_eq!(output_shape, vec![4, 3]);
         assert!(output_data.all(|x| x.is_finite()).unwrap());
 
-
-
         // For this specific input, we can verify that the normalization worked
         // The mean of each feature across the batch should be approximately 0
         // and the std should be approximately 1 (before scaling/shifting)
@@ -1559,7 +1557,6 @@ mod tests {
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[2, 2]);
         assert!(grad.all(|x| x.is_finite()).unwrap());
-
     }
 
     #[test]
@@ -1574,10 +1571,12 @@ mod tests {
 
         let output = bn.forward(&mut graph, large_input).unwrap();
         let output_data = graph.get_data(output);
-        assert!(output_data.all(|val: f64| val.is_finite() && !val.is_nan()).unwrap());
-
-        }
-
+        assert!(
+            output_data
+                .all(|val: f64| val.is_finite() && !val.is_nan())
+                .unwrap()
+        );
+    }
 
     #[test]
     fn test_batch_norm_1d_error_cases() {
@@ -1722,7 +1721,6 @@ mod tests {
         // Output should be finite
         let output_data = graph.get_data(output);
         assert!(output_data.all(|x| x.is_finite()).unwrap());
-
     }
 
     #[test]
@@ -1741,7 +1739,6 @@ mod tests {
         let output = ln.forward(&mut graph, input).unwrap();
         let output_data = graph.get_data(output);
         assert!(output_data.all(|x| x.is_finite()).unwrap())
-
     }
 
     #[test]
@@ -1767,7 +1764,6 @@ mod tests {
         let grad = input_grad.unwrap();
         assert_eq!(grad.shape(), &[2, 3]);
         assert!(grad.all(|x| x.is_finite()).unwrap());
-
     }
 
     #[test]
@@ -1810,8 +1806,11 @@ mod tests {
 
         let output = ln.forward(&mut graph, large_input).unwrap();
         let output_data = graph.get_data(output);
-        assert!(output_data.all(|val| val.is_finite() && !val.is_nan()).unwrap());
-
+        assert!(
+            output_data
+                .all(|val| val.is_finite() && !val.is_nan())
+                .unwrap()
+        );
 
         // Test with very small values
         let small_input = graph
@@ -1821,7 +1820,6 @@ mod tests {
         let output = ln.forward(&mut graph, small_input).unwrap();
         let output_data = graph.get_data(output);
         assert!(output_data.all(|val| val.is_finite()).unwrap())
-
     }
 
     #[test]

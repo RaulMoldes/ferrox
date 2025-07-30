@@ -1026,24 +1026,19 @@ where
         let zero_tensor = Tensor::zeros(&inputs[0].shape())?;
 
         // Create comparison masks using existing tensor operations
-        let positive_mask = inputs[0].greater(&zero_tensor)?;  // x > 0
-        let negative_mask = inputs[0].less(&zero_tensor)?;     // x < 0
+        let positive_mask = inputs[0].greater(&zero_tensor)?; // x > 0
+        let negative_mask = inputs[0].less(&zero_tensor)?; // x < 0
 
         // Create gradient tensors
-        let pos_grad = grad_output.clone();                        // +grad_output for positive
-        let neg_grad = grad_output.neg()?;                      // -grad_output for negative
-        let zero_grad = Tensor::zeros(grad_output.shape())?;          // zero for x=0
-
+        let pos_grad = grad_output.clone(); // +grad_output for positive
+        let neg_grad = grad_output.neg()?; // -grad_output for negative
+        let zero_grad = Tensor::zeros(grad_output.shape())?; // zero for x=0
 
         let grad = Tensor::where_condition(
-        &positive_mask,
-        &pos_grad,
-        &Tensor::where_condition(
-            &negative_mask,
-            &neg_grad,
-            &zero_grad
-        )?
-    )?;
+            &positive_mask,
+            &pos_grad,
+            &Tensor::where_condition(&negative_mask, &neg_grad, &zero_grad)?,
+        )?;
 
         Ok(vec![grad])
     }

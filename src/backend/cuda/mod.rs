@@ -1,8 +1,7 @@
 // src/backend/cuda/mod.rs
 #[cfg(feature = "cuda")]
 pub mod context;
-#[cfg(feature = "cuda")]
-pub mod device;
+
 #[cfg(feature = "cuda")]
 pub mod kernels;
 #[cfg(feature = "cuda")]
@@ -15,7 +14,7 @@ pub use context::{CudaContextManager, CudaTensor};
 #[cfg(feature = "cuda")]
 pub use device::CudaDevice;
 #[cfg(feature = "cuda")]
-pub use kernels::{CudaKernels, load_all_kernels};
+pub use kernels::{KernelManager, load_all_kernels};
 
 // ALIAS para compatibilidad - CudaContextManager es ahora el "backend principal"
 #[cfg(feature = "cuda")]

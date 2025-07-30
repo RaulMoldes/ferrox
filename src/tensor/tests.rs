@@ -67,7 +67,6 @@ mod tests {
 
         assert!(sigmoid_result.all(|val| val >= 0.0 && val <= 1.0).unwrap());
 
-
         // Test Exp
         let exp_result = input.exp().expect("Error while computing exponentiation");
         assert!(exp_result.all(|x| x > 0.0).unwrap());

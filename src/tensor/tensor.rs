@@ -57,12 +57,14 @@ where
         // Handle 0-dimensional arrays (scalars from reductions)
         if data.ndim() == 0 {
             // For 0-dimensional arrays, use iter().next() instead of indexing
-            data.iter().next()
+            data.iter()
+                .next()
                 .copied()
                 .ok_or_else(|| "Empty 0-dimensional array".to_string())
         } else if data.len() > 0 {
             // For regular arrays, get first element
-            data.iter().next()
+            data.iter()
+                .next()
                 .copied()
                 .ok_or_else(|| "Empty array".to_string())
         } else {
@@ -82,20 +84,16 @@ where
     }
 
     pub fn zeros_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
-
         let result_storage = match device {
             Device::CPU => {
                 let storage = CPUOwnedStorage::<T>::zeros(shape)?;
                 storage
-
-            },
+            }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 let storage = GPUOwnedStorage::<T>::zeros(shape)?;
                 storage
             }
-
-
         };
 
         Self::from_storage_backend(result_storage, device)
@@ -109,19 +107,16 @@ where
     }
 
     pub fn ones_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
-          let result_storage = match device {
+        let result_storage = match device {
             Device::CPU => {
                 let storage = CPUOwnedStorage::<T>::ones(shape)?;
                 storage
-
-            },
+            }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 let storage = GPUOwnedStorage::<T>::ones(shape)?;
                 storage
             }
-
-
         };
 
         Self::from_storage_backend(result_storage, device)
@@ -204,7 +199,6 @@ where
         };
 
         Ok(Self {
-
             device: crate::backend::default_device(),
             storage: Some(Box::new(storage)),
         })
@@ -219,13 +213,10 @@ where
     pub fn new_with_device(data: ArrayD<T>, device: crate::backend::Device) -> Self {
         let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
         Self {
-
             device,
             storage: Some(Box::new(storage)),
         }
     }
-
-
 
     // Creates a tensor from a Rust vector. Again we are bound to ndarray backend here, but it is okay for now.
     // This function takes a vector of T and a shape, and returns a tensor with the given shape using storage backend.
@@ -245,7 +236,6 @@ where
                 // Create storage backend for the array
                 let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
                 Ok(Self {
-
                     device: default_device(),
                     storage: Some(Box::new(storage)),
                 })
@@ -253,8 +243,6 @@ where
             Err(e) => Err(format!("Failed to create tensor: {e}")),
         }
     }
-
-
 
     // Create tensor from existing storage backend (internal use)
     // This is the most direct way to create tensors and will become primary after migration
@@ -268,7 +256,6 @@ where
         };
 
         Ok(Self {
-
             device,
             storage: Some(storage),
         })
@@ -624,10 +611,7 @@ impl<T> Tensor<T>
 where
     T: GPUFloat + Clone,
 {
-
-
-
-     /// Element-wise greater than  comparison using storage trait
+    /// Element-wise greater than  comparison using storage trait
     pub fn greater(&self, other: &Self) -> Result<Self, String> {
         let storage = self
             .storage
@@ -833,53 +817,76 @@ where
     }
 
     /// Conditional selection using storage backend
-   /// Conditional selection using storage backend
-pub fn where_condition(
-    condition: &Self,
-    true_vals: &Self,
-    false_vals: &Self,
-) -> Result<Self, String> {
-    let condition_storage = condition.storage.as_ref()
-        .ok_or("Condition tensor has no storage")?;
-    let true_storage = true_vals.storage.as_ref()
-        .ok_or("True values tensor has no storage")?;
-    let false_storage = false_vals.storage.as_ref()
-        .ok_or("False values tensor has no storage")?;
+    /// Conditional selection using storage backend
+    pub fn where_condition(
+        condition: &Self,
+        true_vals: &Self,
+        false_vals: &Self,
+    ) -> Result<Self, String> {
+        let condition_storage = condition
+            .storage
+            .as_ref()
+            .ok_or("Condition tensor has no storage")?;
+        let true_storage = true_vals
+            .storage
+            .as_ref()
+            .ok_or("True values tensor has no storage")?;
+        let false_storage = false_vals
+            .storage
+            .as_ref()
+            .ok_or("False values tensor has no storage")?;
 
-    // Case 1: All CPU storage
-    if !condition_storage.is_gpu() && !true_storage.is_gpu() && !false_storage.is_gpu() {
-        if let (Some(cond_cpu), Some(true_cpu), Some(false_cpu)) = (
-            condition_storage.as_any().and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
-            true_storage.as_any().and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
-            false_storage.as_any().and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>())
-        ) {
-            let result_storage = CPUOwnedStorage::where_condition(cond_cpu,true_cpu, false_cpu)?;
-            return Self::from_storage_backend(result_storage, condition.device.clone());
-        }
-    }
-
-    #[cfg(feature = "cuda")]
-    {
-        // Case 2: All GPU storage
-        if condition_storage.is_gpu() && true_storage.is_gpu() && false_storage.is_gpu() {
-            if let (Some(cond_gpu), Some(true_gpu), Some(false_gpu)) = (
-                condition_storage.as_any().and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
-                true_storage.as_any().and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
-                false_storage.as_any().and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>())
+        // Case 1: All CPU storage
+        if !condition_storage.is_gpu() && !true_storage.is_gpu() && !false_storage.is_gpu() {
+            if let (Some(cond_cpu), Some(true_cpu), Some(false_cpu)) = (
+                condition_storage
+                    .as_any()
+                    .and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
+                true_storage
+                    .as_any()
+                    .and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
+                false_storage
+                    .as_any()
+                    .and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
             ) {
-                let result_storage = GPUOwnedStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
-                return Self::from_storage_backend(Box::new(result_storage), condition.device.clone());
+                let result_storage =
+                    CPUOwnedStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
+                return Self::from_storage_backend(result_storage, condition.device.clone());
             }
         }
-    }
 
-    // Case 3: Mixed or unsupported storage types - fallback to CPU
-    //let cond_cpu = condition.to_cpu()?;
-    //let true_cpu = true_vals.to_cpu()?;
-    //let false_cpu = false_vals.to_cpu()?;
-    //Self::where_condition(&cond_cpu, &true_cpu, &false_cpu)
-    panic!("Tensors are not on the same device")
-}
+        #[cfg(feature = "cuda")]
+        {
+            // Case 2: All GPU storage
+            if condition_storage.is_gpu() && true_storage.is_gpu() && false_storage.is_gpu() {
+                if let (Some(cond_gpu), Some(true_gpu), Some(false_gpu)) = (
+                    condition_storage
+                        .as_any()
+                        .and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
+                    true_storage
+                        .as_any()
+                        .and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
+                    false_storage
+                        .as_any()
+                        .and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
+                ) {
+                    let result_storage =
+                        GPUOwnedStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
+                    return Self::from_storage_backend(
+                        Box::new(result_storage),
+                        condition.device.clone(),
+                    );
+                }
+            }
+        }
+
+        // Case 3: Mixed or unsupported storage types - fallback to CPU
+        //let cond_cpu = condition.to_cpu()?;
+        //let true_cpu = true_vals.to_cpu()?;
+        //let false_cpu = false_vals.to_cpu()?;
+        //Self::where_condition(&cond_cpu, &true_cpu, &false_cpu)
+        panic!("Tensors are not on the same device")
+    }
 }
 
 impl<T> Tensor<T>

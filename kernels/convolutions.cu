@@ -1,14 +1,6 @@
 // kernels/conv2d_optimized.cu
 #include <cuda_runtime.h>
-
-__device__ inline int get_global_idx() {
-    return blockIdx.x * blockDim.x + threadIdx.x;
-}
-
-__device__ inline int get_global_idy() {
-    return blockIdx.y * blockDim.y + threadIdx.y;
-}
-
+#include "globals.cuh"
 
 
 extern "C" __global__ void conv2d_forward(
@@ -30,7 +22,6 @@ extern "C" __global__ void conv2d_forward(
     int pad_h,
     int pad_w
 ) {
-    const int TILE_SIZE = 16;
 
     // Use shared memory for input and filter
     // Shared memory size: input tile + filter
@@ -143,104 +134,6 @@ extern "C" __global__ void conv2d_forward(
 
 
 
-
-
-// ============================================================================
-// FUSED DEPTHWISE SEPARABLE CONVOLUTION KERNEL
-// ============================================================================
-// Performs both depthwise and pointwise convolution in a single kernel
-extern "C" __global__ void depthwise_separable_conv2d_fused(
-    const float* input,
-    const float* depthwise_filter,
-    const float* pointwise_filter,
-    const float* depthwise_bias,
-    const float* pointwise_bias,
-    float* output,
-    int batch_size,
-    int in_channels,
-    int out_channels,
-    int in_height,
-    int in_width,
-    int kernel_height,
-    int kernel_width,
-    int stride_h,
-    int stride_w,
-    int pad_h,
-    int pad_w
-) {
-    // Calculate output dimensions
-    int out_height = (in_height + 2 * pad_h - kernel_height) / stride_h + 1;
-    int out_width = (in_width + 2 * pad_w - kernel_width) / stride_w + 1;
-
-    // Thread mapping: each thread computes one output pixel for one output channel
-    int out_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int out_y = blockIdx.y * blockDim.y + threadIdx.y;
-    int out_c = blockIdx.z % out_channels;
-    int batch_idx = blockIdx.z / out_channels;
-
-    if (out_x >= out_width || out_y >= out_height ||
-        out_c >= out_channels || batch_idx >= batch_size) {
-        return;
-    }
-
-    float final_result = 0.0f;
-
-    // Calculate input coordinates for depthwise convolution
-    int in_x_start = out_x * stride_w - pad_w;
-    int in_y_start = out_y * stride_h - pad_h;
-
-    // STEP 1: Depthwise convolution for each input channel
-    // We need to compute the intermediate values and immediately use them for pointwise
-    for (int in_c = 0; in_c < in_channels; in_c++) {
-        float depthwise_result = 0.0f;
-
-        // Perform depthwise convolution for this input channel
-        for (int ky = 0; ky < kernel_height; ky++) {
-            for (int kx = 0; kx < kernel_width; kx++) {
-                int in_y = in_y_start + ky;
-                int in_x = in_x_start + kx;
-
-                // Check bounds (zero padding)
-                if (in_y >= 0 && in_y < in_height && in_x >= 0 && in_x < in_width) {
-                    // Input index: [batch, in_channel, height, width]
-                    int input_idx = batch_idx * (in_channels * in_height * in_width) +
-                                  in_c * (in_height * in_width) +
-                                  in_y * in_width + in_x;
-
-                    // Depthwise filter index: [in_channel, kernel_y, kernel_x]
-                    int filter_idx = in_c * (kernel_height * kernel_width) +
-                                   ky * kernel_width + kx;
-
-                    depthwise_result += input[input_idx] * depthwise_filter[filter_idx];
-                }
-            }
-        }
-
-        // Add depthwise bias
-        if (depthwise_bias != nullptr) {
-            depthwise_result += depthwise_bias[in_c];
-        }
-
-        // STEP 2: Immediately apply pointwise convolution
-        // Pointwise filter index: [out_channel, in_channel]
-        int pointwise_filter_idx = out_c * in_channels + in_c;
-        final_result += depthwise_result * pointwise_filter[pointwise_filter_idx];
-    }
-
-    // Add pointwise bias
-    if (pointwise_bias != nullptr) {
-        final_result += pointwise_bias[out_c];
-    }
-
-    // Write final result
-    int output_idx = batch_idx * (out_channels * out_height * out_width) +
-                    out_c * (out_height * out_width) +
-                    out_y * out_width + out_x;
-    output[output_idx] = final_result;
-}
-
-
-
 // F64 OPS
 
 // Optimized 2D Convolution kernel with batch support
@@ -266,7 +159,6 @@ extern "C" __global__ void conv2d_forward_f64(
     int pad_h,
     int pad_w
 ) {
-    const int TILE_SIZE = 16;
 
     // Use shared memory for input and filter
     // Shared memory size: input tile + filter
@@ -376,101 +268,4 @@ extern "C" __global__ void conv2d_forward_f64(
             out_y * out_width + out_x;
         output[output_idx] = result;
     }
-}
-
-
-
-
-// ============================================================================
-// FUSED DEPTHWISE SEPARABLE CONVOLUTION KERNEL
-// ============================================================================
-// Performs both depthwise and pointwise convolution in a single kernel
-extern "C" __global__ void depthwise_separable_conv2d_fused_f64(
-    const double* input,
-    const double* depthwise_filter,
-    const double* pointwise_filter,
-    const double* depthwise_bias,
-    const double* pointwise_bias,
-    double* output,
-    int batch_size,
-    int in_channels,
-    int out_channels,
-    int in_height,
-    int in_width,
-    int kernel_height,
-    int kernel_width,
-    int stride_h,
-    int stride_w,
-    int pad_h,
-    int pad_w
-) {
-    // Calculate output dimensions
-    int out_height = (in_height + 2 * pad_h - kernel_height) / stride_h + 1;
-    int out_width = (in_width + 2 * pad_w - kernel_width) / stride_w + 1;
-
-    // Thread mapping: each thread computes one output pixel for one output channel
-    int out_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int out_y = blockIdx.y * blockDim.y + threadIdx.y;
-    int out_c = blockIdx.z % out_channels;
-    int batch_idx = blockIdx.z / out_channels;
-
-    if (out_x >= out_width || out_y >= out_height ||
-        out_c >= out_channels || batch_idx >= batch_size) {
-        return;
-    }
-
-    double final_result = 0.0;
-
-    // Calculate input coordinates for depthwise convolution
-    int in_x_start = out_x * stride_w - pad_w;
-    int in_y_start = out_y * stride_h - pad_h;
-
-    // STEP 1: Depthwise convolution for each input channel
-    // We need to compute the intermediate values and immediately use them for pointwise
-    for (int in_c = 0; in_c < in_channels; in_c++) {
-        float depthwise_result = 0.0f;
-
-        // Perform depthwise convolution for this input channel
-        for (int ky = 0; ky < kernel_height; ky++) {
-            for (int kx = 0; kx < kernel_width; kx++) {
-                int in_y = in_y_start + ky;
-                int in_x = in_x_start + kx;
-
-                // Check bounds (zero padding)
-                if (in_y >= 0 && in_y < in_height && in_x >= 0 && in_x < in_width) {
-                    // Input index: [batch, in_channel, height, width]
-                    int input_idx = batch_idx * (in_channels * in_height * in_width) +
-                        in_c * (in_height * in_width) +
-                        in_y * in_width + in_x;
-
-                    // Depthwise filter index: [in_channel, kernel_y, kernel_x]
-                    int filter_idx = in_c * (kernel_height * kernel_width) +
-                        ky * kernel_width + kx;
-
-                    depthwise_result += input[input_idx] * depthwise_filter[filter_idx];
-                }
-            }
-        }
-
-        // Add depthwise bias
-        if (depthwise_bias != nullptr) {
-            depthwise_result += depthwise_bias[in_c];
-        }
-
-        // STEP 2: Immediately apply pointwise convolution
-        // Pointwise filter index: [out_channel, in_channel]
-        int pointwise_filter_idx = out_c * in_channels + in_c;
-        final_result += depthwise_result * pointwise_filter[pointwise_filter_idx];
-    }
-
-    // Add pointwise bias
-    if (pointwise_bias != nullptr) {
-        final_result += pointwise_bias[out_c];
-    }
-
-    // Write final result
-    int output_idx = batch_idx * (out_channels * out_height * out_width) +
-        out_c * (out_height * out_width) +
-        out_y * out_width + out_x;
-    output[output_idx] = final_result;
 }
