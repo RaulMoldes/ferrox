@@ -97,46 +97,43 @@ mod tests {
     #[test]
     fn test_tensor_transpose_comprehensive() {
         // Test 2D transpose
-        let tensor_2d = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let mut tensor_2d = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let mut other_2d = tensor_2d.clone();
 
         // Default transpose (should swap axes)
-        let transposed_default = tensor_2d.transpose(None).unwrap();
-        assert_eq!(transposed_default.shape(), &[3, 2]);
+        tensor_2d.transpose(None).unwrap();
+
 
         // Explicit axes transpose
-        let transposed_explicit = tensor_2d.transpose(Some(&[1, 0])).unwrap();
-        assert_eq!(transposed_explicit.shape(), &[3, 2]);
-        assert_eq!(
-            transposed_default.cpu_data(),
-            transposed_explicit.cpu_data()
-        );
+        other_2d.transpose(Some(&[1, 0])).unwrap();
+        assert_eq!(tensor_2d.shape(), &[3, 2]);
+        assert_eq!(other_2d.cpu_data(), tensor_2d.cpu_data());
 
         // Test 3D transpose
-        let tensor_3d = Tensor::from_vec((0..24).map(|x| x as f64).collect(), &[2, 3, 4]).unwrap();
-
+        let mut tensor_3d =
+            Tensor::from_vec((0..24).map(|x| x as f64).collect(), &[2, 3, 4]).unwrap();
+        let mut other_3d = tensor_3d.clone();
         // Default transpose (reverse all axes: [2,3,4] -> [4,3,2])
-        let transposed_3d_default = tensor_3d.transpose(None).unwrap();
-        assert_eq!(transposed_3d_default.shape(), &[4, 3, 2]);
+        other_3d.transpose(None).unwrap();
+        assert_eq!(other_3d.shape(), &[4, 3, 2]);
 
         // Custom permutation: [2,3,4] -> [4,2,3] (axes [2,0,1])
-        let transposed_3d_custom = tensor_3d.transpose(Some(&[2, 0, 1])).unwrap();
-        assert_eq!(transposed_3d_custom.shape(), &[4, 2, 3]);
+        tensor_3d.transpose(Some(&[2, 0, 1])).unwrap();
+        assert_eq!(tensor_3d.shape(), &[4, 2, 3]);
 
         // Test 1D and 0D tensors (should be unchanged)
-        let tensor_1d = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
-        let transposed_1d = tensor_1d.transpose(None).unwrap();
-        assert_eq!(transposed_1d.shape(), &[3]);
-        assert_eq!(transposed_1d.cpu_data(), tensor_1d.cpu_data());
+        let mut tensor_1d = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap();
+        tensor_1d.transpose(None).unwrap();
+        assert_eq!(tensor_1d.shape(), &[3]);
 
-        let tensor_0d = Tensor::from_vec(vec![42.0], &[]).unwrap();
-        let transposed_0d = tensor_0d.transpose(None).unwrap();
-        assert_eq!(transposed_0d.shape(), &[]);
-        assert_eq!(transposed_0d.cpu_data(), tensor_0d.cpu_data());
+        let mut tensor_0d = Tensor::from_vec(vec![42.0], &[]).unwrap();
+        tensor_0d.transpose(None).unwrap();
+        assert_eq!(tensor_0d.shape(), &[]);
     }
 
     #[test]
     fn test_transpose_error_cases() {
-        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+        let mut tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
 
         // Invalid axes length
         assert!(tensor.transpose(Some(&[0])).is_err());
@@ -150,30 +147,25 @@ mod tests {
 
     #[test]
     fn test_tensor_broadcasting() {
-        let a = Tensor::from_vec(vec![1.0], &[1]).unwrap();
+        let mut a = Tensor::from_vec(vec![1.0], &[1]).unwrap();
         let target_shape = &[2, 3];
 
-        let broadcasted = a.broadcast_to(target_shape).unwrap();
+        a.broadcast_to(target_shape).unwrap();
         let expected = Tensor::from_vec(vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0], &[2, 3]).unwrap();
-        assert_eq!(broadcasted, expected);
+        assert_eq!(a, expected);
     }
 
     #[test]
     fn test_tensor_squeeze_unsqueeze() {
-        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[1, 3]).unwrap();
+        let mut tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[1, 3]).unwrap();
 
         // Test squeeze
-        let squeezed = tensor.squeeze(Some(0)).unwrap();
-        assert_eq!(squeezed.shape(), &[3]);
+        tensor.squeeze(Some(0)).unwrap();
+        assert_eq!(tensor.shape(), &[3]);
 
         // Test unsqueeze
-        let unsqueezed = squeezed.unsqueeze(1);
-        assert_eq!(
-            unsqueezed
-                .expect("Error while attempting to unsqueeze")
-                .shape(),
-            &[3, 1]
-        );
+        tensor.unsqueeze(1);
+        assert_eq!(tensor.shape(), &[3, 1]);
     }
 
     #[test]

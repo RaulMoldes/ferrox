@@ -4,8 +4,10 @@
 
 use super::context::{CudaContextManager, CudaTensor};
 use super::kernels::KernelManager;
+use crate::backend::cuda::context::compute_strides;
 use crate::backend::number::CPUNumber;
 use cudarc::driver::LaunchConfig;
+use cudarc::driver::CudaSlice;
 
 const BLOCK_SIZE: u32 = 256;
 const TILE_SIZE: u32 = 16;
@@ -85,8 +87,17 @@ impl<'a> CudaOps<'a> {
     {
         let size = shape.iter().product();
         let cfg = self.get_launch_config(size);
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
-        self.kernels.launch_fill(cfg, &mut result, value, size)?
+        let mut result = self.context.alloc_zeros(size)?;
+
+        self.kernels
+            .launch_fill(cfg, &mut result, value, size.try_into().unwrap())?;
+
+        let strides = compute_strides(shape);
+        Ok(CudaTensor {
+            data: result,
+            shape: shape.to_vec(),
+            strides: strides,
+        })
     }
 
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
@@ -114,11 +125,17 @@ impl<'a> CudaOps<'a> {
             + 'static,
     {
         let size = shape.iter().product();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result = self.context.alloc_zeros(size)?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_fill_random(cfg, &mut result, size as i32, seed)?;
+        let strides = compute_strides(shape);
+        Ok(CudaTensor {
+            data: result,
+            shape: shape.to_vec(),
+            strides: strides,
+        })
     }
 
     /// Element-wise addition: result = a + b
@@ -470,49 +487,27 @@ impl<'a> CudaOps<'a> {
     pub fn sum_axes<T>(
         &self,
         input: &CudaTensor<T>,
-        axis: usize,
+        axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        let input_shape = &input.shape;
-        if axis >= input_shape.len() {
-            return Err(format!(
-                "Axis {} out of bounds for tensor with {} dimensions",
-                axis,
-                input_shape.len()
-            ));
-        }
-
-        let mut output_shape = input_shape.clone();
-        if keep_dims {
-            output_shape[axis] = 1;
-        } else {
-            output_shape.remove(axis);
-        }
-
-        let outer_size = input_shape[..axis].iter().product::<usize>() as i32;
-        let axis_size = input_shape[axis] as i32;
-        let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
-
-        let mut result = CudaTensor::alloc_init(self.context, output_shape)?;
-
-        let cfg = LaunchConfig {
-            grid_dim: (outer_size as u32, 1, 1),
-            block_dim: (inner_size.min(1024) as u32, 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        self.kernels.launch_sum_axes(
-            cfg,
-            &input.data,
-            &mut result.data,
-            outer_size,
-            axis_size,
-            inner_size,
-        )?;
-        Ok(result)
+        self.reduce_axes(
+            input,
+            axes,
+            keep_dims,
+            |cfg, input_data, output_data, outer_size, axis_size, inner_size| {
+                self.kernels.launch_sum_axes(
+                    cfg,
+                    input_data,
+                    output_data,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )
+            },
+        )
     }
 
     /// Max reduction along all elements
@@ -534,49 +529,27 @@ impl<'a> CudaOps<'a> {
     pub fn max_axes<T>(
         &self,
         input: &CudaTensor<T>,
-        axis: usize,
+        axes: &[usize], // Changed from usize to &[usize]
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        let input_shape = &input.shape;
-        if axis >= input_shape.len() {
-            return Err(format!(
-                "Axis {} out of bounds for tensor with {} dimensions",
-                axis,
-                input_shape.len()
-            ));
-        }
-
-        let mut output_shape = input_shape.clone();
-        if keep_dims {
-            output_shape[axis] = 1;
-        } else {
-            output_shape.remove(axis);
-        }
-
-        let outer_size = input_shape[..axis].iter().product::<usize>() as i32;
-        let axis_size = input_shape[axis] as i32;
-        let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
-
-        let mut result = CudaTensor::alloc_init(self.context, output_shape)?;
-
-        let cfg = LaunchConfig {
-            grid_dim: (outer_size as u32, 1, 1),
-            block_dim: (inner_size.min(1024) as u32, 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        self.kernels.launch_max_axes(
-            cfg,
-            &input.data,
-            &mut result.data,
-            outer_size,
-            axis_size,
-            inner_size,
-        )?;
-        Ok(result)
+        self.reduce_axes(
+            input,
+            axes,
+            keep_dims,
+            |cfg, input_data, output_data, outer_size, axis_size, inner_size| {
+                self.kernels.launch_max_axes(
+                    cfg,
+                    input_data,
+                    output_data,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )
+            },
+        )
     }
 
     /// Min reduction along all elements
@@ -598,49 +571,27 @@ impl<'a> CudaOps<'a> {
     pub fn min_axes<T>(
         &self,
         input: &CudaTensor<T>,
-        axis: usize,
+        axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        let input_shape = &input.shape;
-        if axis >= input_shape.len() {
-            return Err(format!(
-                "Axis {} out of bounds for tensor with {} dimensions",
-                axis,
-                input_shape.len()
-            ));
-        }
-
-        let mut output_shape = input_shape.clone();
-        if keep_dims {
-            output_shape[axis] = 1;
-        } else {
-            output_shape.remove(axis);
-        }
-
-        let outer_size = input_shape[..axis].iter().product::<usize>() as i32;
-        let axis_size = input_shape[axis] as i32;
-        let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
-
-        let mut result = CudaTensor::alloc_init(self.context, output_shape)?;
-
-        let cfg = LaunchConfig {
-            grid_dim: (outer_size as u32, 1, 1),
-            block_dim: (inner_size.min(1024) as u32, 1, 1),
-            shared_mem_bytes: 0,
-        };
-
-        self.kernels.launch_min_axes(
-            cfg,
-            &input.data,
-            &mut result.data,
-            outer_size,
-            axis_size,
-            inner_size,
-        )?;
-        Ok(result)
+        self.reduce_axes(
+            input,
+            axes,
+            keep_dims,
+            |cfg, input_data, output_data, outer_size, axis_size, inner_size| {
+                self.kernels.launch_min_axes(
+                    cfg,
+                    input_data,
+                    output_data,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )
+            },
+        )
     }
 
     /// Mean operation (uses sum + division)
@@ -655,20 +606,23 @@ impl<'a> CudaOps<'a> {
         self.mul_scalar(&sum_result, size_scalar)
     }
 
-    /// Mean along specific axis
+    /// Mean along specific axes
     pub fn mean_axes<T>(
         &self,
         input: &CudaTensor<T>,
-        axis: usize,
+        axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String>
     where
         T: crate::backend::number::GPUFloat + 'static,
     {
-        let sum_result = self.sum_axes(input, axis, keep_dims)?;
-        let divisor = input.shape[axis] as f64;
+        let sum_result = self.sum_axes(input, axes, keep_dims)?;
+        // Calculate divisor as product of all reduced dimensions
+        let divisor: f64 = axes.iter().map(|&axis| input.shape[axis] as f64).product();
+
         let divisor_scalar = <T as crate::backend::number::CPUFloat>::from_f64(1.0 / divisor)
             .ok_or("Failed to convert divisor to tensor type")?;
+
         self.mul_scalar(&sum_result, divisor_scalar)
     }
 
@@ -973,7 +927,9 @@ impl<'a> CudaOps<'a> {
                 let input_tile_h = tile_size + kernel_height - 1;
                 let input_tile_w = tile_size + kernel_width - 1;
                 let filter_size = kernel_height * kernel_width;
-                (input_tile_h * input_tile_w + filter_size) * std::mem::size_of::<T>()
+                ((input_tile_h * input_tile_w + filter_size) * std::mem::size_of::<T>())
+                    .try_into()
+                    .unwrap()
             },
         };
 
@@ -1007,6 +963,17 @@ impl<'a> CudaOps<'a> {
         input.squeeze(axis)?
     }
 
+    pub fn reshape(&self, input: &mut CudaTensor<T>, new_shape: Vec<usize>) -> Result<(), String> {
+        input.reshape(new_shape)?
+    }
+
+    pub fn transpose(
+        &self,
+        input: &mut CudaTensor<T>,
+        axes: Option<&[usize]>,
+    ) -> Result<(), String> {
+        input.transpose(axes)
+    }
     pub fn unsqueeze(&self, input: &mut CudaTensor<T>, axis: usize) -> Result<(), String> {
         input.unsqueeze(axis)?
     }
@@ -1019,7 +986,127 @@ impl<'a> CudaOps<'a> {
         input.broadcast_to(target_shape)?
     }
 
-    pub fn transpose(&self, input: &CudaTensor<T>) -> Result<(), String> {
-        input.transpose()?
+    /// PRIVATE METHODS
+    fn reduce_axes<T, F>(
+        &self,
+        input: &CudaTensor<T>,
+        axes: &[usize],
+        keep_dims: bool,
+        kernel_launcher: F,
+    ) -> Result<CudaTensor<T>, String>
+    where
+        T: crate::backend::number::GPUFloat + 'static,
+        F: Fn(LaunchConfig, &CudaSlice<T>, &mut CudaSlice<T>, i32, i32, i32) -> Result<(), String>,
+    {
+        let input_shape = &input.shape;
+
+        // Validate all axes are within bounds
+        for &axis in axes {
+            if axis >= input_shape.len() {
+                return Err(format!(
+                    "Axis {} out of bounds for tensor with {} dimensions",
+                    axis,
+                    input_shape.len()
+                ));
+            }
+        }
+
+        // Handle single axis case
+        if axes.len() == 1 {
+            let axis = axes[0];
+            let mut output_shape = input_shape.clone();
+            if keep_dims {
+                output_shape[axis] = 1;
+            } else {
+                output_shape.remove(axis);
+            }
+
+            let outer_size = input_shape[..axis].iter().product::<usize>() as i32;
+            let axis_size = input_shape[axis] as i32;
+            let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
+
+            let mut result = CudaTensor::alloc_init(self.context, output_shape)?;
+
+            let cfg = LaunchConfig {
+                grid_dim: (outer_size as u32, 1, 1),
+                block_dim: (inner_size.min(1024) as u32, 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            kernel_launcher(
+                cfg,
+                &input.data,
+                &mut result.data,
+                outer_size,
+                axis_size,
+                inner_size,
+            )?;
+            return Ok(result);
+        }
+
+        // Multiple axes case
+        let mut final_shape = input_shape.clone();
+        let mut sorted_axes = axes.to_vec();
+        sorted_axes.sort_by(|a, b| b.cmp(a));
+
+        if keep_dims {
+            for &axis in axes {
+                final_shape[axis] = 1;
+            }
+        } else {
+            for &axis in &sorted_axes {
+                final_shape.remove(axis);
+            }
+        }
+
+        let mut result = CudaTensor::alloc_init(self.context, final_shape)?;
+        let mut current_tensor = input;
+        let mut current_shape = input_shape.clone();
+        let mut temp_tensors = Vec::new();
+
+        for (step_idx, &axis) in sorted_axes.iter().enumerate() {
+            let outer_size = current_shape[..axis].iter().product::<usize>() as i32;
+            let axis_size = current_shape[axis] as i32;
+            let inner_size = current_shape[axis + 1..].iter().product::<usize>() as i32;
+
+            let cfg = LaunchConfig {
+                grid_dim: (outer_size as u32, 1, 1),
+                block_dim: (inner_size.min(1024) as u32, 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            if step_idx == sorted_axes.len() - 1 {
+                // Final step - write directly to result
+                kernel_launcher(
+                    cfg,
+                    &current_tensor.data,
+                    &mut result.data,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )?;
+            } else {
+                // Intermediate step
+                let mut step_output_shape = current_shape.clone();
+                step_output_shape.remove(axis);
+
+                let mut temp_tensor =
+                    CudaTensor::alloc_init(self.context, step_output_shape.clone())?;
+                kernel_launcher(
+                    cfg,
+                    &current_tensor.data,
+                    &mut temp_tensor.data,
+                    outer_size,
+                    axis_size,
+                    inner_size,
+                )?;
+
+                temp_tensors.push(temp_tensor);
+                current_tensor = &temp_tensors[temp_tensors.len() - 1];
+                current_shape = step_output_shape;
+            }
+        }
+
+        Ok(result)
     }
 }

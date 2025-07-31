@@ -13,10 +13,10 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub struct ContextManager {
+pub struct CudaContextManager {
     ctx: Arc<CudaContext>,
     stream_manager: StreamManager,
-    devices: Vec<usize>, // List of devices available
+    ops: CudaOps,
 }
 
 unsafe impl Send for CudaContextManager {}
@@ -29,25 +29,31 @@ impl CudaContextManager {
 
     /// Creates a new CUDA context manager with full backend capabilities
     pub fn from_device_id(device: usize) -> Result<Self, String> {
-        let ctx = CudaContext::new(device);
+        let ctx = CudaContext::new(device).map_err(|e| format!("CUDA init error: {}", e))?;
         let stream_manager = StreamManager::new(&ctx);
         stream_manager.setup_parallel_streams(&ctx)?;
 
         if let Some(compute_stream) = stream_manager.get_stream("compute") {
             // Initialize and load kernels during context creation
             let mut kernels = KernelManager::new(compute_stream);
-            load_all_kernels(&mut kernels)?;
+            load_all_kernels(&mut kernels, &ctx)?;
         } else {
             let default_stream = ctx.default_stream();
             let mut kernels = KernelManager::new(default_stream);
-            load_all_kernels(&mut kernels)?;
+            load_all_kernels(&mut kernels, &ctx)?;
         }
+
+        let ops = CudaOps::new(&kernels, &self);
 
         Ok(Self {
             ctx,
-            kernels,
             stream_manager,
+            ops,
         })
+    }
+
+    pub fn default_stream(&self) -> Arc<CudaStream> {
+        self.ctx.default_stream()
     }
 
     // ============= GPU MEMORY MANAGEMENT =============
@@ -90,7 +96,7 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        self.alloc_zeros(data.len())?;
+        let mut device_buffer = self.alloc_zeros(data.len())?;
 
         let stream = match self.stream_manager.get_stream("copy_h2d") {
             Some(h2d_stream) => h2d_stream,
@@ -115,9 +121,9 @@ impl CudaContextManager {
         // Allocate host buffer
         let mut host_buffer = vec![T::default(); data.len()];
 
-        let stream = match stream_manager.get_stream("copy_d2h") {
+        let stream = match self.stream_manager.get_stream("copy_d2h") {
             Some(d2h_stream) => d2h_stream,
-            None => stream_manager.default_stream(),
+            None => self.stream_manager.default_stream(),
         };
 
         // Copy data from device to host using the correct cudarc API
@@ -167,22 +173,12 @@ impl CudaContextManager {
 
     /// Get device name for debugging
     pub fn name(&self) -> String {
-        self.ctx.name()
-    }
-
-    /// Access to kernel manager
-    pub fn kernels(&self) -> &CudaKernels {
-        &self.kernels
-    }
-
-    /// Mutable access to kernel manager
-    pub fn kernels_mut(&mut self) -> &mut CudaKernels {
-        &mut self.kernels
+        self.ctx.name().expect("Error getting current device name")
     }
 
     /// Access to operations interface
     pub fn ops(&self) -> CudaOps<'_> {
-        CudaOps::new(&self.kernels, self)
+        self.ops
     }
 
     /// Synchronize all operations
@@ -300,23 +296,12 @@ impl CudaContextManager {
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
-        if let Some(stream_name) = stream_name {
-            self.stream_manager
-                .device_to_host_async(data, Some(stream_name))
-        } else {
-            // Use default stream for async operation - allocate host buffer and copy
-            let mut host_buffer = vec![T::default(); data.len()];
-            unsafe {
-                self.default_stream
-                    .memcpy_dtoh(data, &mut host_buffer)
-                    .map_err(|e| format!("Async device to host transfer failed: {}", e))?;
-            }
-            Ok(host_buffer)
-        }
+        self.stream_manager
+            .device_to_host_async(&self.ctx, data, stream_name)
     }
 }
 
-/// Enhanced CUDA tensor with better integration
+///
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CudaTensor<T: cudarc::driver::DeviceRepr> {
@@ -346,7 +331,7 @@ where
     /// Create tensor from CPU ndarray without taking ownership
     /// This allows borrowing external ndarray data for GPU transfer
     pub fn from_cpu_array(
-        context_manager: &CudaContextManager,
+        context_manager: &ContextManager,
         array: &ArrayD<T>,
     ) -> Result<Self, String> {
         let shape = array.shape().to_vec();
@@ -380,7 +365,7 @@ where
     /// Create tensor from CPU ndarray asynchronously without taking ownership
     /// Useful for overlapping transfers with computation
     pub fn from_cpu_array_async(
-        context_manager: &CudaContextManager,
+        context_manager: &ContextManager,
         array: &ArrayD<T>,
         stream_name: Option<&str>,
     ) -> Result<Self, String> {
@@ -413,7 +398,7 @@ where
     /// Create tensor from CPU slice asynchronously without taking ownership
     /// Useful for overlapping transfers with computation
     pub fn from_cpu_slice_async(
-        context_manager: &CudaContextManager,
+        context_manager: &ContextManager,
         data: &[T],
         shape: Vec<usize>,
         stream_name: Option<&str>,
@@ -435,7 +420,7 @@ where
 
     /// Create tensor from host data using context manager
     pub fn from_vec(
-        context_manager: &CudaContextManager,
+        context_manager: &ContextManager,
         data: Vec<T>,
         shape: Vec<usize>,
     ) -> Result<Self, String> {
@@ -455,7 +440,7 @@ where
 
     /// Create async tensor from host data
     pub fn from_vec_async(
-        context_manager: &CudaContextManager,
+        context_manager: &ContextManager,
         data: Vec<T>,
         shape: Vec<usize>,
         stream_name: Option<&str>,
@@ -712,6 +697,7 @@ where
                         // 2D matrices
                         self.shape.swap(0, 1);
                         self.strides.swap(0, 1);
+                        Ok(())
                     }
                     _ => {
                         // Higher dimensions - create reversed axes permutation

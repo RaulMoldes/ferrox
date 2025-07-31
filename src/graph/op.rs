@@ -12,13 +12,13 @@ where
 {
     // Defines the interface for operators in the computational graph
     // Compute function computes the output in the computational graph.
-    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String>;
+    fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String>;
 
     // Gradient function computes the gradient of the output with respect to the inputs.
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
-        inputs: &[Tensor<T>],
+        grad_output: &mut Tensor<T>,
+        inputs: &mut [Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String>;
 
     // Get number of inputs this operator expects
@@ -106,20 +106,19 @@ where
     fn gradient(
         &self,
         grad_output: &Tensor<T>,
-        inputs: &[Tensor<T>],
+        inputs: &mut [Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // For C = A @ B:
         // dC/dA = grad_output @ B^T
         // dC/dB = A^T @ grad_output
 
-        let a = &inputs[0];
-        let b = &inputs[1];
 
-        let b_transposed = b.transpose(None)?;
-        let grad_a = grad_output.matmul(&b_transposed)?;
+        inputs[0].transpose(None)?;
+        inputs[1].transpose(None)?;
 
-        let a_transposed = a.transpose(None)?;
-        let grad_b = a_transposed.matmul(grad_output)?;
+
+        let grad_a = grad_output.matmul(&inputs[1])?;
+        let grad_b = inputs[0].matmul(grad_output)?;
 
         Ok(vec![grad_a, grad_b])
     }
@@ -189,7 +188,7 @@ where
 
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
+        grad_output: &mut Tensor<T>,
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of sum: broadcast gradient back to original shape
@@ -198,12 +197,14 @@ where
         let broadcasted_grad = match self.axis {
             Some(axis) => {
                 // For axis-specific sum, we need to expand dimensions back
-                let expanded = grad_output.unsqueeze(axis);
-                expanded?.broadcast_to(input_shape)?
+                grad_output.unsqueeze(axis)?;
+                grad_output.broadcast_to(input_shape)?;
+                grad_output.clone()
             }
             None => {
                 // Sum over all dimensions: broadcast scalar gradient to input shape
-                grad_output.broadcast_to(input_shape)?
+                grad_output.broadcast_to(input_shape)?;
+                grad_output.clone()
             }
         };
 
@@ -538,17 +539,18 @@ impl<T> Operator<T> for TransposeOp
 where
     T: GPUFloat,
 {
-    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+    fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("TransposeOp requires exactly 1 input".to_string());
         }
-        inputs[0].transpose(self.axes.as_deref())
+        inputs[0].transpose(self.axes.as_deref())?;
+        Ok(inputs[0].clone())
     }
 
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
-        _inputs: &[Tensor<T>],
+        grad_output: &mut Tensor<T>,
+        _inputs: &mut [Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of transpose is transpose with inverse permutation
         match &self.axes {
@@ -558,13 +560,13 @@ where
                 for (i, &ax) in axes_order.iter().enumerate() {
                     inverse_axes[ax] = i;
                 }
-                let grad = grad_output.transpose(Some(&inverse_axes))?;
-                Ok(vec![grad])
+                grad_output.transpose(Some(&inverse_axes))?;
+                Ok(vec![grad_output.clone()])
             }
             None => {
                 // Default transpose: apply transpose again (since transpose is its own inverse)
-                let grad = grad_output.transpose(None)?;
-                Ok(vec![grad])
+                grad_output.transpose(None)?;
+                Ok(vec![grad_output.clone()])
             }
         }
     }
@@ -593,24 +595,25 @@ impl<T> Operator<T> for ReshapeOp
 where
     T: GPUFloat,
 {
-    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+    fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("ReshapeOp requires exactly 1 input".to_string());
         }
-        inputs[0].reshape(&self.new_shape)
+        inputs[0].reshape(&self.new_shape)?;
+        Ok(inputs[0].clone())
     }
 
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
-        inputs: &[Tensor<T>],
+        grad_output: &mut Tensor<T>,
+        inputs: &mut [Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of reshape is reshape back to original shape
         // I would like to store the original shape in the operator, but this would require to
         // grab a mutable reference to the Operator, which is not possible in the current design, and also probably not worthy.
         let original_shape = inputs[0].shape();
-        let grad = grad_output.reshape(original_shape)?;
-        Ok(vec![grad])
+        grad_output.reshape(original_shape)?;
+        Ok(vec![grad_output.clone()])
     }
 
     fn num_inputs(&self) -> usize {
@@ -633,23 +636,22 @@ impl<T> Operator<T> for BroadcastToOp
 where
     T: GPUFloat,
 {
-    fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
+    fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
             return Err("BroadcastToOp requires exactly 1 input".to_string());
         }
-        inputs[0].broadcast_to(&self.target_shape)
+        inputs[0].broadcast_to(&self.target_shape)?;
+        Ok(inputs[0].clone())
     }
 
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
-        inputs: &[Tensor<T>],
+        grad_output: &mut Tensor<T>,
+        inputs: &mut [Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of broadcast: sum over broadcasted dimensions
         let input_shape = inputs[0].shape();
         let output_shape = grad_output.shape();
-
-        let mut grad = grad_output.clone();
 
         // Sum over dimensions that were broadcasted
         let ndim_diff = output_shape.len() - input_shape.len();
@@ -667,7 +669,7 @@ where
         {
             if input_dim == 1 && output_dim > 1 {
                 grad = grad.sum(Some(&[i]))?;
-                grad = grad.unsqueeze(i)?
+                grad.unsqueeze(i)?
             }
         }
 
@@ -707,7 +709,7 @@ where
 
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
+        grad_output: &mut Tensor<T>,
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         // Gradient of sum: broadcast gradient back to original shape
@@ -715,16 +717,18 @@ where
 
         let broadcasted_grad = match &self.axes {
             Some(axes) => {
-                let mut grad = grad_output.clone();
+
                 // Expand dimensions back for each summed axis
                 for &axis in axes.iter().rev() {
-                    grad = grad.unsqueeze(axis)?;
+                    grad.unsqueeze(axis)?;
                 }
-                grad.broadcast_to(input_shape)?
+                grad.broadcast_to(input_shape)?;
+                grad.clone()
             }
             None => {
                 // Sum over all dimensions: broadcast scalar gradient to input shape
-                grad_output.broadcast_to(input_shape)?
+                grad_output.broadcast_to(input_shape)?;
+                grad_output.clone()
             }
         };
 
@@ -1097,7 +1101,7 @@ where
 
     fn gradient(
         &self,
-        grad_output: &Tensor<T>,
+        grad_output: &mut Tensor<T>,
         inputs: &[Tensor<T>],
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
@@ -1107,24 +1111,25 @@ where
         let input = &inputs[0];
 
         // First, compute the maximum values again to determine which elements were maximal
-        let max_values = input.max_reduce(Some(&[self.dim]))?;
+        let mut max_values = input.max_reduce(Some(&[self.dim]))?;
 
         // Expand max_values to match input shape for comparison
-        let expanded_max = max_values.expand_dims(self.dim)?;
-        let broadcasted_max = expanded_max.broadcast_to(input.shape())?;
+        max_values.expand_dims(self.dim)?;
+        max_values.broadcast_to(input.shape())?;
 
-        let mask = input.equal(&broadcasted_max)?;
+        let mask = input.equal(&max_vals)?;
 
-        let count_maxima = mask.sum(Some(&[self.dim]));
+        let count_maxima = mask.sum(Some(&[self.dim]))?;
 
-        let expanded_count = count_maxima?.expand_dims(self.dim)?;
-        let expanded_grad = grad_output.expand_dims(self.dim)?;
-        let broadcasted_count = expanded_count.broadcast_to(input.shape())?;
-        let broadcasted_grad = expanded_grad.broadcast_to(input.shape())?;
+        count_maxima.expand_dims(self.dim)?;
+        grad_output.expand_dims(self.dim)?;
+
+        count_maxima.broadcast_to(input.shape())?;
+        grad_output.broadcast_to(input.shape())?;
 
         // Gradient is (mask / count) * grad_output
         // This ensures gradient is distributed equally among tied maxima
-        let grad = broadcasted_grad.mul(&mask)?.div(&broadcasted_count)?;
+        let grad = grad_output.mul(&mask)?.div(&count_maxima)?;
 
         Ok(vec![grad])
     }
@@ -1190,28 +1195,28 @@ where
         }
 
         // Step 1: Find maximum along the specified dimension for numerical stability
-        let max_vals = input.max_reduce(Some(&[self.dim]))?;
+        let mut max_vals = input.max_reduce(Some(&[self.dim]))?;
 
         // Step 2: Expand max_vals back to original shape for broadcasting
-        let expanded_max = max_vals.unsqueeze(self.dim);
-        let broadcasted_max = expanded_max?.broadcast_to(input_shape)?;
+        max_vals.unsqueeze(self.dim)?;
+        max_vals.broadcast_to(input_shape)?;
 
         // Step 3: Subtract max and compute exponentials: exp(x - max)
         // This should be fused into a sub operation for efficiency. However curently it is not implemented.
-        let negated = broadcasted_max.neg()?;
+        let negated = max_vals.neg()?;
         let shifted_input = input.add(&negated)?;
 
         let exp_vals = shifted_input.exp()?;
 
         // Step 4: Sum exponentials along the dimension
-        let sum_exp = exp_vals.sum(Some(&[self.dim]));
+        let mut sum_exp = exp_vals.sum(Some(&[self.dim]))?;
 
         // Step 5: Expand sum back to original shape for broadcasting
-        let expanded_sum = sum_exp?.unsqueeze(self.dim);
-        let broadcasted_sum = expanded_sum?.broadcast_to(input_shape)?;
+        sum_exp.unsqueeze(self.dim)?;
+        sum_exp.broadcast_to(input_shape)?;
 
         // Step 6: Divide by sum to get probabilities
-        let result = exp_vals.div(&broadcasted_sum)?;
+        let result = exp_vals.div(&sum_exp)?;
 
         Ok(result)
     }
@@ -1236,14 +1241,14 @@ where
         let elementwise_product = softmax_output.mul(grad_output)?;
 
         // Sum along the softmax dimension: sum(softmax * grad_output, dim)
-        let sum_product = elementwise_product.sum(Some(&[self.dim]))?;
+        let mut sum_product = elementwise_product.sum(Some(&[self.dim]))?;
 
         // Expand sum back to original shape for broadcasting
-        let expanded_sum = sum_product.unsqueeze(self.dim);
-        let broadcasted_sum = expanded_sum?.broadcast_to(input.shape())?;
+        sum_product.unsqueeze(self.dim)?;
+        sum_product.broadcast_to(input.shape())?;
 
         // Compute final gradient: softmax * (grad_output - broadcasted_sum)
-        let negated_sum = broadcasted_sum.neg()?;
+        let negated_sum = elementwise_product.neg()?;
         // This is equivalent to grad_output - sum(softmax * grad_output, dim)
         let grad_diff = grad_output.add(&negated_sum)?;
         let grad_input = softmax_output.mul(&grad_diff)?;

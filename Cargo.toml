@@ -23,8 +23,7 @@ all = ["cpu", "cuda"]
 [dev-dependencies]
 approx = "0.5"
 
-[examples]
-ferrox_example = { path = "examples/ferrox_example.rs" }
+
 
 [lib]
 doctest = true

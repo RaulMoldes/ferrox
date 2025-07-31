@@ -29,10 +29,9 @@ fn compile_cuda_kernels() {
     // List of kernels to compile
     let kernels = [
         "elementwise",
-        "reduce",
+        "reduction",
         "matmul",
         "activations",
-        "transpose",
         "comparison", // New kernel
         "convolutions",
         "fill",
@@ -78,6 +77,8 @@ fn compile_cuda_kernels() {
             .arg("gcc-11")
             .arg("--std=c++11")
             .arg("-arch=sm_86") // You can make this configurable
+            .arg("-I") // Add include directory flag
+            .arg(&kernels_dir) // Point to kernels directory for headers
             .arg(&cu_file)
             .arg("-o")
             .arg(&ptx_file)

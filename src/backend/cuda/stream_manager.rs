@@ -139,6 +139,7 @@ impl StreamManager {
     /// Async device to host transfer using named stream
     pub fn device_to_host_async<T>(
         &self,
+        ctx: &Arc<CudaContext>,
         data: &CudaSlice<T>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String>
@@ -147,11 +148,16 @@ impl StreamManager {
     {
         let streams = self.streams.lock().unwrap();
         let stream = match stream_name {
-            Some(name) => streams
-                .get(name)
-                .cloned()
-                .ok_or_else(|| format!("Stream '{}' not found", name))?,
-            None => return Err("Default stream not accessible from StreamManager".to_string()),
+            Some(name) => {
+                let streams = self.streams.lock().unwrap();
+                streams.get(name).cloned().ok_or_else(|| {
+                    format!(
+                        "Stream '{}' not found. Create it first with create_stream()",
+                        name
+                    )
+                })?
+            }
+            None => ctx.default_stream(),
         };
 
         // Allocate host buffer

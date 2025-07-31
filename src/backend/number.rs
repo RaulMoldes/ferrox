@@ -481,12 +481,6 @@ impl GPUFloat for f32 {}
 #[cfg(feature = "cuda")]
 impl GPUFloat for f64 {}
 
-#[cfg(feature = "cuda")]
-impl GPUFloat for i32 {}
-
-#[cfg(feature = "cuda")]
-impl GPUFloat for i64 {}
-
 // ============= NON-CUDA IMPLEMENTATIONS =============
 
 // When CUDA is not available, provide blanket implementation for all CPUFloat types

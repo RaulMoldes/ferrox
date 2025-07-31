@@ -15,18 +15,11 @@
 //! - Written 100% in safe Rust
 //!
 pub mod backend;
-pub mod graph;
-pub mod nn;
+
 pub mod tensor; // New neural network module
 
 // Re-export commonly used types for convenience
 pub use backend::{CPUNumber, Device, GPUFloat, cpu, default_device};
-pub use graph::{
-    Engine, EngineVisualization, GraphVisualizer, NodeId, VisualizationConfig, next_node_id,
-};
-pub use nn::{Module, Parameter};
-pub use nn::{
-    init_tensor_kaiming_uniform, init_tensor_xavier_uniform, kaiming_uniform, xavier_uniform,
-};
+
 
 pub use tensor::Tensor;

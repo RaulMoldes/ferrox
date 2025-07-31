@@ -1,10 +1,15 @@
 use crate::backend::number::{CPUNumber, GPUFloat};
 use crate::backend::{Device, default_device};
-use crate::tensor::storage::{CPUOwnedStorage, StorageBackend};
+use crate::tensor::storage::{CPUStorage, StorageBackend};
+
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
+
+
+#[cfg(feature = "cuda")]
+use crate::tensor::storage::GPUStorage;
 
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug)]
@@ -22,9 +27,9 @@ where
 {
     fn clone(&self) -> Self {
         let storage = if let Some(storage_ref) = &self.storage {
-            // Try to downcast to CPUOwnedStorage if possible
+            // Try to downcast to CPUStorage if possible
             if let Some(any_ref) = storage_ref.as_any() {
-                if let Some(cpu_storage) = any_ref.downcast_ref::<CPUOwnedStorage<T>>() {
+                if let Some(cpu_storage) = any_ref.downcast_ref::<CPUStorage<T>>() {
                     Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
                 } else if let Ok(storage) = storage_ref.clone_storage() {
                     Some(storage)
@@ -79,19 +84,19 @@ where
 {
     pub fn zeros(shape: &[usize]) -> Result<Self, String> {
         let device = default_device();
-        let storage = CPUOwnedStorage::<T>::zeros(shape)?;
+        let storage = CPUStorage::<T>::zeros(shape)?;
         Self::from_storage_backend(storage, device)
     }
 
     pub fn zeros_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
         let result_storage = match device {
             Device::CPU => {
-                let storage = CPUOwnedStorage::<T>::zeros(shape)?;
+                let storage = CPUStorage::<T>::zeros(shape)?;
                 storage
             }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
-                let storage = GPUOwnedStorage::<T>::zeros(shape)?;
+                let storage = GPUStorage::<T>::zeros(shape)?;
                 storage
             }
         };
@@ -102,19 +107,19 @@ where
     // New ones implementation using storage backend
     pub fn ones(shape: &[usize]) -> Result<Self, String> {
         let device = default_device();
-        let storage = CPUOwnedStorage::<T>::ones(shape)?;
+        let storage = CPUStorage::<T>::ones(shape)?;
         Self::from_storage_backend(storage, device)
     }
 
     pub fn ones_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
         let result_storage = match device {
             Device::CPU => {
-                let storage = CPUOwnedStorage::<T>::ones(shape)?;
+                let storage = CPUStorage::<T>::ones(shape)?;
                 storage
             }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
-                let storage = GPUOwnedStorage::<T>::ones(shape)?;
+                let storage = GPUStorage::<T>::ones(shape)?;
                 storage
             }
         };
@@ -125,7 +130,7 @@ where
     // Additional initialization method for completeness
     pub fn full(shape: &[usize], value: T) -> Result<Self, String> {
         let device = default_device();
-        let storage = CPUOwnedStorage::<T>::full(shape, value)?;
+        let storage = CPUStorage::<T>::full(shape, value)?;
         Self::from_storage_backend(storage, device)
     }
 
@@ -135,7 +140,7 @@ where
         StandardUniform: Distribution<T>,
     {
         let device = default_device();
-        let storage = CPUOwnedStorage::<T>::randn(shape)?;
+        let storage = CPUStorage::<T>::randn(shape)?;
         Self::from_storage_backend(storage, device)
     }
 
@@ -145,11 +150,11 @@ where
     {
         // Choose storage type based on device
         let storage: Box<dyn StorageBackend<T>> = match device {
-            Device::CPU => CPUOwnedStorage::<T>::randn(shape)?,
+            Device::CPU => CPUStorage::<T>::randn(shape)?,
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 // Use GPU storage for CUDA devices
-                crate::tensor::storage::GPUOwnedStorage::<T>::randn(shape)?
+                crate::tensor::storage::GPUStorage::<T>::randn(shape)?
             }
         };
 
@@ -175,7 +180,7 @@ where
     // In the course, the graph node was the main layer of abstraction over the device, and the tensor inherits from it.
     pub fn new(data: ArrayD<T>) -> Self {
         // Create storage backend from the data
-        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        let storage = crate::tensor::storage::CPUStorage::new(data.clone());
 
         Self {
             device: crate::backend::default_device(),
@@ -211,7 +216,7 @@ where
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
     // Ideally, we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as I prefer to focus more on the automatic differentiation engine thing.
     pub fn new_with_device(data: ArrayD<T>, device: crate::backend::Device) -> Self {
-        let storage = crate::tensor::storage::CPUOwnedStorage::new(data.clone());
+        let storage = crate::tensor::storage::CPUStorage::new(data.clone());
         Self {
             device,
             storage: Some(Box::new(storage)),
@@ -234,7 +239,7 @@ where
         match ndarray::Array::from_shape_vec(ndarray::IxDyn(shape), data) {
             Ok(array) => {
                 // Create storage backend for the array
-                let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+                let storage = crate::tensor::storage::CPUStorage::new(array.clone());
                 Ok(Self {
                     device: default_device(),
                     storage: Some(Box::new(storage)),
@@ -340,7 +345,7 @@ where
                 #[cfg(feature = "cuda")]
                 {
                     if let Some(gpu_storage) = storage.as_any().and_then(|any| {
-                        any.downcast_ref::<crate::tensor::storage::GPUOwnedStorage<T>>()
+                        any.downcast_ref::<crate::tensor::storage::GPUStorage<T>>()
                     }) {
                         use crate::backend::manager::get_backend;
                         let backend = get_backend();
@@ -391,7 +396,7 @@ where
                 #[cfg(feature = "cuda")]
                 {
                     if let Some(gpu_storage) = storage.as_any().and_then(|any| {
-                        any.downcast_ref::<crate::tensor::storage::GPUOwnedStorage<T>>()
+                        any.downcast_ref::<crate::tensor::storage::GPUStorage<T>>()
                     }) {
                         use crate::backend::manager::get_backend;
                         let backend = get_backend();
@@ -841,16 +846,16 @@ where
             if let (Some(cond_cpu), Some(true_cpu), Some(false_cpu)) = (
                 condition_storage
                     .as_any()
-                    .and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
+                    .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
                 true_storage
                     .as_any()
-                    .and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
+                    .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
                 false_storage
                     .as_any()
-                    .and_then(|s| s.downcast_ref::<CPUOwnedStorage<T>>()),
+                    .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
             ) {
                 let result_storage =
-                    CPUOwnedStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
+                    CPUStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
                 return Self::from_storage_backend(result_storage, condition.device.clone());
             }
         }
@@ -862,16 +867,16 @@ where
                 if let (Some(cond_gpu), Some(true_gpu), Some(false_gpu)) = (
                     condition_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
+                        .and_then(|s| s.downcast_ref::<GPUStorage<T>>()),
                     true_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
+                        .and_then(|s| s.downcast_ref::<GPUStorage<T>>()),
                     false_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<GPUOwnedStorage<T>>()),
+                        .and_then(|s| s.downcast_ref::<GPUStorage<T>>()),
                 ) {
                     let result_storage =
-                        GPUOwnedStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
+                        GPUStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
                     return Self::from_storage_backend(
                         Box::new(result_storage),
                         condition.device.clone(),
@@ -988,7 +993,7 @@ where
             .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
 
         // Create using storage backend
-        let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+        let storage = crate::tensor::storage::CPUStorage::new(array.clone());
         Ok(Self {
             device: crate::backend::default_device(),
             storage: Some(Box::new(storage)),
@@ -1015,7 +1020,7 @@ where
             .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
 
         // Create using storage backend
-        let storage = crate::tensor::storage::CPUOwnedStorage::new(array.clone());
+        let storage = crate::tensor::storage::CPUStorage::new(array.clone());
         Ok(Self {
             device,
             storage: Some(Box::new(storage)),
@@ -1046,7 +1051,7 @@ where
             storage.cpu_data()?.clone()
         };
 
-        let owned_storage = crate::tensor::storage::CPUOwnedStorage::new(cpu_data.clone());
+        let owned_storage = crate::tensor::storage::CPUStorage::new(cpu_data.clone());
         Ok(Self {
             device: self.device.clone(),
             storage: Some(Box::new(owned_storage)),
@@ -1230,85 +1235,64 @@ where
 {
     /// Broadcasting for gradient computation and tensor operations
     /// Uses storage backend for consistent behavior across CPU/GPU
-    pub fn broadcast_to(&self, target_shape: &[usize]) -> Result<Tensor<T>, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-        let result_storage = storage.broadcast_to(target_shape)?;
+    pub fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
+        self.storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?
+            .broadcast_to(target_shape)?;
 
-        Ok(Tensor {
-            device: self.device.clone(),
-            storage: Some(result_storage),
-        })
+        Ok(())
     }
 
     /// Reshape operation - change tensor shape while preserving total elements
     /// Validates element count consistency before reshaping
-    pub fn reshape(&self, new_shape: &[usize]) -> Result<Tensor<T>, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-        let result_storage = storage.reshape(new_shape)?;
-
-        Ok(Tensor {
-            device: self.device.clone(),
-            storage: Some(result_storage),
-        })
+    pub fn reshape(&mut self, new_shape: &[usize]) -> Result<(), String> {
+        self.storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?
+            .reshape(new_shape)?;
+        Ok(())
     }
 
     /// Transpose operation - permute tensor axes
     /// If axes is None, performs default transpose (reverse all axes)
     /// If axes provided, must be valid permutation of 0..ndim
-    pub fn transpose(&self, axes: Option<&[usize]>) -> Result<Tensor<T>, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-        let result_storage = storage.transpose(axes)?;
+    pub fn transpose(&mut self, axes: Option<&[usize]>) -> Result<(), String> {
+        self.storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?
+            .transpose(axes)?;
 
-        Ok(Tensor {
-            device: self.device.clone(),
-            storage: Some(result_storage),
-        })
+        Ok(())
     }
 
     /// Add dimension of size 1 at specified axis
     /// Similar to tf.expand_dims - axis can be 0..ndim (inclusive)
-    pub fn unsqueeze(&self, axis: usize) -> Result<Tensor<T>, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-        let result_storage = storage.unsqueeze(axis)?;
+    pub fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
+        self.storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?
+            .unsqueeze(axis)?;
 
-        Ok(Tensor {
-            device: self.device.clone(),
-            storage: Some(result_storage),
-        })
+        Ok(())
     }
 
     /// Remove dimensions of size 1 from tensor
     /// If axis is Some(ax), removes only specified axis if it has size 1
     /// If axis is None, removes all dimensions with size 1
-    pub fn squeeze(&self, axis: Option<usize>) -> Result<Tensor<T>, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-        let result_storage = storage.squeeze(axis)?;
+    pub fn squeeze(&mut self, axis: Option<usize>) -> Result<(), String> {
+        self.storage
+            .as_mut()
+            .ok_or("Tensor has no storage backend")?
+            .squeeze(axis)?;
 
-        Ok(Tensor {
-            device: self.device.clone(),
-            storage: Some(result_storage),
-        })
+        Ok(())
     }
 
     /// TensorFlow-style expand_dims - alias for unsqueeze
     /// Adds dimension of size 1 at specified axis
     /// Implemented through unsqueeze to avoid code duplication
-    pub fn expand_dims(&self, axis: usize) -> Result<Tensor<T>, String> {
+    pub fn expand_dims(&mut self, axis: usize) -> Result<(), String> {
         self.unsqueeze(axis)
     }
 }

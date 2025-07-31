@@ -1,8 +1,4 @@
-use super::op::{
-    AbsOp, AddOp, AddScalarOp, BroadcastToOp, ClampOp, DivOp, DivScalarOp, ExpOp, LogOp, MatMulOp,
-    MaxAlongDimOp, MaxOp, MinOp, MulOp, MulScalarOp, NegateOp, Operator, PowOp, ReLUOp, ReshapeOp,
-    SqrtOp, SumOp, SummationOp, TransposeOp,
-};
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -163,7 +159,7 @@ where
 
                     // Compute gradients for all inputs
                     let input_grads: Vec<Tensor<T>> =
-                        op.gradient(&accumulated_grad, &input_data)?;
+                        op.gradient(&mut accumulated_grad, &input_data)?;
 
                     // Accumulate gradients for input nodes
                     for (i, &input_id) in node.inputs.iter().enumerate() {

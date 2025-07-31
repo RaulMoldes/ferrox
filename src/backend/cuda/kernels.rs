@@ -1,7 +1,7 @@
 // src/backend/cuda/kernels.rs
 #[allow(unused_imports)]
 use cudarc::driver::{
-    CudaFunction, CudaSlice, CudaStream, DeviceSlice, LaunchConfig, PushKernelArg,
+    CudaContext, CudaFunction, CudaSlice, CudaStream, DeviceSlice, LaunchConfig, PushKernelArg,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub const FILL_PTX: &[u8] = include_bytes!("../../../kernels/fill.ptx");
 // Generic kernel launch macro
 macro_rules! launch_kernel {
     ($self:expr, $kernel_name:expr, $cfg:expr, $( $arg:expr ),* $(,)? ) => {{
-        let stream = $self.stream();
+        let stream = $self.get_stream();
         let kernel = $self
             .get_function_cloned($kernel_name)
             .ok_or_else(|| format!("{} kernel not found", $kernel_name))?;
@@ -180,7 +180,12 @@ impl KernelManager {
         }
     }
 
-    pub fn load_kernel(&mut self, name: &str, ptx_bytes: &[u8]) -> Result<(), String> {
+    pub fn load_kernel(
+        &mut self,
+        ctx: &Arc<CudaContext>,
+        name: &str,
+        ptx_bytes: &[u8],
+    ) -> Result<(), String> {
         let config = KERNEL_CONFIGS
             .iter()
             .find(|k| k.name == name)
@@ -189,8 +194,7 @@ impl KernelManager {
         let ptx_str =
             std::str::from_utf8(ptx_bytes).map_err(|e| format!("Invalid PTX UTF-8: {}", e))?;
 
-        let module = self
-            .device
+        let module = ctx
             .load_module(ptx_str.into())
             .map_err(|e| format!("Failed to load {} kernel: {}", name, e))?;
 
@@ -942,9 +946,6 @@ impl KernelManager {
     {
         let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
 
-        // Handle bias as raw pointer (kernel expects nullable pointer)
-        let bias_ptr = bias.map(|b| b.as_ptr()).unwrap_or(std::ptr::null());
-
         launch_kernel!(
             self,
             &kernel_name,
@@ -979,9 +980,9 @@ impl KernelManager {
 }
 
 /// Load all predefined CUDA kernels
-pub fn load_all_kernels(kernels: &mut CudaKernels) -> Result<(), String> {
+pub fn load_all_kernels(kernels: &mut CudaKernels, ctx: &Arc<CudaContext>) -> Result<(), String> {
     for config in KERNEL_CONFIGS {
-        kernels.load_kernel(config.name, config.ptx)?;
+        kernels.load_kernel(ctx, config.name, config.ptx)?;
     }
 
     println!("Loaded {} CUDA kernels successfully", KERNEL_CONFIGS.len());

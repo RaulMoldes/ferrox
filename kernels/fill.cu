@@ -1,4 +1,5 @@
 #include <cuda.h>
+#include "globals.cuh"
 
 
 
