@@ -16,4 +16,4 @@
 //!
 pub mod backend;
 // Re-export commonly used types for convenience
-pub use backend::{ Device, GPUFloat, CPUFloat, cpu, default_device};
+pub use backend::{Device, FerroxCudaF, FerroxF, cpu, default_device};

@@ -1,24 +1,22 @@
-use crate::backend::number::{CPUNumber, GPUFloat};
-use crate::backend::{Device, default_device};
-use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::backend::manager::with_cuda_context;
+use crate::backend::number::{CPUNumber, FerroxCudaF};
+use crate::backend::storage::{CPUStorage, StorageBackend};
+use crate::backend::{Device, default_device};
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
 
-
-
-
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaContextManager;
-use crate::tensor::storage::GPUStorage;
+#[cfg(feature = "cuda")]
+use crate::backend::storage::CUDAStorage;
 
 // Tensor wrapper to handle dynamic arrays more elegantly
 #[derive(Debug)]
 pub struct Tensor<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     pub device: Device,
     storage: Option<Box<dyn StorageBackend<T>>>,
@@ -26,7 +24,7 @@ where
 
 impl<T> Clone for Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     fn clone(&self) -> Self {
         let storage = if let Some(storage_ref) = &self.storage {
@@ -56,7 +54,7 @@ where
 // Accessors
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     /// Get first element value safely. Useful for reduced tensors like mean
     pub fn first(&self) -> Result<T, String> {
@@ -83,7 +81,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone + rand_distr::num_traits::One,
+    T: FerroxCudaF + Clone + rand_distr::num_traits::One,
 {
     pub fn zeros(shape: &[usize]) -> Result<Self, String> {
         let device = default_device();
@@ -99,7 +97,7 @@ where
             }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
-                let storage = GPUStorage::<T>::zeros(shape)?;
+                let storage = CUDAStorage::<T>::zeros(shape)?;
                 storage
             }
         };
@@ -122,7 +120,7 @@ where
             }
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
-                let storage = GPUStorage::<T>::ones(shape)?;
+                let storage = CUDAStorage::<T>::ones(shape)?;
                 storage
             }
         };
@@ -157,7 +155,7 @@ where
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 // Use GPU storage for CUDA devices
-                crate::tensor::storage::GPUStorage::<T>::randn(shape)?
+                CUDAStorage::<T>::randn(shape)?
             }
         };
 
@@ -168,7 +166,7 @@ where
 // Main implementation block with basic operations
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     // Basically a constructor for the Tensor struct.
     // It takes an ArrayD<T> and returns a Tensor with storage backend.
@@ -183,7 +181,7 @@ where
     // In the course, the graph node was the main layer of abstraction over the device, and the tensor inherits from it.
     pub fn new(data: ArrayD<T>) -> Self {
         // Create storage backend from the data
-        let storage = crate::tensor::storage::CPUStorage::new(data.clone());
+        let storage = CPUStorage::new(data.clone());
 
         Self {
             device: crate::backend::default_device(),
@@ -195,14 +193,14 @@ where
     // This will become the primary constructor once data field is removed
     fn new_with_storage<S>(storage: S) -> Result<Self, String>
     where
-        S: crate::tensor::storage::StorageBackend<T> + 'static,
+        S: StorageBackend<T> + 'static,
     {
         // Extract data from storage for backward compatibility
         let data = match storage.cpu_data() {
             Ok(cpu_data) => cpu_data.clone(),
             Err(_) => {
                 // For GPU storage, create empty CPU data as placeholder
-                ndarray::ArrayD::zeros(ndarray::IxDyn(&[]))
+                ArrayD::zeros(IxDyn(&[]))
             }
         };
 
@@ -219,7 +217,7 @@ where
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
     // Ideally, we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as I prefer to focus more on the automatic differentiation engine thing.
     pub fn new_with_device(data: ArrayD<T>, device: crate::backend::Device) -> Self {
-        let storage = crate::tensor::storage::CPUStorage::new(data.clone());
+        let storage = CPUStorage::new(data.clone());
         Self {
             device,
             storage: Some(Box::new(storage)),
@@ -239,10 +237,10 @@ where
             ));
         }
 
-        match ndarray::Array::from_shape_vec(ndarray::IxDyn(shape), data) {
+        match Array::from_shape_vec(IxDyn(shape), data) {
             Ok(array) => {
                 // Create storage backend for the array
-                let storage = crate::tensor::storage::CPUStorage::new(array.clone());
+                let storage = CPUStorage::new(array.clone());
                 Ok(Self {
                     device: default_device(),
                     storage: Some(Box::new(storage)),
@@ -255,12 +253,12 @@ where
     // Create tensor from existing storage backend (internal use)
     // This is the most direct way to create tensors and will become primary after migration
     pub(crate) fn from_storage_backend(
-        storage: Box<dyn crate::tensor::storage::StorageBackend<T>>,
+        storage: Box<dyn StorageBackend<T>>,
         device: crate::backend::Device,
     ) -> Result<Self, String> {
         let data = match storage.cpu_data() {
             Ok(cpu_data) => cpu_data.clone(),
-            Err(_) => ndarray::ArrayD::zeros(ndarray::IxDyn(&[])),
+            Err(_) => ArrayD::zeros(IxDyn(&[])),
         };
 
         Ok(Self {
@@ -347,18 +345,17 @@ where
                 // GPU storage needs sync - create temporary CPU data
                 #[cfg(feature = "cuda")]
                 {
-                    if let Some(gpu_storage) = storage.as_any().and_then(|any| {
-                        any.downcast_ref::<crate::tensor::storage::GPUStorage<T>>()
-                    }) {
+                    if let Some(gpu_storage) = storage
+                        .as_any()
+                        .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                    {
+                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                            gpu_storage.cuda_data.to_vec(ctx)
+                        })?;
 
-
-                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {gpu_storage.cuda_data.to_vec(ctx)})?;
-
-                        let cpu_array = ndarray::ArrayD::from_shape_vec(
-                            ndarray::IxDyn(gpu_storage.cuda_data.shape()),
-                            host_data,
-                        )
-                        .map_err(|e| format!("Failed to create CPU array: {}", e))?;
+                        let cpu_array =
+                            ArrayD::from_shape_vec(IxDyn(gpu_storage.cuda_data.shape()), host_data)
+                                .map_err(|e| format!("Failed to create CPU array: {}", e))?;
 
                         return Ok(std::borrow::Cow::Owned(cpu_array));
                     }
@@ -396,18 +393,17 @@ where
                 // GPU storage - need to sync to CPU first
                 #[cfg(feature = "cuda")]
                 {
-                    if let Some(gpu_storage) = storage.as_any().and_then(|any| {
-                        any.downcast_ref::<crate::tensor::storage::GPUStorage<T>>()
-                    }) {
+                    if let Some(gpu_storage) = storage
+                        .as_any()
+                        .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                    {
+                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                            gpu_storage.cuda_data.to_vec(ctx)
+                        })?;
 
-
-                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {gpu_storage.cuda_data.to_vec(ctx)})?;
-
-                        let cpu_array = ndarray::ArrayD::from_shape_vec(
-                            ndarray::IxDyn(gpu_storage.cuda_data.shape()),
-                            host_data,
-                        )
-                        .map_err(|e| format!("Failed to create CPU array: {}", e))?;
+                        let cpu_array =
+                            ArrayD::from_shape_vec(IxDyn(gpu_storage.cuda_data.shape()), host_data)
+                                .map_err(|e| format!("Failed to create CPU array: {}", e))?;
 
                         return Ok(cpu_array);
                     }
@@ -421,7 +417,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     // Element-wise operations.
     // These are operations that are applied to each element of the tensor.
@@ -613,7 +609,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     /// Element-wise greater than  comparison using storage trait
     pub fn greater(&self, other: &Self) -> Result<Self, String> {
@@ -804,13 +800,13 @@ where
     }
 
     /// Iterator access through storage - avoids direct data field usage
-    pub fn iter(&self) -> Result<ndarray::iter::Iter<'_, T, ndarray::IxDyn>, String> {
+    pub fn iter(&self) -> Result<ndarray::iter::Iter<'_, T, IxDyn>, String> {
         let cpu_data = self.cpu_data()?;
         Ok(cpu_data.iter())
     }
 
     /// Mutable iterator through storage
-    pub fn iter_mut(&mut self) -> Result<ndarray::iter::IterMut<'_, T, ndarray::IxDyn>, String> {
+    pub fn iter_mut(&mut self) -> Result<ndarray::iter::IterMut<'_, T, IxDyn>, String> {
         let cpu_data = self.cpu_data_mut()?;
         Ok(cpu_data.iter_mut())
     }
@@ -853,8 +849,7 @@ where
                     .as_any()
                     .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
             ) {
-                let result_storage =
-                    CPUStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
+                let result_storage = CPUStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
                 return Self::from_storage_backend(result_storage, condition.device.clone());
             }
         }
@@ -866,20 +861,17 @@ where
                 if let (Some(cond_gpu), Some(true_gpu), Some(false_gpu)) = (
                     condition_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<GPUStorage<T>>()),
+                        .and_then(|s| s.downcast_ref::<CUDAStorage<T>>()),
                     true_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<GPUStorage<T>>()),
+                        .and_then(|s| s.downcast_ref::<CUDAStorage<T>>()),
                     false_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<GPUStorage<T>>()),
+                        .and_then(|s| s.downcast_ref::<CUDAStorage<T>>()),
                 ) {
                     let result_storage =
-                        GPUStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
-                    return Self::from_storage_backend(
-                        result_storage,
-                        condition.device.clone(),
-                    );
+                        CUDAStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
+                    return Self::from_storage_backend(result_storage, condition.device.clone());
                 }
             }
         }
@@ -895,7 +887,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     /// SLICING SUPPORT
     ///
@@ -988,11 +980,11 @@ where
             ));
         }
 
-        let array = ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(shape), slice.to_vec())
+        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
             .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
 
         // Create using storage backend
-        let storage = crate::tensor::storage::CPUStorage::new(array.clone());
+        let storage = CPUStorage::new(array.clone());
         Ok(Self {
             device: crate::backend::default_device(),
             storage: Some(Box::new(storage)),
@@ -1015,11 +1007,11 @@ where
             ));
         }
 
-        let array = ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(shape), slice.to_vec())
+        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
             .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
 
         // Create using storage backend
-        let storage = crate::tensor::storage::CPUStorage::new(array.clone());
+        let storage = CPUStorage::new(array.clone());
         Ok(Self {
             device,
             storage: Some(Box::new(storage)),
@@ -1050,7 +1042,7 @@ where
             storage.cpu_data()?.clone()
         };
 
-        let owned_storage = crate::tensor::storage::CPUStorage::new(cpu_data.clone());
+        let owned_storage = CPUStorage::new(cpu_data.clone());
         Ok(Self {
             device: self.device.clone(),
             storage: Some(Box::new(owned_storage)),
@@ -1064,7 +1056,7 @@ where
         let total_elements = cpu_data.len();
 
         let flattened = cpu_data
-            .into_shape(ndarray::IxDyn(&[total_elements]))
+            .into_shape(IxDyn(&[total_elements]))
             .map_err(|e| format!("Failed to flatten tensor: {}", e))?;
 
         Ok(Self::new_with_device(flattened, self.device.clone()))
@@ -1074,7 +1066,7 @@ where
 // Implementation for floating-point operations
 impl<T> Tensor<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Matrix multiplication using storage trait
     pub fn matmul(&self, other: &Self) -> Result<Self, String>
@@ -1179,7 +1171,7 @@ where
 // Implementation for reduction operations and tensor manipulations
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
 {
     // Reduction operations.
     // Sum reduction along multiple axes using storage backend
@@ -1230,7 +1222,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
 {
     /// Broadcasting for gradient computation and tensor operations
     /// Uses storage backend for consistent behavior across CPU/GPU
@@ -1303,7 +1295,7 @@ where
 ///-----------------------------------------------------------------------
 impl<T> Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     /// 2D Convolution using storage backend - replaces old direct implementation
     pub fn conv2d(
@@ -1366,7 +1358,7 @@ where
 // Owned tensor iteration using storage backend
 impl<T> IntoIterator for Tensor<T>
 where
-    T: GPUFloat + Clone + Copy,
+    T: FerroxCudaF + Clone + Copy,
 {
     type Item = T;
     type IntoIter = TensorIterator<T>;
@@ -1383,10 +1375,10 @@ where
 // For borrowed tensors, we must work with CPU data through storage backend
 impl<'a, T> IntoIterator for &'a Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     type Item = &'a T;
-    type IntoIter = ndarray::iter::Iter<'a, T, ndarray::IxDyn>;
+    type IntoIter = ndarray::iter::Iter<'a, T, IxDyn>;
 
     fn into_iter(self) -> Self::IntoIter {
         // Must use storage backend - no fallback since data field is removed
@@ -1398,10 +1390,10 @@ where
 
 impl<'a, T> IntoIterator for &'a mut Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     type Item = &'a mut T;
-    type IntoIter = ndarray::iter::IterMut<'a, T, ndarray::IxDyn>;
+    type IntoIter = ndarray::iter::IterMut<'a, T, IxDyn>;
 
     fn into_iter(self) -> Self::IntoIter {
         // Must use storage backend - no fallback since data field is removed
@@ -1417,7 +1409,7 @@ where
 // Flat indexing implementation using storage backend only
 impl<T> Index<usize> for Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     type Output = T;
 
@@ -1437,7 +1429,7 @@ where
 
 impl<T> IndexMut<usize> for Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         // Must use storage backend - data field is removed
@@ -1456,7 +1448,7 @@ where
 // Multi-dimensional indexing using storage backend only
 impl<T> Index<&[usize]> for Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     type Output = T;
 
@@ -1466,13 +1458,13 @@ where
             .cpu_data()
             .expect("Tensor must have valid CPU storage for indexing");
 
-        &cpu_data[ndarray::IxDyn(indices)]
+        &cpu_data[IxDyn(indices)]
     }
 }
 
 impl<T> IndexMut<&[usize]> for Tensor<T>
 where
-    T: GPUFloat + Clone,
+    T: FerroxCudaF + Clone,
 {
     fn index_mut(&mut self, indices: &[usize]) -> &mut Self::Output {
         // Must use storage backend - data field is removed
@@ -1480,13 +1472,13 @@ where
             .cpu_data_mut()
             .expect("Tensor must have valid mutable CPU storage for indexing");
 
-        &mut cpu_data[ndarray::IxDyn(indices)]
+        &mut cpu_data[IxDyn(indices)]
     }
 }
 
 impl<T> PartialEq for Tensor<T>
 where
-    T: GPUFloat + Clone + PartialEq,
+    T: FerroxCudaF + Clone + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         // Use the optimized all_equal method which leverages CUDA kernels when available
@@ -1507,4 +1499,4 @@ where
     }
 }
 
-impl<T> Eq for Tensor<T> where T: GPUFloat + Clone + PartialEq {}
+impl<T> Eq for Tensor<T> where T: FerroxCudaF + Clone + PartialEq {}

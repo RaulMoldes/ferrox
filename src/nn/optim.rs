@@ -1,6 +1,6 @@
 use super::module::Module;
 use crate::NodeId;
-use crate::backend::{CPUNumber, GPUFloat};
+use crate::backend::{CPUNumber, FerroxCudaF};
 use crate::graph::Engine;
 use crate::tensor::Tensor;
 use core::panic;
@@ -19,7 +19,7 @@ use std::collections::HashSet;
 /// from a base optimizer class.
 pub trait Optimizer<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Perform one optimization step using computed gradients
     ///
@@ -82,7 +82,7 @@ where
 /// - lr: learning rate
 pub struct SGD<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Map of NodeId to their momentum buffers
     /// Each NodeId corresponds to a parameter tensor in the computation graph
@@ -113,7 +113,7 @@ where
 
 impl<T> SGD<T>
 where
-    T: GPUFloat + From<f64>,
+    T: FerroxCudaF + From<f64>,
 {
     /// Creates a new SGD optimizer
     ///
@@ -222,7 +222,7 @@ where
 
 impl<T> Optimizer<T> for SGD<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn step(&mut self, engine: &mut Engine<T>) {
         let zero = <T as CPUNumber>::zero();
@@ -340,7 +340,7 @@ where
 /// - eps: small constant for CPUNumbereral stability (typically 1e-8)
 pub struct Adam<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Map of NodeId to their first moment estimates (momentum)
     first_moments: HashMap<NodeId, Tensor<T>>,
@@ -392,7 +392,7 @@ where
 /// It also includes bias correction to account for the initialization of these moments.
 impl<T> Optimizer<T> for Adam<T>
 where
-    T: GPUFloat + From<f64>,
+    T: FerroxCudaF + From<f64>,
 {
     fn step(&mut self, engine: &mut Engine<T>) {
         let zero = <T as CPUNumber>::zero();
@@ -563,7 +563,7 @@ where
 
 impl<T> Adam<T>
 where
-    T: GPUFloat + From<f64>,
+    T: FerroxCudaF + From<f64>,
 {
     /// Creates a new Adam optimizer with custom parameters
     pub fn new(lr: T, beta1: T, beta2: T, eps: T, weight_decay: T, amsgrad: bool) -> Self {
@@ -668,7 +668,7 @@ mod optimizer_tests {
     /// Helper to get scalar value from tensor using CPUTensor methods
     fn get_scalar_value<T>(tensor: &Tensor<T>) -> T
     where
-        T: GPUFloat + Clone,
+        T: FerroxCudaF + Clone,
     {
         // Use CPUTensor method to access data instead of direct indexing
         let res = tensor.first();
@@ -678,7 +678,7 @@ mod optimizer_tests {
     /// Helper to get vector values from tensor using CPUTensor methods
     fn get_vector_values<T>(tensor: &Tensor<T>) -> Vec<T>
     where
-        T: GPUFloat + Clone,
+        T: FerroxCudaF + Clone,
     {
         let cpu_data = tensor.as_slice().expect("Failed to get CPU data");
         cpu_data.iter().cloned().collect()

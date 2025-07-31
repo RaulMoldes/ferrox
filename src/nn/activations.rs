@@ -1,4 +1,4 @@
-use crate::backend::number::{CPUFloat, CPUNumber, GPUFloat};
+use crate::backend::number::{CPUNumber, FerroxCudaF, FerroxF};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -28,7 +28,7 @@ impl Default for ReLU {
 
 impl<T> Module<T> for ReLU
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         graph.relu(input)
@@ -67,7 +67,7 @@ impl Default for Sigmoid {
 
 impl<T> Module<T> for Sigmoid
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // Sigmoid(x) = 1 / (1 + exp(-x))
@@ -126,7 +126,7 @@ impl Default for Tanh {
 
 impl<T> Module<T> for Tanh
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // Tanh(x) = (e^x - e^(-x)) / (e^x + e^(-x))
@@ -190,7 +190,7 @@ where
 #[derive(Debug, Clone)]
 pub struct LeakyReLU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// The negative slope parameter
     negative_slope: T,
@@ -199,7 +199,7 @@ where
 
 impl<T> LeakyReLU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Creates a new LeakyReLU activation layer with default slope (0.01).
     pub fn new() -> Self
@@ -232,7 +232,7 @@ where
 
 impl<T> Default for LeakyReLU<T>
 where
-    T: GPUFloat + From<f64>,
+    T: FerroxCudaF + From<f64>,
 {
     fn default() -> Self {
         Self::new()
@@ -241,7 +241,7 @@ where
 
 impl<T> Module<T> for LeakyReLU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // LeakyReLU(x) = max(x, α * x) where α is the negative slope
@@ -304,7 +304,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ELU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// The α parameter for negative inputs
     alpha: T,
@@ -313,15 +313,15 @@ where
 
 impl<T> ELU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Creates a new ELU activation layer with default α = 1.0.
     pub fn new() -> Self
     where
-        T: GPUFloat,
+        T: FerroxCudaF,
     {
         Self {
-            alpha: <T as CPUFloat>::from_f64(1.0).unwrap(),
+            alpha: <T as FerroxF>::from_f64(1.0).unwrap(),
             training: true,
         }
     }
@@ -346,7 +346,7 @@ where
 
 impl<T> Default for ELU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn default() -> Self {
         Self::new()
@@ -355,7 +355,7 @@ where
 
 impl<T> Module<T> for ELU<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // ELU(x) = x if x > 0, α * (e^x - 1) if x ≤ 0
@@ -478,7 +478,7 @@ impl Default for Softmax {
 
 impl<T> Module<T> for Softmax
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // Get input shape to validate dimension

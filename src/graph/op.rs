@@ -3,12 +3,12 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
-use crate::backend::{CPUFloat, CPUNumber, GPUFloat};
+use crate::backend::{CPUNumber, FerroxCudaF, FerroxF};
 use crate::tensor::Tensor;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     // Defines the interface for operators in the computational graph
     // Compute function computes the output in the computational graph.
@@ -36,7 +36,7 @@ pub struct AddOp;
 
 impl<T> Operator<T> for AddOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -64,7 +64,7 @@ pub struct MulOp;
 
 impl<T> Operator<T> for MulOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -94,7 +94,7 @@ pub struct MatMulOp;
 
 impl<T> Operator<T> for MatMulOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -112,10 +112,8 @@ where
         // dC/dA = grad_output @ B^T
         // dC/dB = A^T @ grad_output
 
-
         inputs[0].transpose(None)?;
         inputs[1].transpose(None)?;
-
 
         let grad_a = grad_output.matmul(&inputs[1])?;
         let grad_b = inputs[0].matmul(grad_output)?;
@@ -133,7 +131,7 @@ pub struct ReLUOp;
 
 impl<T> Operator<T> for ReLUOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -173,7 +171,7 @@ impl SumOp {
 
 impl<T> Operator<T> for SumOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -221,14 +219,14 @@ where
 #[derive(Debug, Clone)]
 pub struct AddScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     scalar: T,
 }
 
 impl<T> AddScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -237,7 +235,7 @@ where
 
 impl<T> Operator<T> for AddScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -262,14 +260,14 @@ where
 #[derive(Debug, Clone)]
 pub struct MulScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     scalar: T,
 }
 
 impl<T> MulScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     pub fn new(scalar: T) -> Self {
         Self { scalar }
@@ -278,7 +276,7 @@ where
 
 impl<T> Operator<T> for MulScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -303,14 +301,14 @@ where
 #[derive(Debug, Clone)]
 pub struct DivScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     scalar: T,
 }
 
 impl<T> DivScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     pub fn new(scalar: T) -> Self {
         let zero = <T as CPUNumber>::zero();
@@ -325,7 +323,7 @@ where
 
 impl<T> Operator<T> for DivScalarOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -367,7 +365,7 @@ pub struct DivOp;
 
 impl<T> Operator<T> for DivOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -402,7 +400,7 @@ pub struct PowOp;
 
 impl<T> Operator<T> for PowOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -441,7 +439,7 @@ pub struct ExpOp;
 
 impl<T> Operator<T> for ExpOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -471,7 +469,7 @@ pub struct LogOp;
 
 impl<T> Operator<T> for LogOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -501,7 +499,7 @@ pub struct NegateOp;
 
 impl<T> Operator<T> for NegateOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -537,7 +535,7 @@ impl TransposeOp {
 
 impl<T> Operator<T> for TransposeOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -593,7 +591,7 @@ impl ReshapeOp {
 
 impl<T> Operator<T> for ReshapeOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -634,7 +632,7 @@ impl BroadcastToOp {
 
 impl<T> Operator<T> for BroadcastToOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &mut [Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -694,7 +692,7 @@ impl SummationOp {
 
 impl<T> Operator<T> for SummationOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -717,7 +715,6 @@ where
 
         let broadcasted_grad = match &self.axes {
             Some(axes) => {
-
                 // Expand dimensions back for each summed axis
                 for &axis in axes.iter().rev() {
                     grad.unsqueeze(axis)?;
@@ -759,7 +756,7 @@ pub struct MinOp;
 
 impl<T> Operator<T> for MinOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -816,7 +813,7 @@ pub struct MaxOp;
 
 impl<T> Operator<T> for MaxOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 2 {
@@ -871,7 +868,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ClampOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     min_val: T,
     max_val: T,
@@ -879,7 +876,7 @@ where
 
 impl<T> ClampOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     pub fn new(min_val: T, max_val: T) -> Self {
         if min_val > max_val {
@@ -891,7 +888,7 @@ where
 
 impl<T> Operator<T> for ClampOp<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -942,7 +939,7 @@ pub struct SqrtOp;
 
 impl<T> Operator<T> for SqrtOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -961,7 +958,7 @@ where
         // Gradient of sqrt(x): ∂sqrt(x)/∂x = 1/(2*sqrt(x))
         // Special case: at x = 0, we return 0 instead of infinity
 
-        let eps = <T as CPUFloat>::from_f64(1e-12).unwrap_or(<T as CPUFloat>::epsilon());
+        let eps = <T as FerroxF>::from_f64(1e-12).unwrap_or(<T as FerroxF>::epsilon());
         let two_tensor = Tensor::<T>::ones(inputs[0].shape())?
             .mul_scalar(<T as CPUNumber>::from_f64(2.0).unwrap())?;
 
@@ -1009,7 +1006,7 @@ pub struct AbsOp;
 
 impl<T> Operator<T> for AbsOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1089,7 +1086,7 @@ impl MaxAlongDimOp {
 
 impl<T> Operator<T> for MaxAlongDimOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {
@@ -1175,7 +1172,7 @@ impl SoftmaxOp {
 
 impl<T> Operator<T> for SoftmaxOp
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute(&self, inputs: &[Tensor<T>]) -> Result<Tensor<T>, String> {
         if inputs.len() != 1 {

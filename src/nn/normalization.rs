@@ -1,4 +1,4 @@
-use crate::backend::number::{CPUNumber, GPUFloat};
+use crate::backend::number::{CPUNumber, FerroxCudaF};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::{Module, Parameter};
@@ -58,7 +58,7 @@ use crate::tensor::Tensor;
 #[derive(Debug)]
 pub struct BatchNorm1d<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Number of features/channels
     pub num_features: usize,
@@ -94,7 +94,7 @@ where
 
 impl<T> BatchNorm1d<T>
 where
-    T: GPUFloat + From<f64>,
+    T: FerroxCudaF + From<f64>,
 {
     /// Creates a new BatchNorm1d layer.
     ///
@@ -205,7 +205,7 @@ where
 
 impl<T> Module<T> for BatchNorm1d<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         let input_shape = graph.get_shape(input);
@@ -415,7 +415,7 @@ where
 #[derive(Debug)]
 pub struct LayerNorm<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Shape of normalized dimensions
     pub normalized_shape: Vec<usize>,
@@ -442,7 +442,7 @@ where
 
 impl<T> LayerNorm<T>
 where
-    T: GPUFloat + From<f64>,
+    T: FerroxCudaF + From<f64>,
 {
     /// Creates a new LayerNorm layer.
     ///
@@ -509,7 +509,7 @@ where
 
 impl<T> Module<T> for LayerNorm<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         let input_shape = graph.get_shape(input);

@@ -1,4 +1,4 @@
-use crate::backend::number::GPUFloat;
+use crate::backend::number::FerroxCudaF;
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::tensor::Tensor;
@@ -12,7 +12,7 @@ use crate::tensor::Tensor;
 #[derive(Debug, Clone)]
 pub struct Parameter<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// The actual tensor data
     pub data: Tensor<T>,
@@ -24,7 +24,7 @@ where
 
 impl<T> Parameter<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Creates a new parameter from tensor data.
     ///
@@ -117,7 +117,7 @@ where
 
 impl<T> From<Tensor<T>> for Parameter<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn from(tensor: Tensor<T>) -> Self {
         Self::new(tensor)
@@ -127,14 +127,14 @@ where
 /// Helper trait for converting various types to parameters
 pub trait ToParameter<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn to_parameter(self) -> Parameter<T>;
 }
 
 impl<T> ToParameter<T> for Tensor<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn to_parameter(self) -> Parameter<T> {
         Parameter::new(self)
@@ -143,7 +143,7 @@ where
 
 impl<T> ToParameter<T> for Vec<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn to_parameter(self) -> Parameter<T> {
         // Default to 1D tensor

@@ -2,27 +2,27 @@
 // Backend manager that handles both CPU and CUDA backends.
 // Simple approach with separate F32 and F64 entry points.
 
+use crate::FerroxCudaF;
 use crate::backend::Device;
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaContextManager;
-use crate::GPUFloat;
-use std::sync::OnceLock;
 use crate::backend::cuda::ops::CudaOps;
 use std::sync::Arc;
+use std::sync::OnceLock;
 /// Simple backend manager that coordinates CPU and CUDA operations
-pub struct BackendManager<T: GPUFloat> {
+pub struct BackendManager<T: FerroxCudaF> {
     #[cfg(feature = "cuda")]
     cuda_backend: Option<CudaContextManager<T>>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: GPUFloat> Default for BackendManager<T> {
+impl<T: FerroxCudaF> Default for BackendManager<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: GPUFloat> BackendManager<T> {
+impl<T: FerroxCudaF> BackendManager<T> {
     /// Create new backend manager
     pub fn new() -> Self {
         Self {
@@ -132,11 +132,10 @@ pub fn best_f64_device() -> Device {
     get_f64_backend().best_device()
 }
 
-
 // ===== GENERIC DISPATCH (WITHOUT TRAIT) =====
 
 /// Get the global backend manager for type T
-pub fn get_backend<T: GPUFloat>() -> &'static BackendManager<T> {
+pub fn get_backend<T: FerroxCudaF>() -> &'static BackendManager<T> {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => {
             // SAFETY: We've verified T is f32
@@ -151,7 +150,7 @@ pub fn get_backend<T: GPUFloat>() -> &'static BackendManager<T> {
 }
 
 /// Check if CUDA is available for type T
-pub fn has_cuda<T: GPUFloat>() -> bool {
+pub fn has_cuda<T: FerroxCudaF>() -> bool {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => has_f32_cuda(),
         id if id == std::any::TypeId::of::<f64>() => has_f64_cuda(),
@@ -160,7 +159,7 @@ pub fn has_cuda<T: GPUFloat>() -> bool {
 }
 
 /// Get the best available device for type T
-pub fn best_device<T: GPUFloat>() -> Device {
+pub fn best_device<T: FerroxCudaF>() -> Device {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => best_f32_device(),
         id if id == std::any::TypeId::of::<f64>() => best_f64_device(),
@@ -168,16 +167,15 @@ pub fn best_device<T: GPUFloat>() -> Device {
     }
 }
 
-
-
 #[cfg(feature = "cuda")]
 pub fn with_cuda_context<F, R, T>(f: F) -> Result<R, String>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
     F: FnOnce(&CudaContextManager<T>) -> Result<R, String>,
 {
     let backend: &'static BackendManager<T> = get_backend::<T>();
-    let context_manager: &CudaContextManager<T> = backend.cuda_backend().ok_or("CUDA backend not available")?;
+    let context_manager: &CudaContextManager<T> =
+        backend.cuda_backend().ok_or("CUDA backend not available")?;
 
     f(&context_manager)
 }
@@ -185,11 +183,12 @@ where
 #[cfg(feature = "cuda")]
 pub fn with_cuda_ops<F, R, T>(f: F) -> Result<R, String>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
     F: FnOnce(&CudaOps<T>) -> Result<R, String>,
 {
     let backend: &'static BackendManager<T> = get_backend::<T>();
-    let context_manager: &CudaContextManager<T> = backend.cuda_backend().ok_or("CUDA backend not available")?;
+    let context_manager: &CudaContextManager<T> =
+        backend.cuda_backend().ok_or("CUDA backend not available")?;
 
     let ops: Arc<CudaOps<T>> = context_manager.ops();
     f(&ops)

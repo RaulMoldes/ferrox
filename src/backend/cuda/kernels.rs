@@ -5,7 +5,7 @@ use cudarc::driver::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::backend::number::GPUFloat;
+use crate::backend::number::FerroxCudaF;
 
 /// Embedded PTX kernels
 pub const ELEMENTWISE_PTX: &[u8] = include_bytes!("../../../kernels/elementwise.ptx");
@@ -253,7 +253,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
@@ -270,7 +270,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, input, output, &size)
@@ -289,7 +289,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(&format!("reduce_{}_all", operation));
         launch_kernel!(self, &kernel_name, cfg, input, output, &size)
@@ -308,7 +308,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(&format!("reduce_{}_axes", operation));
         launch_kernel!(
@@ -336,7 +336,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
@@ -353,7 +353,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, input, result, &size)
@@ -370,7 +370,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("fill");
         launch_kernel!(self, &kernel_name, cfg, data, &value, &size)
@@ -385,7 +385,7 @@ impl KernelManager {
         seed: u64,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("fill_random");
         launch_kernel!(self, &kernel_name, cfg, data, &size, &seed)
@@ -405,7 +405,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_add", cfg, a, b, c, size)
     }
@@ -420,7 +420,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
     }
@@ -435,7 +435,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_div", cfg, a, b, c, size)
     }
@@ -450,7 +450,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_sub", cfg, a, b, c, size)
     }
@@ -465,7 +465,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_pow", cfg, a, b, c, size)
     }
@@ -480,7 +480,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_min", cfg, a, b, c, size)
     }
@@ -495,7 +495,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_max", cfg, a, b, c, size)
     }
@@ -509,7 +509,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("elementwise_abs", cfg, input, output, size)
     }
@@ -522,7 +522,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("elementwise_sqrt", cfg, input, output, size)
     }
@@ -535,7 +535,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("elementwise_exp", cfg, input, output, size)
     }
@@ -548,7 +548,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("elementwise_log", cfg, input, output, size)
     }
@@ -561,7 +561,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("elementwise_negate", cfg, input, output, size)
     }
@@ -577,7 +577,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("sigmoid", cfg, input, output, size)
     }
@@ -591,7 +591,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("hyperbolic_tangent", cfg, input, output, size)
     }
@@ -604,7 +604,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_elementwise("relu", cfg, input, output, size)
     }
@@ -620,7 +620,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_all("sum", cfg, input, output, size)
     }
@@ -636,7 +636,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_axes("sum", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -650,7 +650,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_all("max", cfg, input, output, size)
     }
@@ -666,7 +666,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_axes("max", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -680,7 +680,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_all("min", cfg, input, output, size)
     }
@@ -696,7 +696,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_axes("min", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -710,7 +710,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_all("prod", cfg, input, output, size)
     }
@@ -726,7 +726,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_reduce_axes(
             "prod", cfg, input, output, outer_size, axis_size, inner_size,
@@ -744,7 +744,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("clamp");
         launch_kernel!(
@@ -770,7 +770,7 @@ impl KernelManager {
         k: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("matmul");
         launch_kernel!(self, &kernel_name, cfg, a, b, c, &m, &n, &k)
@@ -789,7 +789,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_comparison("greater_equal", cfg, a, b, result, size)
     }
@@ -805,7 +805,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_comparison("less_equal", cfg, a, b, result, size)
     }
@@ -820,7 +820,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_comparison("greater", cfg, a, b, result, size)
     }
@@ -836,7 +836,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_comparison("less", cfg, a, b, result, size)
     }
@@ -853,7 +853,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_binary_comparison("equal", cfg, a, b, result, size)
     }
@@ -869,7 +869,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_comparison("logical_not", cfg, input, result, size)
     }
@@ -885,7 +885,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         self.launch_unary_comparison("sign", cfg, input, result, size)
     }
@@ -904,7 +904,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("in_range");
         launch_kernel!(
@@ -929,7 +929,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat,
+        T: FerroxCudaF,
     {
 
 
@@ -969,7 +969,7 @@ impl KernelManager {
         pad_w: i32,
     ) -> Result<(), String>
     where
-        T: GPUFloat + 'static,
+        T: FerroxCudaF + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
 

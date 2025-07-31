@@ -1,13 +1,13 @@
 
-pub trait CPUFloat: GPUFloat {
+pub trait FerroxF: FerroxCudaF {
 
     fn zero() -> Self {
-        <Self as GPUFloat>::from_f64(0.0)
-            .expect("Failed to convert 0.0 to CPUFloat type")
+        <Self as FerroxCudaF>::from_f64(0.0)
+            .expect("Failed to convert 0.0 to FerroxF type")
     }
     fn one() -> Self {
-        <Self as GPUFloat>::from_f64(1.0)
-        .expect("Failed to convert 1.0 to CPUFloat type")
+        <Self as FerroxCudaF>::from_f64(1.0)
+        .expect("Failed to convert 1.0 to FerroxF type")
     }
     /// Square root
     fn sqrt(self) -> Self;
@@ -47,27 +47,27 @@ pub trait CPUFloat: GPUFloat {
 
     fn to_f64(self) -> f64 {
         // Default implementation for Float types
-        GPUFloat::to_f64(self)
+        FerroxCudaF::to_f64(self)
     }
 
     fn from_f64(value: f64) -> Option<Self> {
         // Default implementation for Float types
-        GPUFloat::from_f64(value)
+        FerroxCudaF::from_f64(value)
     }
 
     fn from_i32(value: i32) -> Option<Self> {
         // Default implementation for Float types
-        GPUFloat::from_i32(value)
+        FerroxCudaF::from_i32(value)
     }
 
     fn from_i16(value: i16) -> Option<Self> {
         // Default implementation for Float types
-        GPUFloat::from_i16(value)
+        FerroxCudaF::from_i16(value)
     }
 
     fn from_i64(value: i64) -> Option<Self> {
         // Default implementation for Float types
-        GPUFloat::from_i64(value)
+        FerroxCudaF::from_i64(value)
     }
 
 

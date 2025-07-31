@@ -6,10 +6,9 @@ pub mod tensor;
 
 #[cfg(feature = "cuda")]
 pub mod cuda;
-// CUDA backend module
 
 #[cfg(feature = "cuda")]
-pub use cuda::CudaContextManager as CudaBackend;
+pub use cuda::CudaContextManager;
 
 #[cfg(feature = "cuda")]
 pub use device::cuda;
@@ -19,7 +18,11 @@ mod tests;
 pub use device::Device;
 pub use device::cpu;
 pub use device::default_device;
+pub use manager::{BackendManager, best_device, get_backend, has_cuda};
 
-pub use number::CPUFloat;
-pub use number::CPUNumber;
-pub use number::GPUFloat;
+#[cfg(feature = "cuda")]
+pub use manager::{with_cuda_context, with_cuda_ops};
+
+pub use number::FerroxCudaF;
+pub use number::FerroxF;
+pub use tensor::Tensor;

@@ -12,11 +12,11 @@ use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
-use crate::GPUFloat;
+use crate::FerroxCudaF;
 
 pub struct CudaContextManager<T>
 where
-    T: GPUFloat
+    T: FerroxCudaF
 {
     ctx: Arc<CudaContext>,
     stream_manager: StreamManager,
@@ -26,7 +26,7 @@ where
 
 
 impl <T> CudaContextManager<T>
-where T: GPUFloat
+where T: FerroxCudaF
 {
     pub fn new() -> Result<Self, String> {
         Self::from_device_id(0)
@@ -308,7 +308,7 @@ where T: GPUFloat
 ///
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct CudaTensor<T: GPUFloat> {
+pub struct CudaTensor<T: FerroxCudaF> {
     pub data: CudaSlice<T>,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
@@ -316,7 +316,7 @@ pub struct CudaTensor<T: GPUFloat> {
 
 impl<T> CudaTensor<T>
 where
-    T: GPUFloat
+    T: FerroxCudaF
 {
     /// Creates a new CUDA tensor with computed strides
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {

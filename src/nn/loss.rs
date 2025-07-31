@@ -1,4 +1,4 @@
-use crate::backend::number::{CPUNumber, GPUFloat};
+use crate::backend::number::{CPUNumber, FerroxCudaF};
 use crate::graph::Engine;
 use crate::graph::node::NodeId;
 use crate::nn::Module;
@@ -16,7 +16,7 @@ use crate::nn::Module;
 /// - Batch processing capabilities
 pub trait Loss<T>: Module<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Computes the loss between predictions and targets.
     ///
@@ -116,7 +116,7 @@ impl Default for MSELoss {
 
 impl<T> Module<T> for MSELoss
 where
-    T: GPUFloat
+    T: FerroxCudaF
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -140,7 +140,7 @@ where
 
 impl<T> Loss<T> for MSELoss
 where
-    T: GPUFloat
+    T: FerroxCudaF
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -289,7 +289,7 @@ impl Default for BCELoss {
 
 impl<T> Module<T> for BCELoss
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // For the Module trait, we just return the input unchanged
@@ -308,7 +308,7 @@ where
 
 impl<T> Loss<T> for BCELoss
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute_loss(
         &self,
@@ -520,7 +520,7 @@ impl Default for CCELoss {
 
 impl<T> Module<T> for CCELoss
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         // For the Module trait, we just return the input unchanged
@@ -539,7 +539,7 @@ where
 
 impl<T> Loss<T> for CCELoss
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute_loss(
         &self,
@@ -679,7 +679,7 @@ impl Default for BCEWithLogitsLoss {
 
 impl<T> Module<T> for BCEWithLogitsLoss
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn forward(&self, _graph: &mut Engine<T>, input: NodeId) -> Result<NodeId, String> {
         Ok(input)
@@ -696,7 +696,7 @@ where
 
 impl<T> Loss<T> for BCEWithLogitsLoss
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn compute_loss(
         &self,

@@ -1,4 +1,4 @@
-// src/backend/CPUNumber.rs - Fixed trait implementations
+// src/backend/number.rs
 
 use ndarray::{LinalgScalar, ScalarOperand};
 use rand_distr::num_traits::{FromPrimitive, One, Zero};
@@ -90,12 +90,12 @@ pub trait CPUNumber:
 }
 
 /// Additional trait for floating-point CPUNumber types
-pub trait CPUFloat: CPUNumber {
+pub trait FerroxF: CPUNumber {
     fn zero() -> Self {
-        <Self as CPUNumber>::from_f64(0.0).expect("Failed to convert 0.0 to CPUFloat type")
+        <Self as CPUNumber>::from_f64(0.0).expect("Failed to convert 0.0 to FerroxF type")
     }
     fn one() -> Self {
-        <Self as CPUNumber>::from_f64(1.0).expect("Failed to convert 1.0 to CPUFloat type")
+        <Self as CPUNumber>::from_f64(1.0).expect("Failed to convert 1.0 to FerroxF type")
     }
     /// Square root
     fn sqrt(self) -> Self;
@@ -202,7 +202,7 @@ impl CPUNumber for f64 {
     }
 }
 
-impl CPUFloat for f64 {
+impl FerroxF for f64 {
     fn sqrt(self) -> Self {
         self.sqrt()
     }
@@ -298,7 +298,7 @@ impl CPUNumber for f32 {
     }
 }
 
-impl CPUFloat for f32 {
+impl FerroxF for f32 {
     fn sqrt(self) -> Self {
         self.sqrt()
     }
@@ -463,29 +463,29 @@ impl CPUNumber for i64 {
 
 // ============= GPU TRAIT DEFINITIONS =============
 
-/// When CUDA is available, GPUFloat extends CPUFloat with GPU-specific requirements
-/// This trait requires both CPUFloat functionality and CUDA compatibility traits
+/// When CUDA is available, FerroxCudaF extends FerroxF with GPU-specific requirements
+/// This trait requires both FerroxF functionality and CUDA compatibility traits
 #[cfg(feature = "cuda")]
-pub trait GPUFloat: CPUFloat + DeviceRepr + ValidAsZeroBits + Unpin + 'static {}
+pub trait FerroxCudaF: FerroxF + DeviceRepr + ValidAsZeroBits + Unpin + 'static {}
 
-/// When CUDA is not available, GPUFloat is just an alias for CPUFloat
+/// When CUDA is not available, FerroxCudaF is just an alias for FerroxF
 /// This allows the same generic bounds to work regardless of CUDA availability
 #[cfg(not(feature = "cuda"))]
-pub trait GPUFloat: CPUFloat {}
+pub trait FerroxCudaF: FerroxF {}
 
 // ============= CUDA IMPLEMENTATIONS =============
 
-// When CUDA is enabled, implement GPUFloat for all types that satisfy the requirements
+// When CUDA is enabled, implement FerroxCudaF for all types that satisfy the requirements
 // The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
 #[cfg(feature = "cuda")]
-impl GPUFloat for f32 {}
+impl FerroxCudaF for f32 {}
 
 #[cfg(feature = "cuda")]
-impl GPUFloat for f64 {}
+impl FerroxCudaF for f64 {}
 
 // ============= NON-CUDA IMPLEMENTATIONS =============
 
-// When CUDA is not available, provide blanket implementation for all CPUFloat types
-// This ensures that all CPUFloat types automatically implement GPUFloat
+// When CUDA is not available, provide blanket implementation for all FerroxF typeFs
+// This ensures that all FerroxF types automatically implement FerroxCudaF
 #[cfg(not(feature = "cuda"))]
-impl<T: CPUFloat> GPUFloat for T {}
+impl<T: FerroxF> FerroxCudaF for T {}

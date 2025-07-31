@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::node::{Node, NodeId};
-use crate::backend::number::{CPUNumber, GPUFloat};
+use crate::backend::number::{CPUNumber, FerroxCudaF};
 use crate::tensor::Tensor;
 
 // Computational graph engine that manages all nodes and their relationships
 #[derive(Debug)]
 pub struct Engine<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     // T must implement Clone and Debug traits{
     // Creating a graph is kind of boilerplate in Rust
@@ -23,7 +23,7 @@ where
 
 impl<T> Default for Engine<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     fn default() -> Self {
         Self::new()
@@ -32,7 +32,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     pub fn new() -> Self {
         Self {
@@ -68,7 +68,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat, // T must implement Clone and Debug traits
+    T: FerroxCudaF, // T must implement Clone and Debug traits
 {
     // Create zeros tensor
     pub fn zeros(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
@@ -79,7 +79,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat, // T must implement Clone and Debug traits
+    T: FerroxCudaF, // T must implement Clone and Debug traits
 {
     // Create ones tensor
 
@@ -90,7 +90,7 @@ where
 }
 impl<T> Engine<T>
 where
-    T: GPUFloat
+    T: FerroxCudaF
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -195,7 +195,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// GRAPH OPERATIONS:
     ///
@@ -338,7 +338,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat
+    T: FerroxCudaF
         + Clone
         + std::fmt::Debug
         + ndarray::LinalgScalar
@@ -652,7 +652,7 @@ where
 // This is a trait bound for operations that require floating point numbers.
 impl<T> Engine<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     // Power operation
     pub fn pow(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
@@ -716,7 +716,7 @@ where
 
 impl<T> Engine<T>
 where
-    T: GPUFloat,
+    T: FerroxCudaF,
 {
     /// Convenience method to clamp probabilities for numerical stability.
     ///
