@@ -1,8 +1,8 @@
 use crate::backend::manager::with_cuda_context;
-use crate::backend::number::{CPUNumber, FerroxCudaF};
+use crate::backend::number::{FerroxCudaF};
 use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::backend::{Device, default_device};
-use ndarray::{Array, ArrayD, Axis, IxDyn};
+use ndarray::{Array, ArrayD,  IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
@@ -191,21 +191,14 @@ where
 
     // Internal method to create tensor with specific storage backend
     // This will become the primary constructor once data field is removed
+    #[allow(dead_code)]
     fn new_with_storage<S>(storage: S) -> Result<Self, String>
     where
         S: StorageBackend<T> + 'static,
     {
-        // Extract data from storage for backward compatibility
-        let data = match storage.cpu_data() {
-            Ok(cpu_data) => cpu_data.clone(),
-            Err(_) => {
-                // For GPU storage, create empty CPU data as placeholder
-                ArrayD::zeros(IxDyn(&[]))
-            }
-        };
 
         Ok(Self {
-            device: crate::backend::default_device(),
+            device: default_device(),
             storage: Some(Box::new(storage)),
         })
     }
@@ -256,10 +249,6 @@ where
         storage: Box<dyn StorageBackend<T>>,
         device: crate::backend::Device,
     ) -> Result<Self, String> {
-        let data = match storage.cpu_data() {
-            Ok(cpu_data) => cpu_data.clone(),
-            Err(_) => ArrayD::zeros(IxDyn(&[])),
-        };
 
         Ok(Self {
             device,
@@ -812,12 +801,13 @@ where
     }
 
     /// Convert to Vec using storage backend
+    #[allow(deprecated)]
     pub fn to_vec(&self) -> Result<Vec<T>, String> {
         Ok(self.cpu_data()?.clone().into_raw_vec())
     }
 
     /// Conditional selection using storage backend
-    /// Conditional selection using storage backend
+    #[allow(deprecated)]
     pub fn where_condition(
         condition: &Self,
         true_vals: &Self,
@@ -1051,6 +1041,7 @@ where
 
     /// Create a flattened view of the tensor as 1D
     /// Returns a new tensor with same data but 1D shape
+    #[allow(deprecated)]
     pub fn flatten(&self) -> Result<Self, String> {
         let cpu_data = self.get_cpu_data()?.into_owned();
         let total_elements = cpu_data.len();

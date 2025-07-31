@@ -6,15 +6,11 @@ pub use cpu::CPUStorage;
 #[cfg(feature = "cuda")]
 pub use cuda::CUDAStorage;
 
-use crate::backend::{Device, FerroxCudaF, FerroxF};
+use crate::backend::FerroxCudaF;
 
-use ndarray::{ArrayD, ArrayViewD, IxDyn};
-use rand::Rng;
-use rand_distr::StandardUniform;
-use std::any::Any;
+use ndarray::ArrayD;
 use std::fmt::Debug;
-#[cfg(feature = "cuda")]
-use cudarc::driver::{CudaContext, DeviceRepr};
+
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead

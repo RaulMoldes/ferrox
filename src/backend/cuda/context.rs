@@ -2,16 +2,14 @@
 use super::kernels::{KernelManager, load_all_kernels};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
-use crate::backend::number::CPUNumber;
+
 #[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
-use cudarc::driver::{CudaContext, CudaSlice, CudaStream, LaunchConfig};
-use ndarray::{ArrayD, IxDyn};
-use std::collections::HashMap;
+use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
+use ndarray::ArrayD;
 use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::sync::Mutex;
 use crate::FerroxCudaF;
 
 pub struct CudaContextManager<T>
@@ -108,11 +106,11 @@ where T: FerroxCudaF
         };
 
         // Copy data from host to device using the correct cudarc API
-        unsafe {
-            stream
+
+        stream
                 .memcpy_htod(data, &mut device_buffer) // data is now &[T]
                 .map_err(|e| format!("Host to device transfer failed: {}", e))?;
-        }
+
 
         Ok(device_buffer)
     }
@@ -131,11 +129,11 @@ where T: FerroxCudaF
         };
 
         // Copy data from device to host using the correct cudarc API
-        unsafe {
-            stream
+
+        stream
                 .memcpy_dtoh(data, &mut host_buffer)
                 .map_err(|e| format!("Device to host transfer failed: {}", e))?;
-        }
+
 
         Ok(host_buffer)
     }
@@ -158,12 +156,12 @@ where T: FerroxCudaF
         }
 
         // Copy data from device to device using the correct cudarc API
-        unsafe {
+
             self.stream_manager
                 .default_stream() // Use default stream as we cannot go async on device to device transfers.
                 .memcpy_dtod(src, dst)
                 .map_err(|e| format!("Device to device copy failed: {}", e))?;
-        }
+
 
         Ok(())
     }

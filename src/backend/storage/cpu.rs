@@ -1,8 +1,7 @@
 // src/backend/storage/cpu.rs
 use super::StorageBackend;
-use crate::backend::{Device, FerroxCudaF, FerroxF};
-use ndarray::{ArrayD, Axis, IxDyn, ArrayViewD};
-use std::any::Any;
+use crate::backend::{FerroxCudaF, FerroxF};
+use ndarray::{ArrayD,  IxDyn, ArrayViewD};
 use rand_distr::StandardUniform;
 use rand::Rng;
 
@@ -852,7 +851,7 @@ where
     {
         let other_data = other.cpu_data()?;
 
-        if self.data.ndim() != 2 || other_data.ndim() != 2 {
+        if self.data.ndim() != 2 as usize || other_data.ndim() != 2 as usize{
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
 

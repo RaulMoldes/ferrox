@@ -3,10 +3,10 @@ use super::StorageBackend;
 use crate::backend::cuda::ops::CudaOps;
 use crate::backend::cuda::{CudaContextManager, CudaTensor};
 use crate::backend::manager::{with_cuda_context, with_cuda_ops};
-use crate::backend::{Device, FerroxF, FerroxCudaF};
+use crate::backend::{FerroxF, FerroxCudaF};
 use cudarc::driver::DeviceRepr;
 use ndarray::ArrayD;
-use std::any::Any;
+
 
 /// GPU storage
 #[derive(Debug, Clone)]
