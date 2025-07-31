@@ -5,7 +5,7 @@
 use super::context::{CudaContextManager, CudaTensor};
 use super::kernels::KernelManager;
 use crate::backend::cuda::context::compute_strides;
-use crate::backend::manager::{with_cuda_context};
+use crate::backend::manager::with_cuda_context;
 use crate::{FerroxCudaF, FerroxF};
 use cudarc::driver::CudaSlice;
 use cudarc::driver::LaunchConfig;
@@ -594,7 +594,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let result_shape: Vec<usize> = vec![a_shape[0], b_shape[1]];
-       
+
         let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
             CudaTensor::alloc_init(context, result_shape)
         })?;

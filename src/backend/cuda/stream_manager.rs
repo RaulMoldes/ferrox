@@ -146,7 +146,6 @@ impl StreamManager {
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
-        
         let stream = match stream_name {
             Some(name) => {
                 let streams = self.streams.lock().unwrap();

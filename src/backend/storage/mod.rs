@@ -11,7 +11,6 @@ use crate::backend::FerroxCudaF;
 use ndarray::ArrayD;
 use std::fmt::Debug;
 
-
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
 pub trait StorageBackend<T>: Debug

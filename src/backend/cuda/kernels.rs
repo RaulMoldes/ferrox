@@ -1,11 +1,11 @@
 // src/backend/cuda/kernels.rs
+use crate::backend::number::FerroxCudaF;
 #[allow(unused_imports)]
 use cudarc::driver::{
     CudaContext, CudaFunction, CudaSlice, CudaStream, DeviceSlice, LaunchConfig, PushKernelArg,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::backend::number::FerroxCudaF;
 
 /// Embedded PTX kernels
 pub const ELEMENTWISE_PTX: &[u8] = include_bytes!("../../../kernels/elementwise.ptx");
@@ -919,7 +919,7 @@ impl KernelManager {
         )
     }
 
-     pub fn launch_where_condition<T>(
+    pub fn launch_where_condition<T>(
         &self,
         cfg: LaunchConfig,
         condition: &CudaSlice<T>,
@@ -931,8 +931,6 @@ impl KernelManager {
     where
         T: FerroxCudaF,
     {
-
-
         let kernel_name = self.get_kernel_name::<T>("where_condition");
         launch_kernel!(
             self,

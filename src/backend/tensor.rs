@@ -1,8 +1,8 @@
-use crate::backend::manager::with_cuda_context;
-use crate::backend::number::{FerroxCudaF};
+use crate::backend::manager::{get_backend, with_cuda_context};
+use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::backend::{Device, default_device};
-use ndarray::{Array, ArrayD,  IxDyn};
+use ndarray::{Array, ArrayD, IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
@@ -84,55 +84,41 @@ where
     T: FerroxCudaF + Clone + rand_distr::num_traits::One,
 {
     pub fn zeros(shape: &[usize]) -> Result<Self, String> {
-        let device = default_device();
-        let storage = CPUStorage::<T>::zeros(shape)?;
+        let backend = get_backend::<T>();
+        let (device, storage) = backend.create_storage_auto(shape)?;
         Self::from_storage_backend(storage, device)
     }
 
     pub fn zeros_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
-        let result_storage = match device {
-            Device::CPU => {
-                let storage = CPUStorage::<T>::zeros(shape)?;
-                storage
-            }
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                let storage = CUDAStorage::<T>::zeros(shape)?;
-                storage
-            }
-        };
-
-        Self::from_storage_backend(result_storage, device)
+        let backend = get_backend::<T>();
+        let (validated_device, storage) = backend.create_storage(shape, device)?;
+        Self::from_storage_backend(storage, validated_device)
     }
 
     // New ones implementation using storage backend
     pub fn ones(shape: &[usize]) -> Result<Self, String> {
-        let device = default_device();
-        let storage = CPUStorage::<T>::ones(shape)?;
+        let backend = get_backend::<T>();
+        let (device, storage) = backend.create_ones_storage(shape, backend.best_device())?;
         Self::from_storage_backend(storage, device)
     }
 
     pub fn ones_with_device(shape: &[usize], device: Device) -> Result<Self, String> {
-        let result_storage = match device {
-            Device::CPU => {
-                let storage = CPUStorage::<T>::ones(shape)?;
-                storage
-            }
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                let storage = CUDAStorage::<T>::ones(shape)?;
-                storage
-            }
-        };
-
-        Self::from_storage_backend(result_storage, device)
+        let backend = get_backend::<T>();
+        let (validated_device, storage) = backend.create_ones_storage(shape, device)?;
+        Self::from_storage_backend(storage, validated_device)
     }
 
     // Additional initialization method for completeness
     pub fn full(shape: &[usize], value: T) -> Result<Self, String> {
-        let device = default_device();
-        let storage = CPUStorage::<T>::full(shape, value)?;
+        let backend = get_backend::<T>();
+        let (device, storage) = backend.create_full_storage(shape, backend.best_device(), value)?;
         Self::from_storage_backend(storage, device)
+    }
+
+    pub fn full_with_device(shape: &[usize], device: Device, value: T) -> Result<Self, String> {
+        let backend = get_backend::<T>();
+        let (validated_device, storage) = backend.create_full_storage(shape, device, value)?;
+        Self::from_storage_backend(storage, validated_device)
     }
 
     // Random normal distribution initialization using storage backend
@@ -140,8 +126,8 @@ where
     where
         StandardUniform: Distribution<T>,
     {
-        let device = default_device();
-        let storage = CPUStorage::<T>::randn(shape)?;
+        let backend = get_backend::<T>();
+        let (device, storage) = backend.create_randn_storage(shape, backend.best_device())?;
         Self::from_storage_backend(storage, device)
     }
 
@@ -149,17 +135,23 @@ where
     where
         StandardUniform: Distribution<T>,
     {
-        // Choose storage type based on device
-        let storage: Box<dyn StorageBackend<T>> = match device {
-            Device::CPU => CPUStorage::<T>::randn(shape)?,
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                // Use GPU storage for CUDA devices
-                CUDAStorage::<T>::randn(shape)?
-            }
-        };
+        let backend = get_backend::<T>();
+        let (validated_device, storage) = backend.create_randn_storage(shape, device)?;
+        Self::from_storage_backend(storage, validated_device)
+    }
 
-        Self::from_storage_backend(storage, device)
+    /// Move tensor to different device
+    pub fn to_device(&self, target_device: Device) -> Result<Self, String> {
+        let storage = self.storage.as_ref().ok_or("Tensor has no storage")?;
+        let backend = get_backend::<T>();
+
+        let (new_device, new_storage) =
+            backend.move_storage(storage.clone_storage()?, target_device)?;
+
+        Ok(Self {
+            device: new_device,
+            storage: Some(new_storage),
+        })
     }
 }
 
@@ -180,27 +172,14 @@ where
     // The graph node is a separate struct (check src/graph/node.rs), which indeed has a data property, that in ferrrox will be a tensor.
     // In the course, the graph node was the main layer of abstraction over the device, and the tensor inherits from it.
     pub fn new(data: ArrayD<T>) -> Self {
-        // Create storage backend from the data
-        let storage = CPUStorage::new(data.clone());
-
+        let backend = get_backend::<T>();
+        let (device, storage) = backend
+            .create_storage_from_data_auto(&data)
+            .expect("Error while accessing backend manager");
         Self {
-            device: crate::backend::default_device(),
-            storage: Some(Box::new(storage)),
+            device,
+            storage: Some(storage),
         }
-    }
-
-    // Internal method to create tensor with specific storage backend
-    // This will become the primary constructor once data field is removed
-    #[allow(dead_code)]
-    fn new_with_storage<S>(storage: S) -> Result<Self, String>
-    where
-        S: StorageBackend<T> + 'static,
-    {
-
-        Ok(Self {
-            device: default_device(),
-            storage: Some(Box::new(storage)),
-        })
     }
 
     // Creates a new tensor with the given data and device.
@@ -209,11 +188,14 @@ where
     // The device is set to the default device if not provided.
     // This is similar to how PyTorch and TensorFlow work, where the device is set to the default device if not specified.
     // Ideally, we should not be bound to ndarray backend here because it defaults to CPU, but it is okay for now as I prefer to focus more on the automatic differentiation engine thing.
-    pub fn new_with_device(data: ArrayD<T>, device: crate::backend::Device) -> Self {
-        let storage = CPUStorage::new(data.clone());
+    pub fn new_with_device(data: ArrayD<T>, device: Device) -> Self {
+        let backend = get_backend::<T>();
+        let (validated_device, storage) = backend
+            .create_storage_from_data(&data, device)
+            .expect("Error while accessing backend manager");
         Self {
-            device,
-            storage: Some(Box::new(storage)),
+            device: validated_device, // Use validated_device, not device
+            storage: Some(storage),
         }
     }
 
@@ -249,7 +231,6 @@ where
         storage: Box<dyn StorageBackend<T>>,
         device: crate::backend::Device,
     ) -> Result<Self, String> {
-
         Ok(Self {
             device,
             storage: Some(storage),

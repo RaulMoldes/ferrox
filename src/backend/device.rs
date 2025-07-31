@@ -13,8 +13,6 @@ impl Device {
         matches!(self, Device::CPU)
     }
 
-
-
     // Check if device is any GPU type
     pub fn is_cuda(&self) -> bool {
         match self {

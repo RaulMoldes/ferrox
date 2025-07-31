@@ -3,6 +3,7 @@ use super::kernels::{KernelManager, load_all_kernels};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
 
+use crate::FerroxCudaF;
 #[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
@@ -10,21 +11,19 @@ use ndarray::ArrayD;
 use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
-use crate::FerroxCudaF;
 
 pub struct CudaContextManager<T>
 where
-    T: FerroxCudaF
+    T: FerroxCudaF,
 {
     ctx: Arc<CudaContext>,
     stream_manager: StreamManager,
     ops: Arc<CudaOps<T>>,
 }
 
-
-
-impl <T> CudaContextManager<T>
-where T: FerroxCudaF
+impl<T> CudaContextManager<T>
+where
+    T: FerroxCudaF,
 {
     pub fn new() -> Result<Self, String> {
         Self::from_device_id(0)
@@ -96,8 +95,7 @@ where T: FerroxCudaF
     }
 
     /// Synchronous host to device transfer
-    pub fn host_to_device(&self, data: &[T]) -> Result<CudaSlice<T>, String>
-    {
+    pub fn host_to_device(&self, data: &[T]) -> Result<CudaSlice<T>, String> {
         let mut device_buffer = self.alloc_zeros(data.len())?;
 
         let stream = match self.stream_manager.get_stream("copy_h2d") {
@@ -108,9 +106,8 @@ where T: FerroxCudaF
         // Copy data from host to device using the correct cudarc API
 
         stream
-                .memcpy_htod(data, &mut device_buffer) // data is now &[T]
-                .map_err(|e| format!("Host to device transfer failed: {}", e))?;
-
+            .memcpy_htod(data, &mut device_buffer) // data is now &[T]
+            .map_err(|e| format!("Host to device transfer failed: {}", e))?;
 
         Ok(device_buffer)
     }
@@ -131,19 +128,14 @@ where T: FerroxCudaF
         // Copy data from device to host using the correct cudarc API
 
         stream
-                .memcpy_dtoh(data, &mut host_buffer)
-                .map_err(|e| format!("Device to host transfer failed: {}", e))?;
-
+            .memcpy_dtoh(data, &mut host_buffer)
+            .map_err(|e| format!("Device to host transfer failed: {}", e))?;
 
         Ok(host_buffer)
     }
 
     /// Device to device memory copy
-    pub fn device_to_device(
-        &self,
-        src: &CudaSlice<T>,
-        dst: &mut CudaSlice<T>,
-    ) -> Result<(), String>
+    pub fn device_to_device(&self, src: &CudaSlice<T>, dst: &mut CudaSlice<T>) -> Result<(), String>
     where
         T: cudarc::driver::DeviceRepr,
     {
@@ -157,11 +149,10 @@ where T: FerroxCudaF
 
         // Copy data from device to device using the correct cudarc API
 
-            self.stream_manager
-                .default_stream() // Use default stream as we cannot go async on device to device transfers.
-                .memcpy_dtod(src, dst)
-                .map_err(|e| format!("Device to device copy failed: {}", e))?;
-
+        self.stream_manager
+            .default_stream() // Use default stream as we cannot go async on device to device transfers.
+            .memcpy_dtod(src, dst)
+            .map_err(|e| format!("Device to device copy failed: {}", e))?;
 
         Ok(())
     }
@@ -314,7 +305,7 @@ pub struct CudaTensor<T: FerroxCudaF> {
 
 impl<T> CudaTensor<T>
 where
-    T: FerroxCudaF
+    T: FerroxCudaF,
 {
     /// Creates a new CUDA tensor with computed strides
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
