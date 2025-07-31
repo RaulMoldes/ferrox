@@ -5,12 +5,13 @@ use cudarc::driver::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::backend::number::GPUFloat;
 
 /// Embedded PTX kernels
 pub const ELEMENTWISE_PTX: &[u8] = include_bytes!("../../../kernels/elementwise.ptx");
 pub const ACTIVATIONS_PTX: &[u8] = include_bytes!("../../../kernels/activations.ptx");
 pub const MATMUL_PTX: &[u8] = include_bytes!("../../../kernels/matmul.ptx");
-pub const REDUCTION_PTX: &[u8] = include_bytes!("../../../kernels/reduce.ptx");
+pub const REDUCTION_PTX: &[u8] = include_bytes!("../../../kernels/reduction.ptx");
 pub const COMPARISON_PTX: &[u8] = include_bytes!("../../../kernels/comparison.ptx");
 pub const CONVOLUTIONS_PTX: &[u8] = include_bytes!("../../../kernels/convolutions.ptx");
 pub const FILL_PTX: &[u8] = include_bytes!("../../../kernels/fill.ptx");
@@ -252,7 +253,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
@@ -269,7 +270,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, input, output, &size)
@@ -288,7 +289,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(&format!("reduce_{}_all", operation));
         launch_kernel!(self, &kernel_name, cfg, input, output, &size)
@@ -307,7 +308,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(&format!("reduce_{}_axes", operation));
         launch_kernel!(
@@ -335,7 +336,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, a, b, result, &size)
@@ -352,7 +353,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>(kernel_base);
         launch_kernel!(self, &kernel_name, cfg, input, result, &size)
@@ -369,7 +370,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("fill");
         launch_kernel!(self, &kernel_name, cfg, data, &value, &size)
@@ -384,7 +385,7 @@ impl KernelManager {
         seed: u64,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("fill_random");
         launch_kernel!(self, &kernel_name, cfg, data, &size, &seed)
@@ -404,7 +405,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_add", cfg, a, b, c, size)
     }
@@ -419,7 +420,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_mul", cfg, a, b, c, size)
     }
@@ -434,7 +435,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_div", cfg, a, b, c, size)
     }
@@ -449,7 +450,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_sub", cfg, a, b, c, size)
     }
@@ -464,7 +465,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_pow", cfg, a, b, c, size)
     }
@@ -479,7 +480,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_min", cfg, a, b, c, size)
     }
@@ -494,7 +495,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_elementwise("elementwise_max", cfg, a, b, c, size)
     }
@@ -508,7 +509,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_abs", cfg, input, output, size)
     }
@@ -521,7 +522,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_sqrt", cfg, input, output, size)
     }
@@ -534,7 +535,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_exp", cfg, input, output, size)
     }
@@ -547,7 +548,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_log", cfg, input, output, size)
     }
@@ -560,7 +561,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("elementwise_negate", cfg, input, output, size)
     }
@@ -576,7 +577,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("sigmoid", cfg, input, output, size)
     }
@@ -590,7 +591,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("hyperbolic_tangent", cfg, input, output, size)
     }
@@ -603,7 +604,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_elementwise("relu", cfg, input, output, size)
     }
@@ -619,7 +620,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_all("sum", cfg, input, output, size)
     }
@@ -635,7 +636,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_axes("sum", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -649,7 +650,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_all("max", cfg, input, output, size)
     }
@@ -665,7 +666,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_axes("max", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -679,7 +680,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_all("min", cfg, input, output, size)
     }
@@ -695,7 +696,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_axes("min", cfg, input, output, outer_size, axis_size, inner_size)
     }
@@ -709,7 +710,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_all("prod", cfg, input, output, size)
     }
@@ -725,7 +726,7 @@ impl KernelManager {
         inner_size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_reduce_axes(
             "prod", cfg, input, output, outer_size, axis_size, inner_size,
@@ -743,7 +744,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("clamp");
         launch_kernel!(
@@ -769,7 +770,7 @@ impl KernelManager {
         k: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("matmul");
         launch_kernel!(self, &kernel_name, cfg, a, b, c, &m, &n, &k)
@@ -788,7 +789,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_comparison("greater_equal", cfg, a, b, result, size)
     }
@@ -804,7 +805,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_comparison("less_equal", cfg, a, b, result, size)
     }
@@ -819,7 +820,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_comparison("greater", cfg, a, b, result, size)
     }
@@ -835,7 +836,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_comparison("less", cfg, a, b, result, size)
     }
@@ -852,7 +853,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_binary_comparison("equal", cfg, a, b, result, size)
     }
@@ -868,7 +869,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_comparison("logical_not", cfg, input, result, size)
     }
@@ -884,7 +885,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         self.launch_unary_comparison("sign", cfg, input, result, size)
     }
@@ -903,7 +904,7 @@ impl KernelManager {
         size: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("in_range");
         launch_kernel!(
@@ -918,6 +919,33 @@ impl KernelManager {
         )
     }
 
+     pub fn launch_where_condition<T>(
+        &self,
+        cfg: LaunchConfig,
+        condition: &CudaSlice<T>,
+        true_val: &CudaSlice<T>,
+        false_val: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: GPUFloat,
+    {
+
+
+        let kernel_name = self.get_kernel_name::<T>("where_condition");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            condition,
+            true_val,
+            false_val,
+            output,
+            &size
+        )
+    }
+
     /// CONVOLUTIONAL KERNELS
     /// Launch 2D convolution with bias support
     pub fn launch_conv2d_forward<T>(
@@ -925,7 +953,6 @@ impl KernelManager {
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         filter: &CudaSlice<T>,
-        bias: Option<&CudaSlice<T>>,
         output: &mut CudaSlice<T>,
         batch_size: i32,
         in_channels: i32,
@@ -942,7 +969,7 @@ impl KernelManager {
         pad_w: i32,
     ) -> Result<(), String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
+        T: GPUFloat + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
 
@@ -952,7 +979,6 @@ impl KernelManager {
             cfg,
             input,
             filter,
-            &bias_ptr,
             output,
             &batch_size,
             &in_channels,
@@ -979,8 +1005,8 @@ impl KernelManager {
     }
 }
 
-/// Load all predefined CUDA kernels
-pub fn load_all_kernels(kernels: &mut CudaKernels, ctx: &Arc<CudaContext>) -> Result<(), String> {
+/// Load all predefined CUDAf kernels
+pub fn load_all_kernels(kernels: &mut KernelManager, ctx: &Arc<CudaContext>) -> Result<(), String> {
     for config in KERNEL_CONFIGS {
         kernels.load_kernel(ctx, config.name, config.ptx)?;
     }

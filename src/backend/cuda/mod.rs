@@ -11,8 +11,7 @@ pub mod stream_manager;
 
 #[cfg(feature = "cuda")]
 pub use context::{CudaContextManager, CudaTensor};
-#[cfg(feature = "cuda")]
-pub use device::CudaDevice;
+
 #[cfg(feature = "cuda")]
 pub use kernels::{KernelManager, load_all_kernels};
 

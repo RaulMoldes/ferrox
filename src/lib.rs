@@ -15,11 +15,5 @@
 //! - Written 100% in safe Rust
 //!
 pub mod backend;
-
-pub mod tensor; // New neural network module
-
 // Re-export commonly used types for convenience
-pub use backend::{CPUNumber, Device, GPUFloat, cpu, default_device};
-
-
-pub use tensor::Tensor;
+pub use backend::{ Device, GPUFloat, CPUFloat, cpu, default_device};

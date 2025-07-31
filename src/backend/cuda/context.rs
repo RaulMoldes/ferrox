@@ -12,19 +12,24 @@ use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::Mutex;
+use crate::GPUFloat;
 
-pub struct CudaContextManager {
+pub struct CudaContextManager<T>
+where
+    T: GPUFloat
+{
     ctx: Arc<CudaContext>,
     stream_manager: StreamManager,
-    ops: CudaOps,
+    ops: Arc<CudaOps<T>>,
 }
 
-unsafe impl Send for CudaContextManager {}
-unsafe impl Sync for CudaContextManager {}
 
-impl CudaContextManager {
+
+impl <T> CudaContextManager<T>
+where T: GPUFloat
+{
     pub fn new() -> Result<Self, String> {
-        self.from_device_id(0)?
+        Self::from_device_id(0)
     }
 
     /// Creates a new CUDA context manager with full backend capabilities
@@ -33,22 +38,24 @@ impl CudaContextManager {
         let stream_manager = StreamManager::new(&ctx);
         stream_manager.setup_parallel_streams(&ctx)?;
 
-        if let Some(compute_stream) = stream_manager.get_stream("compute") {
+        let kernel_manager = if let Some(compute_stream) = stream_manager.get_stream("compute") {
             // Initialize and load kernels during context creation
             let mut kernels = KernelManager::new(compute_stream);
             load_all_kernels(&mut kernels, &ctx)?;
+            kernels
         } else {
             let default_stream = ctx.default_stream();
             let mut kernels = KernelManager::new(default_stream);
             load_all_kernels(&mut kernels, &ctx)?;
-        }
+            kernels
+        };
 
-        let ops = CudaOps::new(&kernels, &self);
+        let ops = CudaOps::new(kernel_manager);
 
         Ok(Self {
             ctx,
             stream_manager,
-            ops,
+            ops: Arc::new(ops),
         })
     }
 
@@ -59,7 +66,7 @@ impl CudaContextManager {
     // ============= GPU MEMORY MANAGEMENT =============
 
     /// Allocates zeroed memory on the GPU
-    pub fn alloc_zeros<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
+    pub fn alloc_zeros(&self, size: usize) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
@@ -74,7 +81,7 @@ impl CudaContextManager {
     }
 
     /// Allocates uninitialized memory on the GPU
-    pub unsafe fn alloc<T>(&self, size: usize) -> Result<CudaSlice<T>, String>
+    pub unsafe fn alloc(&self, size: usize) -> Result<CudaSlice<T>, String>
     where
         T: cudarc::driver::DeviceRepr,
     {
@@ -91,10 +98,7 @@ impl CudaContextManager {
     }
 
     /// Synchronous host to device transfer
-    pub fn host_to_device<T>(&self, data: &[T]) -> Result<CudaSlice<T>, String>
-    // Changed from Vec<T> to &[T]
-    where
-        T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
+    pub fn host_to_device(&self, data: &[T]) -> Result<CudaSlice<T>, String>
     {
         let mut device_buffer = self.alloc_zeros(data.len())?;
 
@@ -114,7 +118,7 @@ impl CudaContextManager {
     }
 
     /// Synchronous device to host transfer
-    pub fn device_to_host<T>(&self, data: &CudaSlice<T>) -> Result<Vec<T>, String>
+    pub fn device_to_host(&self, data: &CudaSlice<T>) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
@@ -137,7 +141,7 @@ impl CudaContextManager {
     }
 
     /// Device to device memory copy
-    pub fn device_to_device<T>(
+    pub fn device_to_device(
         &self,
         src: &CudaSlice<T>,
         dst: &mut CudaSlice<T>,
@@ -177,8 +181,8 @@ impl CudaContextManager {
     }
 
     /// Access to operations interface
-    pub fn ops(&self) -> CudaOps<'_> {
-        self.ops
+    pub fn ops(&self) -> Arc<CudaOps<T>> {
+        self.ops.clone()
     }
 
     /// Synchronize all operations
@@ -194,7 +198,7 @@ impl CudaContextManager {
     }
 
     /// Create CUDA tensor from CPU data
-    pub fn create_tensor_from_cpu<T>(
+    pub fn create_tensor_from_cpu(
         &self,
         data: &[T],
         shape: Vec<usize>,
@@ -275,7 +279,7 @@ impl CudaContextManager {
     // ============= ASYNC OPERATIONS (USING STREAMMANAGER) =============
 
     /// Asynchronous host to device transfer using named stream
-    pub fn host_to_device_async<T>(
+    pub fn host_to_device_async(
         &self,
         data: &[T], // Changed from Vec<T> to &[T]
         stream_name: Option<&str>,
@@ -288,7 +292,7 @@ impl CudaContextManager {
     }
 
     /// Asynchronous device to host transfer using named stream
-    pub fn device_to_host_async<T>(
+    pub fn device_to_host_async(
         &self,
         data: &CudaSlice<T>,
         stream_name: Option<&str>,
@@ -304,7 +308,7 @@ impl CudaContextManager {
 ///
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct CudaTensor<T: cudarc::driver::DeviceRepr> {
+pub struct CudaTensor<T: GPUFloat> {
     pub data: CudaSlice<T>,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
@@ -312,11 +316,7 @@ pub struct CudaTensor<T: cudarc::driver::DeviceRepr> {
 
 impl<T> CudaTensor<T>
 where
-    T: cudarc::driver::DeviceRepr
-        + Clone
-        + cudarc::driver::ValidAsZeroBits
-        + std::marker::Unpin
-        + Default,
+    T: GPUFloat
 {
     /// Creates a new CUDA tensor with computed strides
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
@@ -331,7 +331,7 @@ where
     /// Create tensor from CPU ndarray without taking ownership
     /// This allows borrowing external ndarray data for GPU transfer
     pub fn from_cpu_array(
-        context_manager: &ContextManager,
+        context_manager: &CudaContextManager<T>,
         array: &ArrayD<T>,
     ) -> Result<Self, String> {
         let shape = array.shape().to_vec();
@@ -365,7 +365,7 @@ where
     /// Create tensor from CPU ndarray asynchronously without taking ownership
     /// Useful for overlapping transfers with computation
     pub fn from_cpu_array_async(
-        context_manager: &ContextManager,
+        context_manager: &CudaContextManager<T>,
         array: &ArrayD<T>,
         stream_name: Option<&str>,
     ) -> Result<Self, String> {
@@ -398,7 +398,7 @@ where
     /// Create tensor from CPU slice asynchronously without taking ownership
     /// Useful for overlapping transfers with computation
     pub fn from_cpu_slice_async(
-        context_manager: &ContextManager,
+        context_manager: &CudaContextManager<T>,
         data: &[T],
         shape: Vec<usize>,
         stream_name: Option<&str>,
@@ -420,7 +420,7 @@ where
 
     /// Create tensor from host data using context manager
     pub fn from_vec(
-        context_manager: &ContextManager,
+        context_manager: &CudaContextManager<T>,
         data: Vec<T>,
         shape: Vec<usize>,
     ) -> Result<Self, String> {
@@ -440,7 +440,7 @@ where
 
     /// Create async tensor from host data
     pub fn from_vec_async(
-        context_manager: &ContextManager,
+        context_manager: &CudaContextManager<T>,
         data: Vec<T>,
         shape: Vec<usize>,
         stream_name: Option<&str>,
@@ -460,7 +460,7 @@ where
     }
 
     /// Transfer tensor data back to CPU
-    pub fn to_cpu(&self, context_manager: &CudaContextManager) -> Result<Vec<T>, String>
+    pub fn to_cpu(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
@@ -470,20 +470,20 @@ where
     /// Transfer tensor data back to CPU asynchronously
     pub fn to_cpu_async(
         &self,
-        context_manager: &CudaContextManager,
+        context_manager: &CudaContextManager<T>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
         context_manager.device_to_host_async(&self.data, stream_name)
     }
 
     /// Get tensor data as vector (alias for to_cpu)
-    pub fn to_vec(&self, context_manager: &CudaContextManager) -> Result<Vec<T>, String> {
+    pub fn to_vec(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
         context_manager.device_to_host(&self.data)
     }
 
     /// Create zeroed CUDA tensor
     pub fn alloc_init(
-        context_manager: &CudaContextManager,
+        context_manager: &CudaContextManager<T>,
         shape: Vec<usize>,
     ) -> Result<Self, String> {
         let size = shape.iter().product();
@@ -510,7 +510,7 @@ where
     }
 
     /// Deep clone tensor data
-    pub fn deep_clone(&self, context_manager: &CudaContextManager) -> Result<Self, String> {
+    pub fn deep_clone(&self, context_manager: &CudaContextManager<T>) -> Result<Self, String> {
         let num_elements = self.data.len();
         let mut new_data: CudaSlice<T> = context_manager.alloc_zeros(num_elements)?;
 

@@ -4,10 +4,14 @@
 
 use super::context::{CudaContextManager, CudaTensor};
 use super::kernels::KernelManager;
+use crate::{GPUFloat, CPUFloat};
 use crate::backend::cuda::context::compute_strides;
+use crate::backend::manager::{get_backend, with_cuda_context, with_cuda_ops};
 use crate::backend::number::CPUNumber;
-use cudarc::driver::LaunchConfig;
 use cudarc::driver::CudaSlice;
+use cudarc::driver::LaunchConfig;
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+use std::marker::Unpin;
 
 const BLOCK_SIZE: u32 = 256;
 const TILE_SIZE: u32 = 16;
@@ -15,18 +19,18 @@ const TILE_SIZE: u32 = 16;
 // CudaOps provides a high-level interface for performing tensor operations on GPU
 /// This is the main interface for performing tensor operations on GPU
 /// The lifetime parameter ensures operations don't outlive the underlying CUDA resources
-pub struct CudaOps<'a> {
-    kernels: &'a KernelManager,
-    context: &'a CudaContextManager,
+pub struct CudaOps<T: GPUFloat + DeviceRepr + ValidAsZeroBits + Unpin + Default> {
+    kernels: KernelManager,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a> CudaOps<'a> {
-    pub fn new(kernels: &'a KernelManager, context: &'a CudaContextManager) -> Self {
-        Self { kernels, context }
+impl<T: GPUFloat + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T> {
+    pub fn new(kernels: KernelManager) -> Self {
+        Self { kernels, _phantom: std::marker::PhantomData }
     }
 
-    pub fn kernels(&self) -> &CudaKernels {
-        self.kernels
+    pub fn kernels(&self) -> &KernelManager {
+        &self.kernels
     }
 
     // ===== UTILITY METHODS =====
@@ -81,13 +85,11 @@ impl<'a> CudaOps<'a> {
     /// Create tensor filled with constant value
     /// This is a fundamental building block for scalar operations
     /// More efficient than creating dedicated scalar kernels for each operation
-    pub fn full<T>(&self, shape: &[usize], value: T) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat,
-    {
+    pub fn full(&self, shape: &[usize], value: T) -> Result<CudaTensor<T>, String> {
         let size = shape.iter().product();
         let cfg = self.get_launch_config(size);
-        let mut result = self.context.alloc_zeros(size)?;
+
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| context.alloc_zeros(size))?;
 
         self.kernels
             .launch_fill(cfg, &mut result, value, size.try_into().unwrap())?;
@@ -101,32 +103,25 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
-    pub fn zeros<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + Default,
-    {
-        CudaTensor::alloc_init(self.context, shape.to_vec())
+    pub fn zeros(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
+
+        with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, shape.to_vec()))
     }
 
     /// Create ones tensor - useful for creating bias vectors and normalization
-    pub fn ones<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat,
-    {
-        let one = <T as CPUFloat>::from_f32(1.0).unwrap();
+    pub fn ones(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
+        let one = <T as CPUFloat>::from_f64(1.0).unwrap();
         self.full(shape, one)
     }
 
-    pub fn randn<T>(&self, shape: &[usize]) -> Result<CudaTensor<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr
-            + cudarc::driver::ValidAsZeroBits
-            + crate::backend::number::GPUFloat
-            + 'static,
-    {
+    pub fn randn(&self, shape: &[usize], seed: u64) -> Result<CudaTensor<T>, String> {
         let size = shape.iter().product();
-        let mut result = self.context.alloc_zeros(size)?;
+
+
         let cfg = self.get_launch_config(size);
+
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {context.alloc_zeros(size)})?;
+
 
         self.kernels
             .launch_fill_random(cfg, &mut result, size as i32, seed)?;
@@ -139,16 +134,13 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise addition: result = a + b
-    pub fn add<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn add(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {CudaTensor::alloc_init(context, a.shape().to_vec())})?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -157,16 +149,13 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise multiplication: result = a * b
-    pub fn mul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn mul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for multiplication".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =with_cuda_context(|context: &CudaContextManager<T>| {CudaTensor::alloc_init(context, a.shape().to_vec())})?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -175,16 +164,13 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise division: result = a / b
-    pub fn div<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn div(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for division".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =with_cuda_context(|context: &CudaContextManager<T>| {CudaTensor::alloc_init(context, a.shape().to_vec())})?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -193,16 +179,13 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise subtraction: result = a - b
-    pub fn sub<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn sub(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for subtraction".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, a.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -211,16 +194,13 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise power: result = a^b
-    pub fn power<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn power(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for power operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {CudaTensor::alloc_init(context, a.shape().to_vec())})?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -229,115 +209,79 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise minimum: result = min(a, b)
-    pub fn min_elementwise<T>(
+    pub fn min_elementwise(
         &self,
+
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for min operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {CudaTensor::alloc_init(context, a.shape().to_vec())})?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels.launch_min_elementwise(
-            cfg,
-            &a.data,
-            &b.data,
-            &mut result.data,
-            size as i32,
-        )?;
+        self.kernels
+            .launch_min_elementwise(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
         Ok(result)
     }
 
     /// Element-wise maximum: result = max(a, b)
-    pub fn max_elementwise<T>(
+    pub fn max_elementwise(
         &self,
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for max operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {CudaTensor::alloc_init(context, a.shape().to_vec())})?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels.launch_max_elementwise(
-            cfg,
-            &a.data,
-            &b.data,
-            &mut result.data,
-            size as i32,
-        )?;
+        self.kernels
+            .launch_max_elementwise(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
         Ok(result)
     }
 
     /// Scalar addition: result = tensor + scalar
-    pub fn add_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn add_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.add(a, &scalar_tensor)
     }
 
     /// Scalar multiplication: result = tensor * scalar
-    pub fn mul_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn mul_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.mul(a, &scalar_tensor)
     }
 
     /// Scalar division: result = tensor / scalar
-    pub fn div_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn div_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.div(a, &scalar_tensor)
     }
 
     /// Scalar subtraction: result = tensor - scalar
-    pub fn sub_scalar<T>(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn sub_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let scalar_tensor = self.full(&a.shape, scalar)?;
         self.sub(a, &scalar_tensor)
     }
 
     /// Scalar power: result = tensor^scalar
-    pub fn power_scalar<T>(
-        &self,
-        base: &CudaTensor<T>,
-        exponent: T,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn power_scalar(&self, base: &CudaTensor<T>, exponent: T) -> Result<CudaTensor<T>, String> {
         let exponent_tensor = self.full(&base.shape, exponent)?;
         self.power(base, &exponent_tensor)
     }
 
     /// Element-wise absolute value: result = |input|
-    pub fn abs<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn abs(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -346,12 +290,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise square root: result = sqrt(input)
-    pub fn sqrt<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn sqrt(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -360,12 +302,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise exponential: result = exp(input)
-    pub fn exp<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn exp(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -374,12 +314,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise natural logarithm: result = ln(input)
-    pub fn log<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn log(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -388,12 +326,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise negation: result = -input
-    pub fn negate<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn negate(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -402,12 +338,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// ReLU activation: result = max(0, input)
-    pub fn relu<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn relu(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -416,12 +350,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Sigmoid activation: result = 1 / (1 + exp(-input))
-    pub fn sigmoid<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat,
-    {
+    pub fn sigmoid(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -430,12 +362,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Hyperbolic tangent activation: result = tanh(input)
-    pub fn tanh<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat,
-    {
+    pub fn tanh(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -444,17 +374,15 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Clamp values to specified range: result = clamp(input, min_val, max_val)
-    pub fn clamp<T>(
+    pub fn clamp(
         &self,
         input: &CudaTensor<T>,
         min_val: T,
         max_val: T,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_clamp(
@@ -469,13 +397,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Sum reduction along specified axes or all elements
-    pub fn sum_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn sum_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = CudaTensor::alloc_init(self.context, vec![num_blocks])?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, vec![num_blocks]))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -484,15 +410,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Sum reduction along specific axes
-    pub fn sum_axes<T>(
+    pub fn sum_axes(
         &self,
         input: &CudaTensor<T>,
         axes: &[usize],
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         self.reduce_axes(
             input,
             axes,
@@ -511,13 +434,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Max reduction along all elements
-    pub fn max_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn max_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = CudaTensor::alloc_init(self.context, vec![num_blocks])?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, vec![num_blocks]))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -526,15 +447,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Max reduction along specific axes
-    pub fn max_axes<T>(
+    pub fn max_axes(
         &self,
         input: &CudaTensor<T>,
         axes: &[usize], // Changed from usize to &[usize]
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         self.reduce_axes(
             input,
             axes,
@@ -553,13 +471,11 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Min reduction along all elements
-    pub fn min_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn min_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = CudaTensor::alloc_init(self.context, vec![num_blocks])?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, vec![num_blocks]))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -568,15 +484,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Min reduction along specific axes
-    pub fn min_axes<T>(
+    pub fn min_axes(
         &self,
         input: &CudaTensor<T>,
         axes: &[usize],
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         self.reduce_axes(
             input,
             axes,
@@ -595,10 +508,7 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Mean operation (uses sum + division)
-    pub fn mean_all<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn mean_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let sum_result = self.sum_all(input)?;
         let size_scalar =
             <T as crate::backend::number::CPUFloat>::from_f64(1.0 / input.size() as f64)
@@ -607,15 +517,12 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Mean along specific axes
-    pub fn mean_axes<T>(
+    pub fn mean_axes(
         &self,
         input: &CudaTensor<T>,
         axes: &[usize],
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         let sum_result = self.sum_axes(input, axes, keep_dims)?;
         // Calculate divisor as product of all reduced dimensions
         let divisor: f64 = axes.iter().map(|&axis| input.shape[axis] as f64).product();
@@ -632,10 +539,7 @@ impl<'a> CudaOps<'a> {
     /// # Requirements:
     /// - A must be [M, K], B must be [K, N] -> Result is [M, N]
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
-    pub fn matmul<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + Copy + 'static,
-    {
+    pub fn matmul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.ndim() != 2 || b.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
@@ -650,10 +554,9 @@ impl<'a> CudaOps<'a> {
             ));
         }
 
-        let result_shape = vec![a_shape[0], b_shape[1]];
-        let result_size = result_shape.iter().product();
-        let result_data = self.context.alloc_zeros::<T>(result_size)?;
-        let mut result = CudaTensor::new(result_data, result_shape);
+        let result_shape: Vec<usize> = vec![a_shape[0], b_shape[1]];
+        let result_size: usize = result_shape.iter().product();
+        let mut result = with_cuda_context(|context: &CudaContextManager<T>|{CudaTensor::alloc_init(context, result_shape)})?;
 
         // Use 2D launch configuration optimized for matrix multiplication
         let cfg = self.get_2d_launch_config(a_shape[0], b_shape[1]);
@@ -671,20 +574,18 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater_equal<T>(
+    pub fn greater_equal(
         &self,
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, a.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -693,20 +594,18 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less_equal<T>(
+    pub fn less_equal(
         &self,
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, a.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -715,16 +614,14 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn greater(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, a.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -733,16 +630,14 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn less(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, a.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -751,16 +646,14 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Element-wise equality: result = (a == b) ? 1.0 : 0.0
-    pub fn equal<T>(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn equal(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = CudaTensor::alloc_init(self.context, a.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, a.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -770,12 +663,10 @@ impl<'a> CudaOps<'a> {
 
     /// Logical NOT: result = (input == 0.0) ? 1.0 : 0.0
     /// Inverts boolean tensors following IEEE 754 convention
-    pub fn logical_not<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn logical_not(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -784,12 +675,10 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Sign function: result = sign(input) ∈ {-1, 0, 1}
-    pub fn sign<T>(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    pub fn sign(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -798,17 +687,15 @@ impl<'a> CudaOps<'a> {
     }
 
     /// Range check: result = (min_val <= input <= max_val) ? 1.0 : 0.0
-    pub fn in_range<T>(
+    pub fn in_range(
         &self,
         input: &CudaTensor<T>,
         min_val: T,
         max_val: T,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = CudaTensor::alloc_init(self.context, input.shape.clone())?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, input.shape().to_vec()))?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_in_range(
@@ -822,22 +709,22 @@ impl<'a> CudaOps<'a> {
         Ok(result)
     }
 
-    /// Where condition: result[i] = condition[i] > 0 ? true_val[i] : false_val[i]
-    pub fn where_condition<T>(
+    ///  condition: result[i] = condition[i] > 0 ? true_val[i] : false_val[i]
+    pub fn where_condition(
         &self,
         condition: &CudaTensor<T>,
         true_val: &CudaTensor<T>,
         false_val: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         if condition.shape != true_val.shape || condition.shape != false_val.shape {
-            return Err("Shape mismatch for where condition operation".to_string());
+            return Err("Shape mismatch for  condition operation".to_string());
         }
 
         let size = condition.size();
-        let mut result = CudaTensor::alloc_init(self.context, condition.shape.clone())?;
+
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, condition.shape.clone()))?;
+
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_where_condition(
@@ -857,17 +744,13 @@ impl<'a> CudaOps<'a> {
     /// Input: [batch_size, in_channels, in_height, in_width]
     /// Filter: [out_channels, in_channels, kernel_height, kernel_width]
     /// Output: [batch_size, out_channels, out_height, out_width]
-    pub fn conv2d_forward<T>(
+    pub fn conv2d_forward(
         &self,
         input: &CudaTensor<T>,
         filter: &CudaTensor<T>,
-        bias: Option<&CudaTensor<T>>,
         stride: (usize, usize),
         padding: (usize, usize),
-    ) -> Result<CudaTensor<T>, String>
-    where
-        T: crate::backend::number::GPUFloat + 'static,
-    {
+    ) -> Result<CudaTensor<T>, String> {
         // Validate input dimensions
         if input.shape.len() != 4 || filter.shape.len() != 4 {
             return Err("Conv2D requires 4D tensors [batch, channels, height, width]".to_string());
@@ -891,16 +774,6 @@ impl<'a> CudaOps<'a> {
             ));
         }
 
-        // Validate bias shape if provided
-        if let Some(bias_tensor) = bias {
-            if bias_tensor.shape.len() != 1 || bias_tensor.shape[0] != out_channels {
-                return Err(format!(
-                    "Bias shape {:?} doesn't match output channels {}",
-                    bias_tensor.shape, out_channels
-                ));
-            }
-        }
-
         let stride_h = stride.0;
         let stride_w = stride.1;
         let pad_h = padding.0;
@@ -911,7 +784,8 @@ impl<'a> CudaOps<'a> {
         let out_width = (in_width + 2 * pad_w - kernel_width) / stride_w + 1;
 
         let output_shape = vec![batch_size, out_channels, out_height, out_width];
-        let mut result = CudaTensor::alloc_init(self.context, output_shape)?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, output_shape))?;
 
         // Configure launch parameters
         let tile_size = TILE_SIZE as usize;
@@ -938,7 +812,6 @@ impl<'a> CudaOps<'a> {
             cfg,
             &input.data,
             &filter.data,
-            bias.map(|b| &b.data),
             &mut result.data,
             batch_size as i32,
             in_channels as i32,
@@ -960,11 +833,11 @@ impl<'a> CudaOps<'a> {
 
     /// IN - PLACE OPS (THIS DO NOT HAVE AN ASSOCIATED KERNEL SO DO NOT ATTEMPT TO SEARCH FOR IT)
     pub fn squeeze(&self, input: &mut CudaTensor<T>, axis: Option<usize>) -> Result<(), String> {
-        input.squeeze(axis)?
+        input.squeeze(axis)
     }
 
     pub fn reshape(&self, input: &mut CudaTensor<T>, new_shape: Vec<usize>) -> Result<(), String> {
-        input.reshape(new_shape)?
+        input.reshape(new_shape)
     }
 
     pub fn transpose(
@@ -975,7 +848,7 @@ impl<'a> CudaOps<'a> {
         input.transpose(axes)
     }
     pub fn unsqueeze(&self, input: &mut CudaTensor<T>, axis: usize) -> Result<(), String> {
-        input.unsqueeze(axis)?
+        input.unsqueeze(axis)
     }
 
     pub fn broadcast_to(
@@ -983,11 +856,11 @@ impl<'a> CudaOps<'a> {
         input: &mut CudaTensor<T>,
         target_shape: &[usize],
     ) -> Result<(), String> {
-        input.broadcast_to(target_shape)?
+        input.broadcast_to(target_shape)
     }
 
     /// PRIVATE METHODS
-    fn reduce_axes<T, F>(
+    fn reduce_axes<F>(
         &self,
         input: &CudaTensor<T>,
         axes: &[usize],
@@ -995,7 +868,6 @@ impl<'a> CudaOps<'a> {
         kernel_launcher: F,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: crate::backend::number::GPUFloat + 'static,
         F: Fn(LaunchConfig, &CudaSlice<T>, &mut CudaSlice<T>, i32, i32, i32) -> Result<(), String>,
     {
         let input_shape = &input.shape;
@@ -1025,7 +897,8 @@ impl<'a> CudaOps<'a> {
             let axis_size = input_shape[axis] as i32;
             let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
 
-            let mut result = CudaTensor::alloc_init(self.context, output_shape)?;
+            let mut result =
+                with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, output_shape.clone()))?;
 
             let cfg = LaunchConfig {
                 grid_dim: (outer_size as u32, 1, 1),
@@ -1059,7 +932,8 @@ impl<'a> CudaOps<'a> {
             }
         }
 
-        let mut result = CudaTensor::alloc_init(self.context, final_shape)?;
+        let mut result =
+            with_cuda_context(|context: &CudaContextManager<T>| CudaTensor::alloc_init(context, final_shape.clone()))?;
         let mut current_tensor = input;
         let mut current_shape = input_shape.clone();
         let mut temp_tensors = Vec::new();
@@ -1090,8 +964,10 @@ impl<'a> CudaOps<'a> {
                 let mut step_output_shape = current_shape.clone();
                 step_output_shape.remove(axis);
 
-                let mut temp_tensor =
-                    CudaTensor::alloc_init(self.context, step_output_shape.clone())?;
+                let mut temp_tensor = with_cuda_context(|context: &CudaContextManager<T>| {
+                    CudaTensor::alloc_init(context, step_output_shape.clone())
+                })?;
+
                 kernel_launcher(
                     cfg,
                     &current_tensor.data,

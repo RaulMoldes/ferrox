@@ -1,6 +1,8 @@
 pub mod device;
 pub mod manager;
 pub mod number;
+pub mod storage;
+pub mod tensor;
 
 #[cfg(feature = "cuda")]
 pub mod cuda;

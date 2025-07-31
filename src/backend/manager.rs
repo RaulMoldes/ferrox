@@ -1,29 +1,34 @@
 // src/backend/manager.rs
 // Backend manager that handles both CPU and CUDA backends.
-// Current implementation can be extended to support more backends in the future.
+// Simple approach with separate F32 and F64 entry points.
+
 use crate::backend::Device;
-
 #[cfg(feature = "cuda")]
-use crate::backend::cuda::CudaBackend;
-
+use crate::backend::cuda::CudaContextManager;
+use crate::GPUFloat;
+use std::sync::OnceLock;
+use crate::backend::cuda::ops::CudaOps;
+use std::sync::Arc;
 /// Simple backend manager that coordinates CPU and CUDA operations
-pub struct BackendManager {
+pub struct BackendManager<T: GPUFloat> {
     #[cfg(feature = "cuda")]
-    cuda_backend: Option<CudaBackend>,
+    cuda_backend: Option<CudaContextManager<T>>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl Default for BackendManager {
+impl<T: GPUFloat> Default for BackendManager<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BackendManager {
+impl<T: GPUFloat> BackendManager<T> {
     /// Create new backend manager
     pub fn new() -> Self {
         Self {
             #[cfg(feature = "cuda")]
             cuda_backend: None,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -38,7 +43,7 @@ impl BackendManager {
         #[cfg(feature = "cuda")]
         {
             // Try to initialize CUDA backend, but don't fail if unavailable
-            if let Ok(cuda_backend) = CudaBackend::from_device_id(0) {
+            if let Ok(cuda_backend) = CudaContextManager::from_device_id(0) {
                 manager.cuda_backend = Some(cuda_backend);
                 println!("CUDA backend initialized successfully");
             } else {
@@ -68,7 +73,7 @@ impl BackendManager {
 
     /// Get CUDA backend if available
     #[cfg(feature = "cuda")]
-    pub fn cuda_backend(&self) -> Option<&CudaBackend> {
+    pub fn cuda_backend(&self) -> Option<&CudaContextManager<T>> {
         self.cuda_backend.as_ref()
     }
 
@@ -89,27 +94,103 @@ impl BackendManager {
     }
 }
 
-// Global backend manager instance
-// This is actually the way to implement the singleton pattern in Rust.
-// The `OnceLock` type ensures that the backend is initialized only once.
-// A.k.a the lock is only acquired once, and subsequent calls will return the already initialized instance.
-use std::sync::OnceLock;
+// Global backend manager instances
+static BACKEND_F32: OnceLock<BackendManager<f32>> = OnceLock::new();
+static BACKEND_F64: OnceLock<BackendManager<f64>> = OnceLock::new();
 
-// static variable to hold the global backend manager instance
-static GLOBAL_BACKEND: OnceLock<BackendManager> = OnceLock::new();
+// ===== F32 FUNCTIONS =====
 
-/// Get the global backend manager
-#[allow(clippy::redundant_closure)]
-pub fn get_backend() -> &'static BackendManager {
-    GLOBAL_BACKEND.get_or_init(|| BackendManager::init())
+/// Get the global F32 backend manager
+pub fn get_f32_backend() -> &'static BackendManager<f32> {
+    BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
 }
 
-/// Check if CUDA is available globally
-pub fn has_cuda() -> bool {
-    get_backend().has_cuda()
+/// Check if CUDA is available for F32
+pub fn has_f32_cuda() -> bool {
+    get_f32_backend().has_cuda()
 }
 
-/// Get the best available device globally
-pub fn best_device() -> Device {
-    get_backend().best_device()
+/// Get the best device for F32
+pub fn best_f32_device() -> Device {
+    get_f32_backend().best_device()
+}
+
+// ===== F64 FUNCTIONS =====
+
+/// Get the global F64 backend manager
+pub fn get_f64_backend() -> &'static BackendManager<f64> {
+    BACKEND_F64.get_or_init(|| BackendManager::<f64>::init())
+}
+
+/// Check if CUDA is available for F64
+pub fn has_f64_cuda() -> bool {
+    get_f64_backend().has_cuda()
+}
+
+/// Get the best device for F64
+pub fn best_f64_device() -> Device {
+    get_f64_backend().best_device()
+}
+
+
+// ===== GENERIC DISPATCH (WITHOUT TRAIT) =====
+
+/// Get the global backend manager for type T
+pub fn get_backend<T: GPUFloat>() -> &'static BackendManager<T> {
+    match std::any::TypeId::of::<T>() {
+        id if id == std::any::TypeId::of::<f32>() => {
+            // SAFETY: We've verified T is f32
+            unsafe { std::mem::transmute(get_f32_backend()) }
+        }
+        id if id == std::any::TypeId::of::<f64>() => {
+            // SAFETY: We've verified T is f64
+            unsafe { std::mem::transmute(get_f64_backend()) }
+        }
+        _ => panic!("Unsupported float type for backend"),
+    }
+}
+
+/// Check if CUDA is available for type T
+pub fn has_cuda<T: GPUFloat>() -> bool {
+    match std::any::TypeId::of::<T>() {
+        id if id == std::any::TypeId::of::<f32>() => has_f32_cuda(),
+        id if id == std::any::TypeId::of::<f64>() => has_f64_cuda(),
+        _ => false,
+    }
+}
+
+/// Get the best available device for type T
+pub fn best_device<T: GPUFloat>() -> Device {
+    match std::any::TypeId::of::<T>() {
+        id if id == std::any::TypeId::of::<f32>() => best_f32_device(),
+        id if id == std::any::TypeId::of::<f64>() => best_f64_device(),
+        _ => Device::CPU,
+    }
+}
+
+
+
+#[cfg(feature = "cuda")]
+pub fn with_cuda_context<F, R, T>(f: F) -> Result<R, String>
+where
+    T: GPUFloat,
+    F: FnOnce(&CudaContextManager<T>) -> Result<R, String>,
+{
+    let backend: &'static BackendManager<T> = get_backend::<T>();
+    let context_manager: &CudaContextManager<T> = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+    f(&context_manager)
+}
+
+#[cfg(feature = "cuda")]
+pub fn with_cuda_ops<F, R, T>(f: F) -> Result<R, String>
+where
+    T: GPUFloat,
+    F: FnOnce(&CudaOps<T>) -> Result<R, String>,
+{
+    let backend: &'static BackendManager<T> = get_backend::<T>();
+    let context_manager: &CudaContextManager<T> = backend.cuda_backend().ok_or("CUDA backend not available")?;
+
+    let ops: Arc<CudaOps<T>> = context_manager.ops();
+    f(&ops)
 }

@@ -1,14 +1,17 @@
 use crate::backend::number::{CPUNumber, GPUFloat};
 use crate::backend::{Device, default_device};
-use crate::tensor::storage::{CPUStorage, StorageBackend};
-
+use crate::backend::storage::{CPUStorage, StorageBackend};
+use crate::backend::manager::with_cuda_context;
 use ndarray::{Array, ArrayD, Axis, IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
 
 
+
+
 #[cfg(feature = "cuda")]
+use crate::backend::cuda::CudaContextManager;
 use crate::tensor::storage::GPUStorage;
 
 // Tensor wrapper to handle dynamic arrays more elegantly
@@ -347,12 +350,10 @@ where
                     if let Some(gpu_storage) = storage.as_any().and_then(|any| {
                         any.downcast_ref::<crate::tensor::storage::GPUStorage<T>>()
                     }) {
-                        use crate::backend::manager::get_backend;
-                        let backend = get_backend();
-                        let cuda_backend =
-                            backend.cuda_backend().ok_or("CUDA backend not available")?;
 
-                        let host_data = gpu_storage.cuda_data.to_vec(cuda_backend)?;
+
+                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {gpu_storage.cuda_data.to_vec(ctx)})?;
+
                         let cpu_array = ndarray::ArrayD::from_shape_vec(
                             ndarray::IxDyn(gpu_storage.cuda_data.shape()),
                             host_data,
@@ -398,12 +399,10 @@ where
                     if let Some(gpu_storage) = storage.as_any().and_then(|any| {
                         any.downcast_ref::<crate::tensor::storage::GPUStorage<T>>()
                     }) {
-                        use crate::backend::manager::get_backend;
-                        let backend = get_backend();
-                        let cuda_backend =
-                            backend.cuda_backend().ok_or("CUDA backend not available")?;
 
-                        let host_data = gpu_storage.cuda_data.to_vec(cuda_backend)?;
+
+                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {gpu_storage.cuda_data.to_vec(ctx)})?;
+
                         let cpu_array = ndarray::ArrayD::from_shape_vec(
                             ndarray::IxDyn(gpu_storage.cuda_data.shape()),
                             host_data,
@@ -878,7 +877,7 @@ where
                     let result_storage =
                         GPUStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
                     return Self::from_storage_backend(
-                        Box::new(result_storage),
+                        result_storage,
                         condition.device.clone(),
                     );
                 }

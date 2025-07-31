@@ -1,15 +1,14 @@
 // src/tensor/storage.rs
 #[cfg(feature = "cuda")]
+use crate::backend::manager::{ with_cuda_ops, with_cuda_context};
+use crate::backend::cuda::{CudaContextManager, CudaTensor};
 use crate::backend::cuda::ops::CudaOps;
-#[cfg(feature = "cuda")]
-use crate::backend::manager::get_backend;
+
 use ndarray::{ArrayD, ArrayViewD, IxDyn};
 use rand::Rng;
 use rand_distr::StandardUniform;
 use std::fmt::Debug;
 
-#[cfg(feature = "cuda")]
-use crate::backend::cuda::{CudaContextManager, CudaTensor};
 
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaContext, DeviceRepr};
@@ -284,28 +283,8 @@ impl<T: Clone> CPUStorage<T> {
         &mut self.data
     }
 
-    /// Helper method for in-place shape operations
-    /// Validates and applies shape change without moving data
-    fn change_shape_inplace(&mut self, new_shape: &[usize]) -> Result<(), String> {
-        // Validate total elements remain the same
-        let current_size: usize = self.data.shape().iter().product();
-        let new_size: usize = new_shape.iter().product();
 
-        if current_size != new_size {
-            return Err(format!(
-                "Cannot change shape: current size {} != new size {}",
-                current_size, new_size
-            ));
-        }
 
-        // Use into_shape_with_order for in-place reshape
-        self.data = self.data
-            .clone()
-            .into_shape_with_order(IxDyn(new_shape))
-            .map_err(|e| format!("Shape change failed: {}", e))?;
-
-        Ok(())
-    }
 }
 
 impl<T> CPUStorage<T>
@@ -669,6 +648,29 @@ where
         Ok(Box::new(self.clone()))
     }
 
+
+    fn reshape(&mut self, new_shape: &[usize]) -> Result<(), String> {
+        // Validate total elements remain the same
+        let current_size: usize = self.data.shape().iter().product();
+        let new_size: usize = new_shape.iter().product();
+
+        if current_size != new_size {
+            return Err(format!(
+                "Cannot change shape: current size {} != new size {}",
+                current_size, new_size
+            ));
+        }
+
+        // Use into_shape_with_order for in-place reshape
+        self.data = self
+            .data
+            .clone()
+            .into_shape_with_order(IxDyn(new_shape))
+            .map_err(|e| format!("Shape change failed: {}", e))?;
+
+        Ok(())
+    }
+
     // Efficient in-place operations using helper method
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
         let current_shape = self.shape();
@@ -695,18 +697,14 @@ where
 
         // Create broadcasted array by cloning data
         let view = self.data.view();
-        let broadcasted_view = view
-            .broadcast(target_shape)
-            .ok_or("Broadcast failed")?;
+        let broadcasted_view = view.broadcast(target_shape).ok_or("Broadcast failed")?;
 
         // Convert to owned data
         self.data = broadcasted_view.to_owned();
         Ok(())
     }
 
-    fn reshape(&mut self, new_shape: &[usize]) -> Result<(), String> {
-        self.change_shape_inplace(new_shape)
-    }
+
 
     fn transpose(&mut self, axes: Option<&[usize]>) -> Result<(), String> {
         let current_ndim = self.ndim();
@@ -766,7 +764,7 @@ where
         new_shape.insert(axis, 1);
 
         // Use helper method for in-place operation
-        self.change_shape_inplace(&new_shape)
+        self.reshape(&new_shape)
     }
 
     fn squeeze(&mut self, axis: Option<usize>) -> Result<(), String> {
@@ -812,7 +810,7 @@ where
         };
 
         // Use helper method for in-place operation
-        self.change_shape_inplace(&new_shape)
+        self.reshape(&new_shape)
     }
 
     fn add(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -1314,7 +1312,6 @@ where
     }
 }
 
-
 #[cfg(feature = "cuda")]
 /// GPU storage - your existing pattern
 #[derive(Debug, Clone)]
@@ -1388,7 +1385,7 @@ where
                 ));
             }
 
-            let result_cuda = with_cuda_ops(|ops| ops.add(&self.cuda_data, &other_gpu.cuda_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.add(&self.cuda_data, &other_gpu.cuda_data))?;
 
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
@@ -1404,9 +1401,9 @@ where
             }
 
             // Convert CPU ArrayD to CudaTensor and perform operation
-            let other_cuda = with_cuda_context(|ctx| CudaTensor::from_cpu_array(ctx, other_data))?;
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| CudaTensor::from_cpu_array(ctx, other_data))?;
 
-            let result_cuda = with_cuda_ops(|ops| ops.add(&self.cuda_data, &other_cuda))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.add(&self.cuda_data, &other_cuda))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         }
     }
@@ -1426,7 +1423,7 @@ where
                 ));
             }
 
-            let result_cuda = with_cuda_ops(|ops| ops.sub(&self.cuda_data, &other_gpu.cuda_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sub(&self.cuda_data, &other_gpu.cuda_data))?;
 
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
@@ -1440,8 +1437,8 @@ where
                 ));
             }
 
-            let other_cuda = with_cuda_context(|ctx| CudaTensor::from_cpu_array(ctx, other_data))?;
-            let result_cuda = with_cuda_ops(|ops| ops.sub(&self.cuda_data, &other_cuda))?;
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| CudaTensor::from_cpu_array(ctx, other_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sub(&self.cuda_data, &other_cuda))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         }
     }
@@ -1461,7 +1458,7 @@ where
                 ));
             }
 
-            let result_cuda = with_cuda_ops(|ops| ops.mul(&self.cuda_data, &other_gpu.cuda_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.mul(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
@@ -1474,8 +1471,8 @@ where
                 ));
             }
 
-            let other_cuda = with_cuda_context(|ctx| CudaTensor::from_cpu_array(ctx, other_data))?;
-            let result_cuda = with_cuda_ops(|ops| ops.mul(&self.cuda_data, &other_cuda))?;
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| CudaTensor::from_cpu_array(ctx, other_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.mul(&self.cuda_data, &other_cuda))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         }
     }
@@ -1495,7 +1492,7 @@ where
                 ));
             }
 
-            let result_cuda = with_cuda_ops(|ops| ops.div(&self.cuda_data, &other_gpu.cuda_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.div(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
@@ -1508,8 +1505,8 @@ where
                 ));
             }
 
-            let other_cuda = with_cuda_context(|ctx| CudaTensor::from_cpu_array(ctx, other_data))?;
-            let result_cuda = with_cuda_ops(|ops| ops.div(&self.cuda_data, &other_cuda))?;
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| CudaTensor::from_cpu_array(ctx, other_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.div(&self.cuda_data, &other_cuda))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         }
     }
@@ -1530,7 +1527,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.min_elementwise(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.min_elementwise(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
@@ -1543,9 +1540,9 @@ where
                 ));
             }
 
-            let other_cuda = with_cuda_context(|ctx| CudaTensor::from_cpu_array(ctx, other_data))?;
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| CudaTensor::from_cpu_array(ctx, other_data))?;
             let result_cuda =
-                with_cuda_ops(|ops| ops.min_elementwise(&self.cuda_data, &other_cuda))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.min_elementwise(&self.cuda_data, &other_cuda))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         }
     }
@@ -1566,7 +1563,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.max_elementwise(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.max_elementwise(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
@@ -1579,10 +1576,10 @@ where
                 ));
             }
 
-            let other_cuda = with_cuda_context(|ctx| CudaTensor::from_cpu_array(ctx, other_data))?;
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| CudaTensor::from_cpu_array(ctx, other_data))?;
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.max_elementwise(&self.cuda_data, &other_cuda))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.max_elementwise(&self.cuda_data, &other_cuda))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         }
     }
@@ -1590,44 +1587,44 @@ where
     // SCALAR OPERATIONS
 
     fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.add_scalar(&self.cuda_data, scalar))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.add_scalar(&self.cuda_data, scalar))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.sub_scalar(&self.cuda_data, scalar))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sub_scalar(&self.cuda_data, scalar))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.mul_scalar(&self.cuda_data, scalar))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.mul_scalar(&self.cuda_data, scalar))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.div_scalar(&self.cuda_data, scalar))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.div_scalar(&self.cuda_data, scalar))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     // UNARY OPERATIONS
 
     fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.negate(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.negate(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.abs(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.abs(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.sqrt(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sqrt(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.clamp(&self.cuda_data, min_val, max_val))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.clamp(&self.cuda_data, min_val, max_val))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
@@ -1648,7 +1645,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.greater(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.greater(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1670,7 +1667,7 @@ where
                 ));
             }
 
-            let result_cuda = with_cuda_ops(|ops| ops.less(&self.cuda_data, &other_gpu.cuda_data))?;
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.less(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1697,7 +1694,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.greater_equal(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.greater_equal(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1723,7 +1720,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.less_equal(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.less_equal(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1746,7 +1743,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.equal(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.equal(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
@@ -1754,17 +1751,17 @@ where
     }
 
     fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.logical_not(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.logical_not(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.in_range(&self.cuda_data, min_val, max_val))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.in_range(&self.cuda_data, min_val, max_val))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|ops| ops.sign(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sign(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
@@ -1790,7 +1787,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|ops| ops.matmul(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.matmul(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for matrix multiplication".to_string())
@@ -1798,27 +1795,27 @@ where
     }
 
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops| cuda_ops.sigmoid(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.sigmoid(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops| cuda_ops.relu(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.relu(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops| cuda_ops.exp(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.exp(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops| cuda_ops.log(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.log(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops| cuda_ops.tanh(&self.cuda_data))?;
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.tanh(&self.cuda_data))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
@@ -1838,7 +1835,7 @@ where
             }
 
             let result_cuda =
-                with_cuda_ops(|cuda_ops| cuda_ops.power(&self.cuda_data, &other_gpu.cuda_data))?;
+                with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.power(&self.cuda_data, &other_gpu.cuda_data))?;
             Ok(Box::new(GPUStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for power operations".to_string())
@@ -1846,7 +1843,7 @@ where
     }
 
     fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops| cuda_ops.power_scalar(&self.cuda_data, scalar))?;
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.power_scalar(&self.cuda_data, scalar))?;
         Ok(Box::new(GPUStorage::new(result_cuda)))
     }
 
@@ -1870,12 +1867,12 @@ where
 
                 // Use CUDA ops sum_axes method for multiple axes
                 let result_cuda =
-                    with_cuda_ops(|ops| ops.sum_axes(&self.cuda_data, axes_list, false))?;
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.sum_axes(&self.cuda_data, axes_list, false))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
             None => {
                 // Sum all elements to scalar using CUDA ops
-                let result_cuda = with_cuda_ops(|ops| ops.sum_all(&self.cuda_data))?;
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sum_all(&self.cuda_data))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
         }
@@ -1900,7 +1897,8 @@ where
                 }
 
                 // For multiple axes, we compute sum then divide by product of axis sizes
-                let sum_result = with_cuda_ops(|ops| {ops.sum_axes(&self.cuda_data, axes_list, false)})?;
+                let sum_result =
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.sum_axes(&self.cuda_data, axes_list, false))?;
 
                 // Calculate divisor as product of reduced dimensions
                 let divisor = axes_list
@@ -1912,13 +1910,13 @@ where
                     .ok_or("Failed to convert divisor to tensor type")?;
 
                 // Create scalar tensor and divide
-                let divisor_tensor = with_cuda_ops(|ops| {ops.full(&[], divisor_scalar)})?;
-                let result_cuda = with_cuda_ops(|ops| ops.div(&sum_result, &divisor_tensor))?;
+                let divisor_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.full(&[], divisor_scalar))?;
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.div(&sum_result, &divisor_tensor))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
             None => {
                 // Mean of all elements using CUDA ops
-                let result_cuda = with_cuda_ops(|ops| ops.mean_all(&self.cuda_data))?;
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.mean_all(&self.cuda_data))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
         }
@@ -1944,12 +1942,12 @@ where
 
                 // Use CUDA ops max_axes method for multiple axes reduction
                 let result_cuda =
-                    with_cuda_ops(|ops| ops.max_axes(&self.cuda_data, axes_list, false))?;
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.max_axes(&self.cuda_data, axes_list, false))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
             None => {
                 // Max of all elements to scalar
-                let result_cuda = with_cuda_ops(|ops| ops.max_all(&self.cuda_data))?;
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.max_all(&self.cuda_data))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
         }
@@ -1975,19 +1973,19 @@ where
 
                 // Use CUDA ops min_axes method for multiple axes reduction
                 let result_cuda =
-                    with_cuda_ops(|ops| ops.min_axes(&self.cuda_data, axes_list, false))?;
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.min_axes(&self.cuda_data, axes_list, false))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
             None => {
                 // Min of all elements to scalar
-                let result_cuda = with_cuda_ops(|ops| ops.min_all(&self.cuda_data))?;
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.min_all(&self.cuda_data))?;
                 Ok(Box::new(GPUStorage::new(result_cuda)))
             }
         }
     }
 
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
-        with_cuda_ops(|ops| ops.broadcast_to(&mut self.cuda_data, target_shape))?;
+        with_cuda_ops(|ops: &CudaOps<T>| ops.broadcast_to(&mut self.cuda_data, target_shape))?;
         Ok(())
     }
 
@@ -2004,7 +2002,7 @@ where
         }
 
         // Use CUDA ops for reshape operation
-        with_cuda_ops(|ops| ops.reshape(&mut self.cuda_data, new_shape.to_vec()))?;
+        with_cuda_ops(|ops: &CudaOps<T>| ops.reshape(&mut self.cuda_data, new_shape.to_vec()))?;
         Ok(())
     }
 
@@ -2022,32 +2020,18 @@ where
 
                 // Use CUDA ops for custom transpose
 
-                with_cuda_ops(|ops| ops.transpose(&mut self.cuda_data, Some(axes_order)))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.transpose(&mut self.cuda_data, Some(axes_order)))?;
                 Ok(())
             }
             None => {
                 // Default transpose using CUDA ops
-                with_cuda_ops(|ops| ops.transpose(&mut self.cuda_data, None))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.transpose(&mut self.cuda_data, None))?;
                 Ok(())
             }
         }
     }
 
-    fn reshape(&mut self, new_shape: &[usize]) -> Result<(), String> {
-        // Validate total elements remain the same
-        let total_elements: usize = self.shape().iter().product();
-        let new_total_elements: usize = new_shape.iter().product();
 
-        if total_elements != new_total_elements {
-            return Err(format!(
-                "Cannot reshape tensor with {} elements to shape with {} elements",
-                total_elements, new_total_elements
-            ));
-        }
-
-        with_cuda_ops(|op| op.reshape(&mut self.cuda_data, new_shape.to_vec()))?;
-        Ok(())
-    }
 
     fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
         // Validate axis bounds - can insert at positions 0..ndim (inclusive)
@@ -2059,7 +2043,7 @@ where
             ));
         }
 
-        with_cuda_ops(|op| op.unsqueeze(&mut self.cuda_data, axis))?;
+        with_cuda_ops(|op: &CudaOps<T>| op.unsqueeze(&mut self.cuda_data, axis))?;
         Ok(())
     }
 
@@ -2084,12 +2068,12 @@ where
                 }
 
                 // Use CUDA ops for single axis squeeze
-                with_cuda_ops(|ops| ops.squeeze(&mut self.cuda_data, Some(ax)))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.squeeze(&mut self.cuda_data, Some(ax)))?;
                 Ok(())
             }
             None => {
                 // Remove all dimensions of size 1 using CUDA ops
-                with_cuda_ops(|ops| ops.squeeze(&mut self.cuda_data, None))?;
+                with_cuda_ops(|ops: &CudaOps<T>| ops.squeeze(&mut self.cuda_data, None))?;
                 Ok(())
             }
         }
@@ -2108,12 +2092,10 @@ where
                 .and_then(|any| any.downcast_ref::<GPUStorage<T>>())
                 .ok_or("Failed to cast filter to GPU storage")?;
 
-
-            let result_cuda = with_cuda_ops(|ops| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.conv2d_forward(
                     &self.cuda_data,
                     &filter_gpu.cuda_data,
-                None,
                     stride,
                     padding,
                 )
@@ -2130,7 +2112,7 @@ where
 
     // Note that this ops require moving the data to the CPU
     fn iter_values(&self) -> Result<Vec<T>, String> {
-        with_cuda_context(|ctx| self.cuda_data.to_vec(ctx))
+        with_cuda_context(|ctx: &CudaContextManager<T>| self.cuda_data.to_vec(ctx))
     }
 
     fn get_flat(&self, index: usize) -> Result<Option<T>, String> {
@@ -2178,7 +2160,7 @@ impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUStorage<T> {
         // Get default CUDA backend from manager
 
         // Create GPU tensor with zeros directly
-        let cuda_tensor = with_cuda_ops(|ops| ops.zeros(shape))?;
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.zeros(shape))?;
         Ok(Box::new(GPUStorage::new(cuda_tensor)))
     }
 
@@ -2187,7 +2169,7 @@ impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUStorage<T> {
         Self: Sized,
     {
         // Create GPU tensor with ones directly
-        let cuda_tensor = with_cuda_ops(|ops| ops.ones(shape))?;
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.ones(shape))?;
         Ok(Box::new(GPUStorage::new(cuda_tensor)))
     }
 
@@ -2196,7 +2178,7 @@ impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUStorage<T> {
         Self: Sized,
     {
         // Create GPU tensor filled with value
-        let cuda_tensor = with_cuda_ops(|ops| ops.full(shape, value))?;
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.full(shape, value))?;
         Ok(Box::new(GPUStorage::new(cuda_tensor)))
     }
 
@@ -2204,7 +2186,7 @@ impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUStorage<T> {
     where
         Self: Sized,
     {
-        let cuda_tensor = with_cuda_ops(|ops| ops.randn(shape))?;
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.randn(shape, 1000 as u64))?;
         Ok(Box::new(GPUStorage::new(cuda_tensor)))
     }
 
@@ -2214,7 +2196,7 @@ impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUStorage<T> {
         false_vals: &GPUStorage<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
         if condition.is_gpu() && true_vals.is_gpu() && false_vals.is_gpu() {
-            let cuda_tensor = with_cuda_ops(|ops| {
+            let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.where_condition(
                     &condition.cuda_data,
                     &true_vals.cuda_data,
@@ -2227,28 +2209,4 @@ impl<T: cudarc::driver::DeviceRepr + GPUFloat> GPUStorage<T> {
             Err("Not all provided tensors are on GPU storage".to_string())
         }
     }
-}
-
-#[cfg(feature = "cuda")]
-fn with_cuda_context<F, R>(f: F) -> Result<R, String>
-where
-    F: FnOnce(&CudaContextManager) -> Result<R, String>,
-{
-    let backend = get_backend();
-    let context_manager = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-    f(&context_manager)
-}
-
-// Utility method to get the cuda ops in an idiomatic way
-#[cfg(feature = "cuda")]
-fn with_cuda_ops<F, R>(f: F) -> Result<R, String>
-where
-    F: FnOnce(&CudaOps) -> Result<R, String>,
-{
-    let backend = get_backend();
-    let context_manager = backend.cuda_backend().ok_or("CUDA backend not available")?;
-
-    let ops = context_manager.ops();
-    f(&ops)
 }
