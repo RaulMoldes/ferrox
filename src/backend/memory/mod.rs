@@ -35,7 +35,7 @@ pub trait MemoryPool<T> {
     fn reset(&mut self) -> Result<(), String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PoolStats {
     pub total_allocations: usize,
     pub active_allocations: usize,
@@ -45,18 +45,6 @@ pub struct PoolStats {
     pub peak_memory_bytes: usize,
 }
 
-impl Default for PoolStats {
-    fn default() -> Self {
-        Self {
-            total_allocations: 0,
-            active_allocations: 0,
-            pool_hits: 0,
-            pool_misses: 0,
-            total_memory_bytes: 0,
-            peak_memory_bytes: 0,
-        }
-    }
-}
 
 // Pool bucket system - groups allocations by size ranges for efficiency
 // This prevents fragmentation by keeping similar-sized allocations together

@@ -34,10 +34,8 @@ where
             if let Some(any_ref) = storage_ref.as_any() {
                 if let Some(cpu_storage) = any_ref.downcast_ref::<CPUStorage<T>>() {
                     Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
-                } else if let Ok(storage) = storage_ref.clone_storage() {
-                    Some(storage)
                 } else {
-                    None
+                     storage_ref.clone_storage().ok()
                 }
             } else {
                 None
@@ -47,7 +45,7 @@ where
         };
 
         Self {
-            device: self.device.clone(),
+            device: self.device,
             storage,
         }
     }
@@ -69,7 +67,7 @@ where
                 .next()
                 .copied()
                 .ok_or_else(|| "Empty 0-dimensional array".to_string())
-        } else if data.len() > 0 {
+        } else if !data.is_empty() {
             // For regular arrays, get first element
             data.iter()
                 .next()
@@ -340,14 +338,14 @@ where
 
                         let cpu_array =
                             ArrayD::from_shape_vec(IxDyn(gpu_storage.cuda_data.shape()), host_data)
-                                .map_err(|e| format!("Failed to create CPU array: {}", e))?;
+                                .map_err(|e| format!("Failed to create CPU array: {e}"))?;
 
                         return Ok(cpu_array);
                     }
                 }
                 Err("Cannot extract GPU data without CUDA feature".to_string())
             }
-            Err(e) => Err(format!("Failed to extract data: {}", e)),
+            Err(e) => Err(format!("Failed to extract data: {e}")),
         }
     }
 }
@@ -374,7 +372,7 @@ where
         let result_storage = storage.add(other_storage.as_ref())?;
 
         // Create new tensor with result storage, preserving device context
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise subtraction using storage trait
@@ -389,7 +387,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.sub(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise multiplication using storage trait
@@ -404,7 +402,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.mul(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise division using storage trait
@@ -419,7 +417,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.div(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise minimum using storage trait
@@ -434,7 +432,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.min(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise maximum using storage trait
@@ -449,7 +447,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.max(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Scalar addition - more efficient than broadcasting
@@ -460,7 +458,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.add_scalar(scalar)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Scalar multiplication
@@ -471,7 +469,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.mul_scalar(scalar)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Scalar substraction
@@ -482,7 +480,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sub_scalar(scalar)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Scalar division
@@ -493,7 +491,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.div_scalar(scalar)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Unary negation - replaces your negate() method
@@ -504,7 +502,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.neg()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise absolute value using storage trait
@@ -515,7 +513,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.abs()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise clamp using storage trait
@@ -526,7 +524,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.clamp(min_val, max_val)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise square root
@@ -540,7 +538,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sqrt()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 }
 
@@ -560,7 +558,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.greater(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise less than  comparison using storage trait
@@ -575,7 +573,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.less(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
     /// Element-wise greater than or equal comparison using storage trait
     pub fn greater_equal(&self, other: &Self) -> Result<Self, String> {
@@ -589,7 +587,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.greater_equal(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise less than or equal comparison using storage trait
@@ -604,7 +602,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.less_equal(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise equality comparison using storage trait
@@ -619,7 +617,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.equal(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     // Check if all elements are equal between tensors - efficient shortcut for PartialEq
@@ -698,7 +696,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.logical_not()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Range check operation using storage trait
@@ -709,7 +707,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.in_range(min_val, max_val)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Sign function using storage trait
@@ -720,7 +718,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sign()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     // Detach operation - creates a new tensor that shares data but detaches from graph
@@ -735,7 +733,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let detached_storage = storage.clone_storage()?;
-        Self::from_storage_backend(detached_storage, self.device.clone())
+        Self::from_storage_backend(detached_storage, self.device)
     }
 
     /// Iterator access through storage - avoids direct data field usage
@@ -790,7 +788,7 @@ where
                     .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
             ) {
                 let result_storage = CPUStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
-                return Self::from_storage_backend(result_storage, condition.device.clone());
+                return Self::from_storage_backend(result_storage, condition.device);
             }
         }
 
@@ -938,7 +936,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.matmul(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Sigmoid activation function using storage trait
@@ -949,7 +947,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sigmoid()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// ReLU activation function using storage trait
@@ -960,7 +958,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.relu()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Exponential function using storage trait
@@ -971,7 +969,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.exp()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Natural logarithm using storage trait
@@ -982,7 +980,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.log()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Hyperbolic tangent using storage trait
@@ -993,7 +991,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.tanh()?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Element-wise power using storage trait
@@ -1008,7 +1006,7 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.powf(other_storage.as_ref())?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Scalar power using storage trait
@@ -1019,7 +1017,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.power_scalar(scalar)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 }
 
@@ -1038,7 +1036,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.sum(axes)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Mean reduction along multiple axes using storage backend
@@ -1049,7 +1047,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.mean(axes)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Maximum values reduction along multiple axes using storage backend
@@ -1060,7 +1058,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.max_reduce(axes)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Minimum values reduction along multiple axes using storage backend
@@ -1071,7 +1069,7 @@ where
             .ok_or("Tensor has no storage backend")?;
 
         let result_storage = storage.min_reduce(axes)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 }
 
@@ -1143,11 +1141,11 @@ where
     }
 }
 
-//// -------------------------------------------------------------------
-/// CONVOLUTION OPERATIONS
-/// --------------------------------------------------------------------
-/// I decided to separate this on a different block to aid for readability.
-///-----------------------------------------------------------------------
+// -------------------------------------------------------------------
+// CONVOLUTION OPERATIONS
+// --------------------------------------------------------------------
+// I decided to separate this on a different block to aid for readability.
+//-----------------------------------------------------------------------
 impl<T> Tensor<T>
 where
     T: FerroxCudaF + Clone,
@@ -1169,7 +1167,7 @@ where
             .ok_or("Filter tensor has no storage backend")?;
 
         let result_storage = storage.conv2d(filter_storage.as_ref(), stride, padding)?;
-        Self::from_storage_backend(result_storage, self.device.clone())
+        Self::from_storage_backend(result_storage, self.device)
     }
 }
 

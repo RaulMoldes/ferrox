@@ -125,7 +125,7 @@ where
         }
 
         ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
-            .map_err(|e| format!("Failed to create im2col matrix: {}", e))
+            .map_err(|e| format!("Failed to create im2col matrix: {e}"))
     }
 
     /// Standard 2D convolution implementation using im2col + GEMM
@@ -161,18 +161,18 @@ where
         let filter_reshaped = filter
             .clone()
             .into_shape_with_order(IxDyn(&[out_channels, in_channels * kernel_h * kernel_w]))
-            .map_err(|e| format!("Filter reshape failed: {}", e))?;
+            .map_err(|e| format!("Filter reshape failed: {e}"))?;
 
         // Perform convolution as matrix multiplication: filter @ col_matrix
         let im2col_view: ndarray::ArrayView2<T> = col_matrix
             .view()
             .into_dimensionality()
-            .map_err(|e| format!("Shape error: {}", e))?;
+            .map_err(|e| format!("Shape error: {e}"))?;
 
         let filter_view: ndarray::ArrayView2<T> = filter_reshaped
             .view()
             .into_dimensionality()
-            .map_err(|e| format!("Shape error: {}", e))?;
+            .map_err(|e| format!("Shape error: {e}"))?;
 
         let output_2d = filter_view.dot(&im2col_view);
 
@@ -201,7 +201,7 @@ where
         }
 
         ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
-            .map_err(|e| format!("Failed to create output tensor: {}", e))
+            .map_err(|e| format!("Failed to create output tensor: {e}"))
     }
 }
 
@@ -324,7 +324,7 @@ where
             .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
             .collect();
         let data_array = ArrayD::from_shape_vec(IxDyn(shape), data)
-            .map_err(|e| format!("Failed to create array from data: {}", e))?;
+            .map_err(|e| format!("Failed to create array from data: {e}"))?;
         Ok(Box::new(CPUStorage::new(data_array)))
     }
 
@@ -365,7 +365,7 @@ where
 
         // Create result array with same shape
         let result_array = ndarray::Array::from_shape_vec(condition_data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result: {}", e))?;
+            .map_err(|e| format!("Failed to create result: {e}"))?;
 
         Ok(Box::new(CPUStorage::new(result_array)))
     }
@@ -418,8 +418,7 @@ where
 
         if current_size != new_size {
             return Err(format!(
-                "Cannot change shape: current size {} != new size {}",
-                current_size, new_size
+                "Cannot change shape: current size {current_size} != new size {new_size}",
             ));
         }
 
@@ -428,7 +427,7 @@ where
             .data
             .clone()
             .into_shape_with_order(IxDyn(new_shape))
-            .map_err(|e| format!("Shape change failed: {}", e))?;
+            .map_err(|e| format!("Shape change failed: {e}"))?;
 
         Ok(())
     }
@@ -451,8 +450,7 @@ where
         {
             if current_dim != 1 && current_dim != target_dim {
                 return Err(format!(
-                    "Cannot broadcast dimension {} from size {} to size {}",
-                    i, current_dim, target_dim
+                    "Cannot broadcast dimension {i} from size {current_dim} to size {target_dim}",
                 ));
             }
         }
@@ -485,7 +483,7 @@ where
                 sorted_axes.sort_unstable();
                 let expected: Vec<usize> = (0..current_ndim).collect();
                 if sorted_axes != expected {
-                    return Err(format!("Invalid axes permutation: {:?}", axes_order));
+                    return Err(format!("Invalid axes permutation: {axes_order:?}"));
                 }
 
                 // Apply transpose with specified axes
@@ -851,7 +849,7 @@ where
     {
         let other_data = other.cpu_data()?;
 
-        if self.data.ndim() != 2 as usize || other_data.ndim() != 2 as usize {
+        if self.data.ndim() != 2_usize || other_data.ndim() != 2_usize {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
 
@@ -870,11 +868,11 @@ where
             .data
             .view()
             .into_dimensionality()
-            .map_err(|e| format!("Failed to convert to 2D view: {}", e))?;
+            .map_err(|e| format!("Failed to convert to 2D view: {e}"))?;
         let b: ndarray::ArrayView2<T> = other_data
             .view()
             .into_dimensionality()
-            .map_err(|e| format!("Failed to convert to 2D view: {}", e))?;
+            .map_err(|e| format!("Failed to convert to 2D view: {e}"))?;
 
         // Perform matrix multiplication using ndarray's dot product
         let result = a.dot(&b);
@@ -988,7 +986,7 @@ where
         // ndarray doesn't have a direct max_axis function, so we implement our own
         let result = self.reduce(axes, |array, ax| {
             let first = if let Some(f) = array.first() {
-                f.clone()
+                *f
             } else {
                 panic!("Array is empty! Cannot reduce over empty array");
             };
@@ -1005,7 +1003,7 @@ where
         // Similar to max_axes but finding minimum values
         let result = self.reduce(axes, |array, ax| {
             let first = if let Some(f) = array.first() {
-                f.clone()
+                *f
             } else {
                 panic!("Array is empty! Cannot reduce over empty array");
             };

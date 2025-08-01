@@ -1,7 +1,8 @@
 // src/backend/device.rs
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Device {
+    #[default]
     CPU,
     #[cfg(feature = "cuda")]
     CUDA(usize), // Device ID for multi-GPU systems
@@ -32,11 +33,8 @@ impl Device {
     }
 }
 
-impl Default for Device {
-    fn default() -> Self {
-        Device::CPU
-    }
-}
+
+
 
 impl std::fmt::Display for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

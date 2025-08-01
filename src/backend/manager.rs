@@ -327,7 +327,7 @@ static BACKEND_F32: OnceLock<BackendManager<f32>> = OnceLock::new();
 static BACKEND_F64: OnceLock<BackendManager<f64>> = OnceLock::new();
 
 pub fn get_f32_backend() -> &'static BackendManager<f32> {
-    BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
+   BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
 }
 
 pub fn get_f64_backend() -> &'static BackendManager<f64> {
@@ -353,10 +353,10 @@ pub fn best_f64_device() -> Device {
 pub fn get_backend<T: FerroxCudaF>() -> &'static BackendManager<T> {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => unsafe {
-            std::mem::transmute(get_f32_backend())
+            std::mem::transmute::<&BackendManager<f32>, &BackendManager<T>>(get_f32_backend())
         },
         id if id == std::any::TypeId::of::<f64>() => unsafe {
-            std::mem::transmute(get_f64_backend())
+            std::mem::transmute::<&BackendManager<f64>, &BackendManager<T>>(get_f64_backend())
         },
         _ => panic!("Unsupported float type for backend"),
     }
