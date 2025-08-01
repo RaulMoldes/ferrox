@@ -127,7 +127,7 @@ impl StreamManager {
 
 
         // Allocate GPU memory first
-        let mut pool_alloc =  with_cuda_pool(|pool| pool.allocate(data.len()))?;
+        let pool_alloc =  with_cuda_pool(|pool| pool.allocate(data.len()))?;
         let mut device_buffer = pool_alloc.data;
         // Copy data from host to device using the correct cudarc API
 

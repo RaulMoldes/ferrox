@@ -258,7 +258,7 @@ where
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CudaTensor<T: FerroxCudaF> {
-    pub data: CudaSlice<T>,
+    pub data: Option<CudaSlice<T>>,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
 }
@@ -271,7 +271,7 @@ where
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
         let strides = compute_strides(&shape);
         Self {
-            data,
+           data:  Some(data),
             shape,
             strides,
         }
@@ -280,17 +280,32 @@ where
     // Extract the underlying CudaSlice, consuming the tensor
     // This is needed for memory pool cleanup in Drop implementations
     pub fn into_data(self) -> CudaSlice<T> {
-        self.data
+        if let Some(data) = self.data {
+            data
+        } else{
+            panic!("Cannot call into_data() on empty cuda tensor");
+        }
+    }
+
+    pub fn data(&self) -> &CudaSlice<T> {
+        if let Some(data) = &self.data {
+            data
+        }else{
+            panic!("Cannot call into_data() on empty cuda tensor");
+        }
+    }
+
+    pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
+        if let Some(ref mut data) = self.data {
+                data
+        }else{
+            panic!("Cannot call into_data() on empty cuda tensor");
+        }
     }
 
     // Alternative: take ownership of the data, leaving empty slice
     pub fn take_data(&mut self) -> CudaSlice<T> {
-        // Replace with an empty slice to avoid Default requirement
-        let empty_slice = unsafe {
-            // Create an empty CudaSlice - this is safe because we're immediately replacing it
-            std::mem::zeroed::<CudaSlice<T>>()
-        };
-        std::mem::replace(&mut self.data, empty_slice)
+        self.data.take().expect("Cannot take out of an empty tensor")
     }
 
     /// Create tensor from CPU ndarray without taking ownership
@@ -427,10 +442,15 @@ where
     /// Transfer tensor data back to CPU
     pub fn to_cpu(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String>
     where
-        T: cudarc::driver::DeviceRepr + Clone,
+    T: cudarc::driver::DeviceRepr + Clone,
     {
-        context_manager.device_to_host(&self.data)
+    if let Some(ref data) = self.data {
+        context_manager.device_to_host(data)
+    } else {
+        Err("Cannot move from an empty CUDA tensor".to_string())
     }
+}
+
 
     /// Transfer tensor data back to CPU asynchronously
     pub fn to_cpu_async(
@@ -438,12 +458,22 @@ where
         context_manager: &CudaContextManager<T>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
-        context_manager.device_to_host_async(&self.data, stream_name)
+        if let Some(ref data) = self.data {
+        context_manager.device_to_host_async(&data, stream_name)
+         }
+        else{
+            Err("Cannot move from out of an empty cuda tensor".to_string())
+        }
     }
 
     /// Get tensor data as vector (alias for to_cpu)
     pub fn to_vec(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
-        context_manager.device_to_host(&self.data)
+        if let Some(ref data) = self.data {
+        context_manager.device_to_host(&data)
+        }
+        else{
+            Err("Cannot move from out of an empty cuda tensor".to_string())
+        }
     }
 
     /// Create zeroed CUDA tensor

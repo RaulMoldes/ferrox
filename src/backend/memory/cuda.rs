@@ -88,9 +88,7 @@ impl<T: FerroxCudaF> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
         }
 
         // Create new allocation using specified stream
-        let new_slice = self.stream
-            .alloc_zeros(size)
-            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
+        let new_slice = self.create_new_allocation(size)?;
 
         self.update_stats_for_new_allocation(size);
 

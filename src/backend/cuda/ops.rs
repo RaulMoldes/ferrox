@@ -84,7 +84,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     fn return_tensor_to_pool(&self, allocation_id: u64, data: CudaTensor<T>) -> Result<(), String> {
-        return_cuda_slice::<T>(allocation_id, data.data)
+        return_cuda_slice::<T>(allocation_id, data.into_data())
     }
 
     /// Helper method to use the cuda memory pool
@@ -97,7 +97,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         Ok((
             CudaTensor {
-                data: pool_alloc.data,
+                data: Some(pool_alloc.data),
                 shape: shape.to_vec(),
                 strides,
             },
@@ -125,7 +125,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         Ok((
             CudaTensor {
-                data: result,
+                data: Some(result),
                 shape: shape.to_vec(),
                 strides: strides,
             },
@@ -156,7 +156,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let strides = compute_strides(shape);
         Ok((
             CudaTensor {
-                data: result,
+                data: Some(result),
                 shape: shape.to_vec(),
                 strides: strides,
             },
@@ -179,7 +179,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_add(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_add(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -198,7 +198,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_mul(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_mul(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -217,7 +217,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_div(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_div(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -236,7 +236,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_sub(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_sub(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -255,7 +255,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_power(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_power(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -276,9 +276,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels.launch_min_elementwise(
             cfg,
-            &a.data,
-            &b.data,
-            &mut result.data,
+            a.data(),
+            b.data(),
+            result.data_mut(),
             size as i32,
         )?;
         Ok((result, id))
@@ -300,9 +300,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels.launch_max_elementwise(
             cfg,
-            &a.data,
-            &b.data,
-            &mut result.data,
+            a.data(),
+            b.data(),
+            result.data_mut(),
             size as i32,
         )?;
         Ok((result, id))
@@ -359,7 +359,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_abs(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_abs(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -370,7 +370,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_sqrt(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_sqrt(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -381,7 +381,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_exp(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_exp(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -392,7 +392,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_log(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_log(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -403,7 +403,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_negate(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_negate(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -414,7 +414,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_relu(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_relu(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -425,7 +425,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_sigmoid(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_sigmoid(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -436,7 +436,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_tanh(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_tanh(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -453,8 +453,8 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels.launch_clamp(
             cfg,
-            &input.data,
-            &mut result.data,
+            input.data(),
+            result.data_mut(),
             min_val,
             max_val,
             size as i32,
@@ -469,7 +469,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_sum_all(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_sum_all(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -505,7 +505,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_max_all(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_max_all(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -541,7 +541,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_min_all(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_min_all(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -632,9 +632,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels.launch_matmul(
             cfg,
-            &a.data,
-            &b.data,
-            &mut result.data,
+            a.data(),
+            b.data(),
+            result.data_mut(),
             a_shape[0] as i32, // M
             b_shape[1] as i32, // N
             a_shape[1] as i32, // K
@@ -657,7 +657,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_greater_equal(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_greater_equal(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -676,7 +676,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_less_equal(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_less_equal(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -695,7 +695,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_greater(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_greater(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -714,7 +714,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_less(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_less(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -733,7 +733,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_equal(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
+            .launch_equal(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -745,7 +745,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_logical_not(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_logical_not(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -756,7 +756,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let cfg = self.get_launch_config(size);
 
         self.kernels
-            .launch_sign(cfg, &input.data, &mut result.data, size as i32)?;
+            .launch_sign(cfg, input.data(), result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -773,10 +773,10 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels.launch_in_range(
             cfg,
-            &input.data,
+            input.data(),
             min_val,
             max_val,
-            &mut result.data,
+            result.data_mut(),
             size as i32,
         )?;
         Ok((result, id))
@@ -801,10 +801,10 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels.launch_where_condition(
             cfg,
-            &condition.data,
-            &true_val.data,
-            &false_val.data,
-            &mut result.data,
+            condition.data(),
+            true_val.data(),
+            false_val.data(),
+            result.data_mut(),
             size as i32,
         )?;
         Ok((result, id))
@@ -881,9 +881,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         // Launch convolution kernel
         self.kernels.launch_conv2d_forward(
             cfg,
-            &input.data,
-            &filter.data,
-            &mut result.data,
+            input.data(),
+            filter.data(),
+            result.data_mut(),
             batch_size as i32,
             in_channels as i32,
             in_height as i32,
@@ -978,8 +978,8 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
             kernel_launcher(
                 cfg,
-                &input.data,
-                &mut result.data,
+                input.data(),
+                result.data_mut(),
                 outer_size,
                 axis_size,
                 inner_size,
@@ -1019,11 +1019,13 @@ impl<T: FerroxCudaF> CudaOps<T> {
             };
 
             if step_idx == sorted_axes.len() - 1 {
+
+
                 // Final step - write directly to result
                 kernel_launcher(
                     cfg,
-                    &current_tensor.data,
-                    &mut result.data,
+                    current_tensor.data(),
+                    result.data_mut(),
                     outer_size,
                     axis_size,
                     inner_size,
@@ -1037,8 +1039,8 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
                 kernel_launcher(
                     cfg,
-                    &current_tensor.data,
-                    &mut temp_tensor.data,
+                    current_tensor.data(),
+                    temp_tensor.data_mut(),
                     outer_size,
                     axis_size,
                     inner_size,
