@@ -102,11 +102,11 @@ impl<T: FerroxCudaF> CPUStorage<T> {
         Ok((array, id))
     }
 
-    // Optimized: return meaningful data to pool when possible
+    //
     fn return_to_pool(pool_id: u64, shape: &[usize]) -> Result<(), String> {
-        let size: usize = shape.iter().product();
+
         // Return a zero-filled vec with correct size for pool reuse
-        let _ = return_cpu_vec(pool_id, vec![<T as FerroxF>::zero(); 0]);
+        let _ = return_cpu_vec(pool_id, Vec::<T>::new());
         Ok(())
     }
 

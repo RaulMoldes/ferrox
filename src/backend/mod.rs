@@ -14,7 +14,6 @@ pub use cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
 pub use device::cuda;
 
-mod tests;
 
 pub use device::Device;
 pub use device::cpu;

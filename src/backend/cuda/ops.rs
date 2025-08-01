@@ -2,18 +2,15 @@
 // High-level CUDA tensor operations that mirror CPU tensor operations
 // This module provides the user-facing API for neural network operations on GPU
 
-use super::context::{CudaContextManager, CudaTensor};
+use super::context::CudaTensor;
 use super::kernels::KernelManager;
 use crate::backend::cuda::context::compute_strides;
 use crate::backend::manager::alloc_cuda_slice;
-use crate::backend::manager::with_cuda_context;
-use crate::backend::memory::PoolAllocation;
 use crate::{FerroxCudaF, FerroxF};
 use cudarc::driver::CudaSlice;
 use cudarc::driver::LaunchConfig;
-use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-use ndarray::ArrayD;
-use std::marker::Unpin;
+use cudarc::driver::ValidAsZeroBits;
+
 
 const BLOCK_SIZE: u32 = 256;
 const TILE_SIZE: u32 = 16;
@@ -988,4 +985,173 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         Ok(result)
     }
+}
+
+#[cfg(all(test, feature = "cuda"))]
+mod cuda_ops_comprehensive_tests {
+    use crate::backend::cuda::{CudaContextManager, CudaTensor};
+    use crate::backend::number::FerroxCudaF;
+
+    fn setup_cuda_context<T: FerroxCudaF>() -> CudaContextManager<T> {
+        CudaContextManager::<T>::new().expect("Failed to create CUDA context")
+    }
+
+    #[test]
+    fn test_elementwise_operations() {
+        let ctx = setup_cuda_context::<f32>();
+        let ops = ctx.ops();
+
+        // Create test tensors
+        let data_a = vec![1.0, 2.0, 3.0, 4.0];
+        let data_b = vec![2.0, 3.0, 4.0, 5.0];
+
+        let tensor_a = CudaTensor::from_vec(&ctx, data_a, vec![2, 2]).unwrap();
+        let tensor_b = CudaTensor::from_vec(&ctx, data_b, vec![2, 2]).unwrap();
+
+        // Test element-wise addition
+        let add_result = ops.add(&tensor_a, &tensor_b).unwrap();
+        assert_eq!(add_result.shape(), &[2, 2]);
+
+        // Test element-wise multiplication
+        let mul_result = ops.mul(&tensor_a, &tensor_b).unwrap();
+        assert_eq!(mul_result.shape(), &[2, 2]);
+
+        // Test element-wise division
+        let div_result = ops.div(&tensor_a, &tensor_b).unwrap();
+        assert_eq!(div_result.shape(), &[2, 2]);
+
+        // Test element-wise subtraction
+        let sub_result = ops.sub(&tensor_a, &tensor_b).unwrap();
+        assert_eq!(sub_result.shape(), &[2, 2]);
+
+        // Test element-wise max
+        let max_result = ops.max_elementwise(&tensor_a, &tensor_b).unwrap();
+        assert_eq!(max_result.shape(), &[2, 2]);
+
+        // Test element-wise min
+        let min_result = ops.min_elementwise(&tensor_a, &tensor_b).unwrap();
+        assert_eq!(min_result.shape(), &[2, 2]);
+    }
+
+    #[test]
+    fn test_scalar_operations() {
+        let ctx = setup_cuda_context::<f32>();
+        let ops = ctx.ops();
+
+        let data = vec![1.0, 2.0, 3.0, 4.0];
+        let tensor = CudaTensor::from_vec(&ctx, data, vec![2, 2]).unwrap();
+
+        // Test scalar addition
+        let add_scalar_result = ops.add_scalar(&tensor, 5.0).unwrap();
+        assert_eq!(add_scalar_result.shape(), &[2, 2]);
+
+        // Test scalar multiplication
+        let mul_scalar_result = ops.mul_scalar(&tensor, 2.0).unwrap();
+        assert_eq!(mul_scalar_result.shape(), &[2, 2]);
+
+        // Test scalar division
+        let div_scalar_result = ops.div_scalar(&tensor, 2.0).unwrap();
+        assert_eq!(div_scalar_result.shape(), &[2, 2]);
+
+        // Test scalar subtraction
+        let sub_scalar_result = ops.sub_scalar(&tensor, 1.0).unwrap();
+        assert_eq!(sub_scalar_result.shape(), &[2, 2]);
+    }
+
+    #[test]
+    fn test_unary_operations() {
+        let ctx = setup_cuda_context::<f32>();
+        let ops = ctx.ops();
+
+        let data = vec![-2.0, -1.0, 1.0, 2.0];
+        let tensor = CudaTensor::from_vec(&ctx, data, vec![2, 2]).unwrap();
+
+        // Test negation
+        let neg_result = ops.negate(&tensor).unwrap();
+        assert_eq!(neg_result.shape(), &[2, 2]);
+
+        // Test absolute value
+        let abs_result = ops.abs(&tensor).unwrap();
+        assert_eq!(abs_result.shape(), &[2, 2]);
+
+        // Test square root (need positive values)
+        let pos_data = vec![1.0, 4.0, 9.0, 16.0];
+        let pos_tensor = CudaTensor::from_vec(&ctx, pos_data, vec![2, 2]).unwrap();
+        let sqrt_result = ops.sqrt(&pos_tensor).unwrap();
+        assert_eq!(sqrt_result.shape(), &[2, 2]);
+
+        // Test exponential
+        let exp_result = ops.exp(&tensor).unwrap();
+        assert_eq!(exp_result.shape(), &[2, 2]);
+
+        // Test natural logarithm (need positive values)
+        let log_result = ops.log(&pos_tensor).unwrap();
+        assert_eq!(log_result.shape(), &[2, 2]);
+
+        // Test power operation
+        let pow_result = ops.power_scalar(&tensor, 2.0).unwrap();
+        assert_eq!(pow_result.shape(), &[2, 2]);
+    }
+
+    #[test]
+    fn test_activation_functions() {
+        let ctx = setup_cuda_context::<f32>();
+
+        let ops = ctx.ops();
+
+        let data = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
+        let tensor = CudaTensor::from_vec(&ctx, data, vec![5]).unwrap();
+
+        // Test ReLU activation
+        let relu_result = ops.relu(&tensor).unwrap();
+        assert_eq!(relu_result.shape(), &[5]);
+
+        // Test Sigmoid activation
+        let sigmoid_result = ops.sigmoid(&tensor).unwrap();
+        assert_eq!(sigmoid_result.shape(), &[5]);
+
+        // Test Tanh activation
+        let tanh_result = ops.tanh(&tensor).unwrap();
+        assert_eq!(tanh_result.shape(), &[5]);
+    }
+
+    #[test]
+    fn test_reduction_operations() {
+        let ctx = setup_cuda_context::<f32>();
+        let ops = ctx.ops();
+
+        // Create 2D test tensor
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let tensor = CudaTensor::from_vec(&ctx, data, vec![2, 3]).unwrap();
+
+        // Test sum reduction along axes
+        let sum_axes_result = ops.sum_axes(&tensor, &[1], true).unwrap();
+        assert_eq!(sum_axes_result.shape(), &[2]); // Reduced from [2,3] to [2]
+
+        // Test max reduction along axes
+        let max_axes_result = ops.max_axes(&tensor, &[0], true).unwrap();
+        assert_eq!(max_axes_result.shape(), &[3]); // Reduced from [2,3] to [3]
+
+        // Test min reduction along axes
+        let min_axes_result = ops.min_axes(&tensor, &[1], true).unwrap();
+        assert_eq!(min_axes_result.shape(), &[2]);
+
+        // Test mean reduction along axes
+        let mean_axes_result = ops.mean_axes(&tensor, &[1], true).unwrap();
+        assert_eq!(mean_axes_result.shape(), &[2]);
+
+        // Test full tensor reductions
+        let sum_all_result = ops.sum_all(&tensor).unwrap();
+        assert_eq!(sum_all_result.shape(), &[1]); // Scalar result
+
+        let max_all_result = ops.max_all(&tensor).unwrap();
+        assert_eq!(max_all_result.shape(), &[1]);
+
+        let min_all_result = ops.min_all(&tensor).unwrap();
+        assert_eq!(min_all_result.shape(), &[1]);
+
+        let mean_all_result = ops.mean_all(&tensor).unwrap();
+        assert_eq!(mean_all_result.shape(), &[1]);
+    }
+
 }

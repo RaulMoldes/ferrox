@@ -466,3 +466,57 @@ pub fn return_cpu_vec<T: FerroxCudaF>(allocation_id: u64, vec: Vec<T>) -> Result
 pub fn cleanup_cpu_pool<T: FerroxCudaF>() -> Result<(), String> {
     with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.cleanup())
 }
+
+
+#[cfg(test)]
+mod backend_manager_tests {
+    use super::*;
+    use crate::backend::Device;
+
+    #[test]
+    fn test_backend_manager_initialization() {
+        // Test that backend managers initialize correctly for both types
+        let f32_backend = get_f32_backend();
+        let f64_backend = get_f64_backend();
+
+        // Verify CPU pools are accessible
+        assert!(f32_backend.cpu_pool().lock().is_ok());
+        assert!(f64_backend.cpu_pool().lock().is_ok());
+
+        // Test best device selection returns valid device
+        let f32_device = best_f32_device();
+        let f64_device = best_f64_device();
+
+        match f32_device {
+            Device::CPU => assert!(true), // CPU always available
+            #[cfg(feature ="cuda")]
+            Device::CUDA(_) => assert!(has_f32_cuda()), // CUDA only if available
+        }
+
+        match f64_device {
+            Device::CPU => assert!(true),
+            #[cfg(feature ="cuda")]
+            Device::CUDA(_) => assert!(has_f64_cuda()),
+        }
+    }
+
+    #[test]
+    fn test_memory_pool_allocation() {
+        // Test CPU memory pool allocation works
+        let backend = get_f32_backend();
+        let pool = backend.cpu_pool();
+        let mut pool_guard = pool.lock().unwrap();
+
+        // Request memory allocation
+        let size = 1024;
+        let allocation_result = pool_guard.allocate(size);
+
+        // Memory allocation should succeed
+        assert!(allocation_result.is_ok());
+
+        if let Ok(allocation) = allocation_result {
+            // Verify allocation has correct size
+            assert_eq!(allocation.size, size);
+        }
+    }
+}

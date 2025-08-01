@@ -232,3 +232,89 @@ where
     /// Returns None if storage doesn't support multi-dim indexing
     fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
 }
+
+
+#[cfg(test)]
+mod storage_backend_tests {
+    
+    use crate::backend::storage::{CPUStorage, StorageBackend};
+    use ndarray::ArrayD;
+
+    #[test]
+    fn test_cpu_storage_creation() {
+        // Create test data array
+        let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let shape = vec![2, 3];
+        let array = ArrayD::from_shape_vec(shape.clone(), data.clone()).unwrap();
+
+        // Create CPU storage
+        let storage = CPUStorage::<f32>::new(array);
+
+        // Verify storage properties
+        assert_eq!(storage.shape(), &shape);
+        assert_eq!(storage.size(), 6);
+        assert_eq!(storage.ndim(), 2);
+        assert!(!storage.is_gpu()); // CPU storage should return false for is_gpu
+    }
+
+    #[test]
+    fn test_storage_element_operations() {
+        let data = vec![2.0f32, 4.0, 6.0, 8.0];
+        let array = ArrayD::from_shape_vec(vec![2, 2], data).unwrap();
+        let storage_a = CPUStorage::<f32>::new(array);
+
+        let data_b = vec![1.0f32, 2.0, 3.0, 4.0];
+        let array_b = ArrayD::from_shape_vec(vec![2, 2], data_b).unwrap();
+        let storage_b = CPUStorage::<f32>::new(array_b);
+
+        // Test addition
+        let add_result = storage_a.add(&storage_b).unwrap();
+        assert_eq!(add_result.shape(), &[2, 2]);
+
+        // Test multiplication
+        let mul_result = storage_a.mul(&storage_b).unwrap();
+        assert_eq!(mul_result.shape(), &[2, 2]);
+
+        // Test division
+        let div_result = storage_a.div(&storage_b).unwrap();
+        assert_eq!(div_result.shape(), &[2, 2]);
+    }
+
+    #[test]
+    fn test_storage_scalar_operations() {
+        let data = vec![1.0f32, 2.0, 3.0, 4.0];
+        let array = ArrayD::from_shape_vec(vec![2, 2], data).unwrap();
+        let storage = CPUStorage::<f32>::new(array);
+
+        // Test scalar addition
+        let add_scalar_result = storage.add_scalar(5.0).unwrap();
+        assert_eq!(add_scalar_result.shape(), storage.shape());
+
+        // Test scalar multiplication
+        let mul_scalar_result = storage.mul_scalar(2.0).unwrap();
+        assert_eq!(mul_scalar_result.shape(), storage.shape());
+
+        // Test scalar division
+        let div_scalar_result = storage.div_scalar(2.0).unwrap();
+        assert_eq!(div_scalar_result.shape(), storage.shape());
+    }
+
+    #[test]
+    fn test_matrix_multiplication() {
+        // Create compatible matrices for multiplication
+        let data_a = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2x3 matrix
+        let array_a = ArrayD::from_shape_vec(vec![2, 3], data_a).unwrap();
+        let storage_a = CPUStorage::<f32>::new(array_a);
+
+        let data_b = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]; // 3x2 matrix
+        let array_b = ArrayD::from_shape_vec(vec![3, 2], data_b).unwrap();
+        let storage_b = CPUStorage::<f32>::new(array_b);
+
+        // Perform matrix multiplication
+        let matmul_result = storage_a.matmul(&storage_b).unwrap();
+
+        // Result should be 2x2 matrix
+        assert_eq!(matmul_result.shape(), &[2, 2]);
+        assert_eq!(matmul_result.size(), 4);
+    }
+}

@@ -6,12 +6,9 @@
 use super::{MemoryPool, PoolAllocation, PoolBucket, PoolStats};
 #[cfg(feature = "cuda")]
 use crate::backend::FerroxCudaF;
+
 #[cfg(feature = "cuda")]
-use crate::backend::cuda::{CudaContextManager, CudaTensor};
-#[cfg(feature = "cuda")]
-use crate::backend::manager::with_cuda_context;
-#[cfg(feature = "cuda")]
-use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
+use cudarc::driver::{ CudaSlice, CudaStream};
 #[cfg(feature = "cuda")]
 use std::collections::HashMap;
 #[cfg(feature = "cuda")]

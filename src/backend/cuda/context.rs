@@ -117,7 +117,7 @@ where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
         // Allocate host buffer
-        let mut alloc_result = alloc_cpu_vec::<T>(data.len())?;
+        let alloc_result = alloc_cpu_vec::<T>(data.len())?;
         let mut host_buffer = alloc_result.data;
 
         let stream = match self.stream_manager.get_stream("copy_d2h") {
