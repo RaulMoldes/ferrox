@@ -5,12 +5,15 @@
 use super::context::{CudaContextManager, CudaTensor};
 use super::kernels::KernelManager;
 use crate::backend::cuda::context::compute_strides;
+use crate::backend::manager::alloc_cuda_slice;
 use crate::backend::manager::with_cuda_context;
+use crate::backend::memory::PoolAllocation;
 use crate::{FerroxCudaF, FerroxF};
 use cudarc::driver::CudaSlice;
 use cudarc::driver::LaunchConfig;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 use std::marker::Unpin;
+use ndarray::ArrayD;
 
 const BLOCK_SIZE: u32 = 256;
 const TILE_SIZE: u32 = 16;
@@ -18,12 +21,12 @@ const TILE_SIZE: u32 = 16;
 // CudaOps provides a high-level interface for performing tensor operations on GPU
 /// This is the main interface for performing tensor operations on GPU
 /// The lifetime parameter ensures operations don't outlive the underlying CUDA resources
-pub struct CudaOps<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> {
+pub struct CudaOps<T: FerroxCudaF> {
     kernels: KernelManager,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T> {
+impl<T: FerroxCudaF> CudaOps<T> {
     pub fn new(kernels: KernelManager) -> Self {
         Self {
             kernels,
@@ -84,6 +87,24 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
     }
 
+    /// Helper method to use the cuda memory pool
+    fn create_tensor_from_pool(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
+        let size = shape.iter().product();
+        let pool_alloc = alloc_cuda_slice::<T>(size)?;
+
+        // Create tensor from pooled allocation
+        let strides = compute_strides(shape);
+        Ok(CudaTensor {
+            data: pool_alloc.data,
+            shape: shape.to_vec(),
+            strides,
+        })
+    }
+
+    fn get_slice_from_pool(&self, size: usize) -> Result<CudaSlice<T>, String> {
+        let pool_alloc = alloc_cuda_slice::<T>(size)?;
+        Ok(pool_alloc.data)
+    }
     /// Create tensor filled with constant value
     /// This is a fundamental building block for scalar operations
     /// More efficient than creating dedicated scalar kernels for each operation
@@ -91,8 +112,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         let size = shape.iter().product();
         let cfg = self.get_launch_config(size);
 
-        let mut result =
-            with_cuda_context(|context: &CudaContextManager<T>| context.alloc_zeros(size))?;
+        let mut result = self.get_slice_from_pool(size)?;
 
         self.kernels
             .launch_fill(cfg, &mut result, value, size.try_into().unwrap())?;
@@ -107,9 +127,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
 
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
     pub fn zeros(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
-        with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, shape.to_vec())
-        })
+        self.create_tensor_from_pool(shape)
     }
 
     /// Create ones tensor - useful for creating bias vectors and normalization
@@ -123,8 +141,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
 
         let cfg = self.get_launch_config(size);
 
-        let mut result =
-            with_cuda_context(|context: &CudaContextManager<T>| context.alloc_zeros(size))?;
+        let mut result = self.get_slice_from_pool(size)?;
 
         self.kernels
             .launch_fill_random(cfg, &mut result, size as i32, seed)?;
@@ -136,6 +153,8 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         })
     }
 
+    
+
     /// Element-wise addition: result = a + b
     pub fn add(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
@@ -143,9 +162,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -160,9 +177,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -177,9 +192,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -194,9 +207,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -211,9 +222,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -233,9 +242,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_min_elementwise(
@@ -259,9 +266,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_max_elementwise(
@@ -307,9 +312,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Element-wise absolute value: result = |input|
     pub fn abs(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -320,9 +323,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Element-wise square root: result = sqrt(input)
     pub fn sqrt(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -333,9 +334,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Element-wise exponential: result = exp(input)
     pub fn exp(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -346,9 +345,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Element-wise natural logarithm: result = ln(input)
     pub fn log(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -359,9 +356,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Element-wise negation: result = -input
     pub fn negate(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -372,9 +367,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// ReLU activation: result = max(0, input)
     pub fn relu(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -385,9 +378,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Sigmoid activation: result = 1 / (1 + exp(-input))
     pub fn sigmoid(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -398,9 +389,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Hyperbolic tangent activation: result = tanh(input)
     pub fn tanh(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -416,9 +405,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         max_val: T,
     ) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_clamp(
@@ -436,9 +423,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     pub fn sum_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, vec![num_blocks])
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -474,9 +459,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     pub fn max_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, vec![num_blocks])
-        })?;
+        let mut result = self.create_tensor_from_pool(&[num_blocks])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -512,9 +495,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     pub fn min_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, vec![num_blocks])
-        })?;
+        let mut result = self.create_tensor_from_pool(&[num_blocks])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -549,9 +530,8 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Mean operation (uses sum + division)
     pub fn mean_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let sum_result = self.sum_all(input)?;
-        let size_scalar =
-            <T as crate::backend::number::FerroxF>::from_f64(1.0 / input.size() as f64)
-                .ok_or("Failed to convert size to tensor type")?;
+        let size_scalar = <T as FerroxF>::from_f64(1.0 / input.size() as f64)
+            .ok_or("Failed to convert size to tensor type")?;
         self.mul_scalar(&sum_result, size_scalar)
     }
 
@@ -591,13 +571,11 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
                 "Matrix multiplication shape mismatch: ({}, {}) @ ({}, {})",
                 a_shape[0], a_shape[1], b_shape[0], b_shape[1]
             ));
-        }
+        };
 
-        let result_shape: Vec<usize> = vec![a_shape[0], b_shape[1]];
+        let result_shape = [a_shape[0], b_shape[1]];
 
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, result_shape)
-        })?;
+        let mut result = self.create_tensor_from_pool(&result_shape)?;
 
         // Use 2D launch configuration optimized for matrix multiplication
         let cfg = self.get_2d_launch_config(a_shape[0], b_shape[1]);
@@ -625,9 +603,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -646,9 +622,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -663,9 +637,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -680,9 +652,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -697,9 +667,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         }
 
         let size = a.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, a.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -711,9 +679,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Inverts boolean tensors following IEEE 754 convention
     pub fn logical_not(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -724,9 +690,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
     /// Sign function: result = sign(input) ∈ {-1, 0, 1}
     pub fn sign(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -742,9 +706,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         max_val: T,
     ) -> Result<CudaTensor<T>, String> {
         let size = input.size();
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, input.shape().to_vec())
-        })?;
+        let mut result = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_in_range(
@@ -771,9 +733,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
 
         let size = condition.size();
 
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, condition.shape.clone())
-        })?;
+        let mut result = self.create_tensor_from_pool(condition.shape())?;
 
         let cfg = self.get_launch_config(size);
 
@@ -833,10 +793,8 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
         let out_height = (in_height + 2 * pad_h - kernel_height) / stride_h + 1;
         let out_width = (in_width + 2 * pad_w - kernel_width) / stride_w + 1;
 
-        let output_shape = vec![batch_size, out_channels, out_height, out_width];
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, output_shape)
-        })?;
+        let output_shape = [batch_size, out_channels, out_height, out_width];
+        let mut result = self.create_tensor_from_pool(&output_shape)?;
 
         // Configure launch parameters
         let tile_size = TILE_SIZE as usize;
@@ -948,9 +906,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
             let axis_size = input_shape[axis] as i32;
             let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
 
-            let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-                CudaTensor::alloc_init(context, output_shape.clone())
-            })?;
+            let mut result = self.create_tensor_from_pool(&output_shape)?;
 
             let cfg = LaunchConfig {
                 grid_dim: (outer_size as u32, 1, 1),
@@ -984,9 +940,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
             }
         }
 
-        let mut result = with_cuda_context(|context: &CudaContextManager<T>| {
-            CudaTensor::alloc_init(context, final_shape.clone())
-        })?;
+        let mut result = self.create_tensor_from_pool(&final_shape)?;
         let mut current_tensor = input;
         let mut current_shape = input_shape.clone();
         let mut temp_tensors = Vec::new();
@@ -1017,9 +971,7 @@ impl<T: FerroxCudaF + DeviceRepr + ValidAsZeroBits + Unpin + Default> CudaOps<T>
                 let mut step_output_shape = current_shape.clone();
                 step_output_shape.remove(axis);
 
-                let mut temp_tensor = with_cuda_context(|context: &CudaContextManager<T>| {
-                    CudaTensor::alloc_init(context, step_output_shape.clone())
-                })?;
+                let mut temp_tensor = self.create_tensor_from_pool(&step_output_shape)?;
 
                 kernel_launcher(
                     cfg,

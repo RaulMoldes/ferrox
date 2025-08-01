@@ -1,5 +1,6 @@
 pub mod device;
 pub mod manager;
+pub mod memory;
 pub mod number;
 pub mod storage;
 pub mod tensor;

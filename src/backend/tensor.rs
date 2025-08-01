@@ -1,4 +1,6 @@
-use crate::backend::manager::{get_backend, with_cuda_context};
+use crate::backend::manager::get_backend;
+#[cfg(feature = "cuda")]
+use crate::backend::manager::with_cuda_context;
 use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::backend::{Device, default_device};
@@ -299,41 +301,6 @@ where
             .as_ref()
             .map(|s| s.owns_data())
             .unwrap_or(false)
-    }
-
-    /// Safe data access with GPU->CPU sync when needed
-    pub fn get_cpu_data(&self) -> Result<std::borrow::Cow<ArrayD<T>>, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-
-        // Try to get CPU data directly
-        match storage.cpu_data() {
-            Ok(data) => Ok(std::borrow::Cow::Borrowed(data)),
-            Err(_) if storage.is_gpu() => {
-                // GPU storage needs sync - create temporary CPU data
-                #[cfg(feature = "cuda")]
-                {
-                    if let Some(gpu_storage) = storage
-                        .as_any()
-                        .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
-                    {
-                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {
-                            gpu_storage.cuda_data.to_vec(ctx)
-                        })?;
-
-                        let cpu_array =
-                            ArrayD::from_shape_vec(IxDyn(gpu_storage.cuda_data.shape()), host_data)
-                                .map_err(|e| format!("Failed to create CPU array: {}", e))?;
-
-                        return Ok(std::borrow::Cow::Owned(cpu_array));
-                    }
-                }
-                Err("Cannot sync GPU data without CUDA feature".to_string())
-            }
-            Err(e) => Err(e),
-        }
     }
 
     /// Get number of elements using storage backend
@@ -695,6 +662,7 @@ where
     }
 
     // Utility for tests
+    /// TODO: MOVE THIS TO THE STORAGE MODULE (MUST CREATE A KERNEL)
     pub fn all<F>(&self, predicate: F) -> Result<bool, String>
     where
         F: Fn(T) -> bool,
@@ -703,7 +671,8 @@ where
         Ok(cpu_data.iter().all(|&x| predicate(x)))
     }
 
-    /// Zip and check all elements with predicate
+    /// Zip and check all elements with predicate.
+    /// TODO: MOVE THIS TO THE STORAGE MODULE (MUST CREATE A KERNEL)
     pub fn zip_all<F>(&self, other: &Self, predicate: F) -> Result<bool, String>
     where
         F: Fn(T, T) -> bool,
@@ -938,57 +907,6 @@ where
         Ok(&mut full_slice[start..start + len])
     }
 
-    /// Create tensor from existing slice (copies data) using storage backend
-    /// Useful for creating tensors from memory pool slices
-    pub fn from_slice(slice: &[T], shape: &[usize]) -> Result<Self, String> {
-        let expected_len: usize = shape.iter().product();
-        if slice.len() != expected_len {
-            return Err(format!(
-                "Slice length {} doesn't match shape {:?} (expected {})",
-                slice.len(),
-                shape,
-                expected_len
-            ));
-        }
-
-        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
-            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
-
-        // Create using storage backend
-        let storage = CPUStorage::new(array.clone());
-        Ok(Self {
-            device: crate::backend::default_device(),
-            storage: Some(Box::new(storage)),
-        })
-    }
-
-    /// Create tensor from existing slice with specific device
-    pub fn from_slice_with_device(
-        slice: &[T],
-        shape: &[usize],
-        device: crate::backend::Device,
-    ) -> Result<Self, String> {
-        let expected_len: usize = shape.iter().product();
-        if slice.len() != expected_len {
-            return Err(format!(
-                "Slice length {} doesn't match shape {:?} (expected {})",
-                slice.len(),
-                shape,
-                expected_len
-            ));
-        }
-
-        let array = ArrayD::from_shape_vec(IxDyn(shape), slice.to_vec())
-            .map_err(|e| format!("Failed to create tensor from slice: {}", e))?;
-
-        // Create using storage backend
-        let storage = CPUStorage::new(array.clone());
-        Ok(Self {
-            device,
-            storage: Some(Box::new(storage)),
-        })
-    }
-
     /// Check if tensor data is contiguous (for slice operations)
     pub fn is_contiguous(&self) -> bool {
         if let Ok(data) = self.cpu_data() {
@@ -997,41 +915,6 @@ where
             // GPU tensors are always considered contiguous
             true
         }
-    }
-
-    /// Clone the tensor into owned storage (converts borrowed to owned)
-    pub fn to_owned(&self) -> Result<Self, String> {
-        let storage = self
-            .storage
-            .as_ref()
-            .ok_or("Tensor has no storage backend")?;
-
-        let cpu_data = if storage.is_gpu() {
-            // For GPU storage, sync to CPU first
-            self.get_cpu_data()?.into_owned()
-        } else {
-            storage.cpu_data()?.clone()
-        };
-
-        let owned_storage = CPUStorage::new(cpu_data.clone());
-        Ok(Self {
-            device: self.device.clone(),
-            storage: Some(Box::new(owned_storage)),
-        })
-    }
-
-    /// Create a flattened view of the tensor as 1D
-    /// Returns a new tensor with same data but 1D shape
-    #[allow(deprecated)]
-    pub fn flatten(&self) -> Result<Self, String> {
-        let cpu_data = self.get_cpu_data()?.into_owned();
-        let total_elements = cpu_data.len();
-
-        let flattened = cpu_data
-            .into_shape(IxDyn(&[total_elements]))
-            .map_err(|e| format!("Failed to flatten tensor: {}", e))?;
-
-        Ok(Self::new_with_device(flattened, self.device.clone()))
     }
 }
 

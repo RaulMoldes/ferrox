@@ -1,16 +1,18 @@
 // src/backend/storage/cpu.rs
 use super::StorageBackend;
+use crate::backend::manager::{alloc_cpu_vec, return_cpu_vec};
+use crate::backend::memory::PoolAllocation;
 use crate::backend::{FerroxCudaF, FerroxF};
-use ndarray::{ArrayD, ArrayViewD, IxDyn};
+use ndarray::{ArrayD, ArrayViewD, IxDyn, ArrayView2, Axis};
 use rand::Rng;
 use rand_distr::StandardUniform;
-
+use rand_distr::num_traits::{One, Zero};
 #[derive(Debug, Clone)]
-pub struct CPUStorage<T: Clone> {
+pub struct CPUStorage<T: FerroxCudaF> {
     data: ArrayD<T>,
 }
 
-impl<T: Clone> CPUStorage<T> {
+impl<T: FerroxCudaF> CPUStorage<T> {
     pub fn new(data: ArrayD<T>) -> Self {
         Self { data }
     }
@@ -31,6 +33,47 @@ impl<T: Clone> CPUStorage<T> {
         Self {
             data: array.clone(),
         }
+    }
+
+    fn vec_to_array(pool_alloc: PoolAllocation<Vec<T>>,
+        shape: &[usize])-> Result<ArrayD<T>, String> {
+        let array = ArrayD::from_shape_vec(IxDyn(shape), pool_alloc.data)
+            .map_err(|e| format!("Failed to create ArrayD from pooled vector: {}", e))?;
+
+        let _ = return_cpu_vec(pool_alloc.allocation_id, vec![<T as FerroxF>::zero(); 0]);
+        Ok(array)
+    }
+
+    pub fn from_pooled_vec(
+        pool_alloc: PoolAllocation<Vec<T>>,
+        shape: &[usize],
+    ) -> Result<Self, String> {
+        let array = ArrayD::from_shape_vec(IxDyn(shape), pool_alloc.data)
+            .map_err(|e| format!("Failed to create ArrayD from pooled vector: {}", e))?;
+
+        // Return vector to pool immediately since we copied it
+        // Note: This is suboptimal but maintains interface compatibility. In an optimal scenario, we would maintain a Vec<T> for each CPU storage instead of an ArrayD but it is not possible right now
+        let _ = return_cpu_vec(pool_alloc.allocation_id, vec![<T as FerroxF>::zero(); 0]);
+        Ok(Self { data: array })
+    }
+
+    fn create_result(shape: &[usize]) -> Result<(ArrayD<T>, u64), String> {
+        let size = shape.iter().product();
+        let pool_alloc = alloc_cpu_vec::<T>(size)?;
+
+        // Use pooled memory for ArrayD creation
+        let array = ArrayD::from_shape_vec(IxDyn(shape), pool_alloc.data)
+            .map_err(|e| format!("Failed to create result ArrayD: {}", e))?;
+        let id = pool_alloc.allocation_id;
+        // We can't return the vector since ArrayD now owns it
+        // The pool allocation will be "lost" but memory is still efficiently used
+        Ok((array, id))
+    }
+
+    fn return_to_pool(pool_id: u64, shape: &[usize]) -> Result<(), String> {
+        let size: usize = shape.iter().product();
+        let _ = return_cpu_vec(pool_id, vec![<T as FerroxF>::zero(); 0]);
+        Ok(())
     }
 
     pub fn view(&self) -> ArrayViewD<'_, T> {
@@ -77,7 +120,7 @@ where
         let col_height = channels * kernel_h * kernel_w;
         let col_width = batch * out_h * out_w;
 
-        let mut col_data = vec![<T as FerroxF>::zero(); col_height * col_width];
+        let mut col_data = alloc_cpu_vec::<T>(col_height * col_width)?;
 
         // Use effective data access for logical views
         let input_data = if let Some(data) = self.data.as_slice() {
@@ -113,7 +156,7 @@ where
                                             + c * (in_h * in_w)
                                             + actual_y * in_w
                                             + actual_x;
-                                        col_data[col_row * col_width + col_col] =
+                                        col_data.data[col_row * col_width + col_col] =
                                             input_data[input_idx];
                                     }
                                 }
@@ -124,8 +167,9 @@ where
             }
         }
 
-        ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
-            .map_err(|e| format!("Failed to create im2col matrix: {}", e))
+        // Free memory
+        let shape = [col_width, col_height];
+        CPUStorage::vec_to_array(col_data, &shape)
     }
 
     /// Standard 2D convolution implementation using im2col + GEMM
@@ -164,12 +208,12 @@ where
             .map_err(|e| format!("Filter reshape failed: {}", e))?;
 
         // Perform convolution as matrix multiplication: filter @ col_matrix
-        let im2col_view: ndarray::ArrayView2<T> = col_matrix
+        let im2col_view: ArrayView2<T> = col_matrix
             .view()
             .into_dimensionality()
             .map_err(|e| format!("Shape error: {}", e))?;
 
-        let filter_view: ndarray::ArrayView2<T> = filter_reshaped
+        let filter_view: ArrayView2<T> = filter_reshaped
             .view()
             .into_dimensionality()
             .map_err(|e| format!("Shape error: {}", e))?;
@@ -182,7 +226,7 @@ where
         } else {
             return Err("Failed to get contiguous output data".to_string());
         };
-        let mut final_output = vec![<T as FerroxF>::zero(); batch * out_channels * out_h * out_w];
+        let mut final_output = alloc_cpu_vec::<T>(batch * out_channels * out_h * out_w)?;
 
         for out_c in 0..out_channels {
             for b in 0..batch {
@@ -194,26 +238,24 @@ where
                             + out_c * (out_h * out_w)
                             + y * out_w
                             + x;
-                        final_output[dst_idx] = output_data[src_idx];
+                        final_output.data[dst_idx] = output_data[src_idx];
                     }
                 }
             }
         }
 
-        ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
-            .map_err(|e| format!("Failed to create output tensor: {}", e))
+        let shape = [batch, out_channels, out_h, out_w];
+        CPUStorage::vec_to_array(final_output, &shape)
     }
 }
 
-impl<T> CPUStorage<T>
-where
-    T: FerroxCudaF,
+impl<T: FerroxCudaF> CPUStorage<T>
 {
     // Move the generic reduce method to the concrete implementation
     // This avoids making StorageBackend non-dyn-compatible
     fn reduce<F>(&self, axes: Option<&[usize]>, reduction_fn: F) -> Result<CPUStorage<T>, String>
     where
-        F: Fn(&ndarray::ArrayD<T>, ndarray::Axis) -> ndarray::ArrayD<T>,
+        F: Fn(&ArrayD<T>, Axis) -> ArrayD<T>,
     {
         match axes {
             Some(axes_list) => {
@@ -227,8 +269,8 @@ where
                         ));
                     }
                 }
-
-                let mut result = self.data.clone();
+                let (mut result, id) = CPUStorage::create_result(self.shape())?;
+                result = self.data.clone();
                 // Sort in descending order to prevent index shifting during reduction
                 let mut sorted_axes = axes_list.to_vec();
                 sorted_axes.sort_unstable();
@@ -239,21 +281,23 @@ where
                 for &ax in &sorted_axes {
                     result = reduction_fn(&result, ndarray::Axis(ax));
                 }
-
+                CPUStorage::<T>::return_to_pool(id, self.shape())?;
                 Ok(CPUStorage::new(result))
             }
             None => {
                 // Reduce across all dimensions to get scalar result
-                let mut result = self.data.clone();
+                let (mut result, id) = CPUStorage::create_result(self.shape())?;
+                result = self.data.clone();
                 for dim in (0..result.ndim()).rev() {
                     result = reduction_fn(&result, ndarray::Axis(dim));
                 }
+                CPUStorage::<T>::return_to_pool(id, self.shape())?;
                 Ok(CPUStorage::new(result))
             }
         }
     }
 
-    /// Generic comparison method using ndarray::Zip for efficiency
+    /// Generic comparison method using Zip for efficiency
     /// This is a helper method to avoid code duplication in comparison operations
     fn compare<F>(
         &self,
@@ -274,32 +318,39 @@ where
         }
 
         // Use ndarray's Zip for efficient element-wise comparison
-        let result_data = ndarray::Zip::from(&self.data)
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = ndarray::Zip::from(&self.data)
             .and(other_data)
             .map_collect(|&a, &b| comparison_fn(&a, &b));
 
         // Return the owned storage result
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(CPUStorage::new(result_data))
     }
 
     pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
-        T: rand_distr::num_traits::Zero,
+        T: Zero,
     {
-        // Create ndarray with zeros directly - more efficient than device layer
-        let data = ndarray::ArrayD::zeros(ndarray::IxDyn(shape));
-        Ok(Box::new(CPUStorage::new(data)))
+        let size = shape.iter().product();
+        // Get pooled vector
+        let pool_alloc = alloc_cpu_vec::<T>(size)?;
+        // Create ndarray with zeros directly
+        Ok(Box::new(CPUStorage::from_pooled_vec(pool_alloc, shape)?))
     }
 
     pub fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
-        T: rand_distr::num_traits::One,
+        T: One,
     {
         // Create ndarray with ones directly
-        let data = ndarray::ArrayD::ones(ndarray::IxDyn(shape));
-        Ok(Box::new(CPUStorage::new(data)))
+        let size = shape.iter().product();
+        // Get pooled vector
+        let mut pool_alloc = alloc_cpu_vec::<T>(size)?;
+        pool_alloc.data.fill(<T as FerroxF>::one());
+        Ok(Box::new(CPUStorage::from_pooled_vec(pool_alloc, shape)?))
     }
 
     pub fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
@@ -307,8 +358,11 @@ where
         Self: Sized,
     {
         // Create ndarray filled with specific value
-        let data = ndarray::ArrayD::from_elem(ndarray::IxDyn(shape), value);
-        Ok(Box::new(CPUStorage::new(data)))
+        let size = shape.iter().product();
+        // Get pooled vector
+        let mut pool_alloc = alloc_cpu_vec::<T>(size)?;
+        pool_alloc.data.fill(value);
+        Ok(Box::new(CPUStorage::from_pooled_vec(pool_alloc, shape)?))
     }
 
     pub fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
@@ -320,12 +374,14 @@ where
         let total_elements: usize = shape.iter().product();
         let two = <T as FerroxF>::from_f64(2.0).expect("Cannot cast from f64");
         let one = <T as FerroxF>::one();
-        let data: Vec<T> = (0..total_elements)
+        // Create ndarray filled with specific value
+        let size = shape.iter().product();
+        let mut pool_alloc = alloc_cpu_vec::<T>(size)?;
+        pool_alloc.data = (0..total_elements)
             .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
             .collect();
-        let data_array = ArrayD::from_shape_vec(IxDyn(shape), data)
-            .map_err(|e| format!("Failed to create array from data: {}", e))?;
-        Ok(Box::new(CPUStorage::new(data_array)))
+
+        Ok(Box::new(CPUStorage::from_pooled_vec(pool_alloc, shape)?))
     }
 
     /// Conditional selection operation
@@ -349,8 +405,10 @@ where
             return Err("Shape mismatch in where_condition".to_string());
         }
 
+        let size = condition_data.shape().iter().product();
+        let mut result_data = alloc_cpu_vec::<T>(size)?;
         // Element-wise selection using iterator zip
-        let result_data: Vec<T> = condition_data
+        result_data.data = condition_data
             .iter()
             .zip(true_data.iter())
             .zip(false_data.iter())
@@ -364,8 +422,7 @@ where
             .collect();
 
         // Create result array with same shape
-        let result_array = ndarray::Array::from_shape_vec(condition_data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result: {}", e))?;
+        let result_array = CPUStorage::vec_to_array(result_data, condition_data.shape())?;
 
         Ok(Box::new(CPUStorage::new(result_array)))
     }
@@ -587,8 +644,11 @@ where
         }
 
         // Element-wise addition using ndarray's efficient implementation
-        let result = &self.data + other_data;
-        Ok(Box::new(CPUStorage::new(result)))
+        let (mut result_array, id) = CPUStorage::create_result(self.shape())?;
+        result_array = &self.data + other_data;
+        let output = Box::new(CPUStorage::new(result_array));
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
+        Ok(output)
     }
 
     fn sub(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -602,8 +662,11 @@ where
             ));
         }
 
-        let result = &self.data - other_data;
-        Ok(Box::new(CPUStorage::new(result)))
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data - other_data;
+        let output = Box::new(CPUStorage::new(result));
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
+        Ok(output)
     }
 
     fn mul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -616,9 +679,11 @@ where
                 other_data.shape()
             ));
         }
-
-        let result = &self.data * other_data;
-        Ok(Box::new(CPUStorage::new(result)))
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data * other_data;
+        let output = Box::new(CPUStorage::new(result));
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
+        Ok(output)
     }
 
     fn div(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -631,9 +696,11 @@ where
                 other_data.shape()
             ));
         }
-
-        let result = &self.data / other_data;
-        Ok(Box::new(CPUStorage::new(result)))
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data / other_data;
+        let output = Box::new(CPUStorage::new(result));
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
+        Ok(output)
     }
 
     fn min(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -647,16 +714,17 @@ where
             ));
         }
 
+        let mut result_data = alloc_cpu_vec::<T>(self.size())?;
+
         // Use flat iteration for efficiency - works with any dimensional tensor
-        let result_data: Vec<T> = self
+        result_data.data = self
             .data
             .iter()
             .zip(other_data.iter())
             .map(|(&a, &b)| if a <= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+        let result_array = CPUStorage::vec_to_array(result_data, self.data.shape())?;
 
         Ok(Box::new(CPUStorage::new(result_array)))
     }
@@ -672,60 +740,70 @@ where
             ));
         }
 
-        let result_data: Vec<T> = self
+        let mut result_data = alloc_cpu_vec::<T>(self.size())?;
+        result_data.data = self
             .data
             .iter()
             .zip(other_data.iter())
             .map(|(&a, &b)| if a >= b { a } else { b })
             .collect();
 
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+        let result_array = CPUStorage::vec_to_array(result_data, self.data.shape())?;
 
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
     fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ndarray's scalar operations are very efficient - no broadcasting overhead
-        let result = &self.data + scalar;
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data + scalar;
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result = &self.data * scalar;
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data * scalar;
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ndarray's scalar operations are very efficient - no broadcasting overhead
-        let result = &self.data - scalar;
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data - scalar;
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result = &self.data / scalar;
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = &self.data / scalar;
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Unary negation - ndarray handles this efficiently
-        let result = self.data.mapv(|x| -x);
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = self.data.mapv(|x| -x);
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise absolute value using mapv for efficiency
-        let result_data: Vec<T> = self.data.iter().map(|&x| x.abs()).collect();
-
-        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
-            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+        let mut result = alloc_cpu_vec::<T>(self.size())?;
+        result.data = self.data.iter().map(|&x| x.abs()).collect();
+        let result_array = CPUStorage::vec_to_array(result, self.data.shape())?;
 
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise clamping using mapv - efficient vectorized operation
-        let result_data = self.data.mapv(|x| {
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = self.data.mapv(|x| {
             if x < min_val {
                 min_val
             } else if x > max_val {
@@ -734,13 +812,15 @@ where
                 x
             }
         });
-
-        Ok(Box::new(CPUStorage::new(result_data)))
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
+        Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_data = self.data.mapv(|x| x.sqrt());
-        Ok(Box::new(CPUStorage::new(result_data)))
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = self.data.mapv(|x| x.sqrt());
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
+        Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn greater_equal(
@@ -806,42 +886,46 @@ where
 
     fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Flip 0s to 1s and non-zeros to 0s
-        let result_data = self.data.mapv(|x| {
-            if x == <T as crate::backend::number::FerroxF>::zero() {
-                <T as crate::backend::number::FerroxF>::one()
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| {
+            if x == <T as FerroxF>::zero() {
+                <T as FerroxF>::one()
             } else {
-                <T as crate::backend::number::FerroxF>::zero()
+                <T as FerroxF>::zero()
             }
         });
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
 
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Check if values are in range [min_val, max_val]
-        let result_data = self.data.mapv(|x| {
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| {
             if x >= min_val && x <= max_val {
-                <T as crate::backend::number::FerroxF>::one()
+                <T as FerroxF>::one()
             } else {
-                <T as crate::backend::number::FerroxF>::zero()
+                <T as FerroxF>::zero()
             }
         });
-
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Return 1 for positive, -1 for negative, 0 for zero
-        let result_data = self.data.mapv(|x| {
-            if x > <T as crate::backend::number::FerroxF>::zero() {
-                <T as crate::backend::number::FerroxF>::one()
-            } else if x < <T as crate::backend::number::FerroxF>::zero() {
-                -<T as crate::backend::number::FerroxF>::one()
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| {
+            if x > <T as FerroxF>::zero() {
+                <T as FerroxF>::one()
+            } else if x < <T as FerroxF>::zero() {
+                -<T as FerroxF>::one()
             } else {
-                <T as crate::backend::number::FerroxF>::zero()
+                <T as FerroxF>::zero()
             }
         });
-
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
@@ -866,63 +950,71 @@ where
         }
 
         // Convert to 2D views for matrix multiplication
-        let a: ndarray::ArrayView2<T> = self
+        let a: ArrayView2<T> = self
             .data
             .view()
             .into_dimensionality()
             .map_err(|e| format!("Failed to convert to 2D view: {}", e))?;
-        let b: ndarray::ArrayView2<T> = other_data
+        let b: ArrayView2<T> = other_data
             .view()
             .into_dimensionality()
             .map_err(|e| format!("Failed to convert to 2D view: {}", e))?;
 
         // Perform matrix multiplication using ndarray's dot product
-        let result = a.dot(&b);
-
+        let (mut result, id) = CPUStorage::create_result(self.shape())?;
+        result = a.dot(&b).into_dyn();
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result.into_dyn())))
     }
 
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Sigmoid function: 1 / (1 + exp(-x))
-        let result_data = self.data.mapv(|x| {
-            let one = <T as crate::backend::number::FerroxF>::one();
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| {
+            let one = <T as FerroxF>::one();
             let neg_x = -x;
             one / (one + neg_x.exp())
         });
-
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ReLU activation: max(0, x)
-        let result_data = self.data.mapv(|x| {
-            let zero = <T as crate::backend::number::FerroxF>::zero();
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| {
+            let zero = <T as FerroxF>::zero();
             if x > zero { x } else { zero }
         });
-
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise exponential
-        let result_data = self.data.mapv(|x| x.exp());
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| x.exp());
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise natural logarithm
-        let result_data = self.data.mapv(|x| x.ln());
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| x.ln());
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Hyperbolic tangent using the same formula as your original
-        let result_data = self.data.mapv(|x| {
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| {
             let e_x = x.exp();
             let e_neg_x = (-x).exp();
             (e_x - e_neg_x) / (e_x + e_neg_x)
         });
-
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
@@ -938,16 +1030,19 @@ where
         }
 
         // Element-wise power using ndarray's Zip
-        let result_data = ndarray::Zip::from(&self.data)
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = ndarray::Zip::from(&self.data)
             .and(other_data)
             .map_collect(|&a, &b| a.powf(b));
-
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Scalar power operation
-        let result_data = self.data.mapv(|x| x.powf(scalar));
+        let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
+        result_data = self.data.mapv(|x| x.powf(scalar));
+        CPUStorage::<T>::return_to_pool(id, self.shape())?;
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 

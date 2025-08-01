@@ -2,6 +2,7 @@
 use super::kernels::{KernelManager, load_all_kernels};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
+use crate::backend::manager::{alloc_cuda_slice, alloc_cpu_vec};
 
 use crate::FerroxCudaF;
 #[allow(unused_imports)]
@@ -67,14 +68,9 @@ where
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-        let stream = match self.stream_manager.get_stream("memset") {
-            Some(memset_stream) => memset_stream,
-            None => self.stream_manager.default_stream(),
-        };
 
-        stream
-            .alloc_zeros(size)
-            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
+        let alloc_result = alloc_cuda_slice::<T>(size)?;
+        Ok(alloc_result.data)
     }
 
     /// Allocates uninitialized memory on the GPU
@@ -86,12 +82,16 @@ where
             Some(memset_stream) => memset_stream,
             None => self.stream_manager.default_stream(),
         };
-
+        alloc_cuda_slice::<T>(size)?;
         unsafe {
             stream
                 .alloc(size)
                 .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
         }
+    }
+
+    pub fn stream_manager(&self) -> &StreamManager{
+        &self.stream_manager
     }
 
     /// Synchronous host to device transfer
@@ -118,7 +118,8 @@ where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
         // Allocate host buffer
-        let mut host_buffer = vec![T::default(); data.len()];
+        let mut alloc_result = alloc_cpu_vec::<T>(data.len())?;
+        let mut host_buffer = alloc_result.data;
 
         let stream = match self.stream_manager.get_stream("copy_d2h") {
             Some(d2h_stream) => d2h_stream,
@@ -193,11 +194,7 @@ where
         shape: Vec<usize>,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: cudarc::driver::DeviceRepr
-            + Clone
-            + cudarc::driver::ValidAsZeroBits
-            + std::marker::Unpin
-            + Default,
+        T: FerroxCudaF
     {
         let size = shape.iter().product::<usize>();
         if data.len() != size {

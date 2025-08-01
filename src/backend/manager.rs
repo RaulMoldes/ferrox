@@ -1,62 +1,91 @@
 // src/backend/manager.rs
-
+use crate::backend::Device;
+#[cfg(feature = "cuda")]
+use crate::backend::memory::CudaMemoryPool;
+use crate::backend::memory::{CpuMemoryPool, MemoryPool, PoolAllocation};
 use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
-use crate::backend::Device;
+#[cfg(feature = "cuda")]
+use cudarc::driver::CudaSlice;
 use ndarray::ArrayD;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
-use crate::backend::storage::CUDAStorage;
-#[cfg(feature = "cuda")]
 use crate::backend::cuda::ops::CudaOps;
+#[cfg(feature = "cuda")]
+use crate::backend::storage::CUDAStorage;
 
 pub struct BackendManager<T: FerroxCudaF> {
     #[cfg(feature = "cuda")]
     cuda_backend: Option<CudaContextManager<T>>,
+    cpu_pool: std::sync::Mutex<CpuMemoryPool<T>>,
+    #[cfg(feature = "cuda")]
+    cuda_pool: Option<std::sync::Mutex<CudaMemoryPool<T>>>,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FerroxCudaF> Default for BackendManager<T> {
     fn default() -> Self {
-        Self::new()
+        Self::init()
     }
 }
 
 impl<T: FerroxCudaF> BackendManager<T> {
-    pub fn new() -> Self {
+    pub fn new(cpu_pool: Mutex<CpuMemoryPool<T>>) -> Self {
         Self {
             #[cfg(feature = "cuda")]
             cuda_backend: None,
+            cpu_pool, // Actually assign the pool, not None
+            #[cfg(feature = "cuda")]
+            cuda_pool: None,
             _phantom: std::marker::PhantomData,
         }
     }
 
+    // CPU pool accessor methods
+    pub fn cpu_pool(&self) -> &Mutex<CpuMemoryPool<T>> {
+        &self.cpu_pool
+    }
+
+    #[cfg(feature = "cuda")]
+    pub fn cuda_pool(&self) -> Option<&std::sync::Mutex<CudaMemoryPool<T>>> {
+        self.cuda_pool.as_ref()
+    }
+
     pub fn init() -> Self {
-        #[cfg(not(feature = "cuda"))]
-        let manager = Self::new();
-
-        #[cfg(feature = "cuda")]
-        let mut manager = Self::new();
-
-        #[cfg(feature = "cuda")]
-        {
-            if let Ok(cuda_backend) = CudaContextManager::from_device_id(0) {
-                manager.cuda_backend = Some(cuda_backend);
-                println!("CUDA backend initialized successfully");
-            } else {
-                println!("CUDA backend not available, using CPU only");
-            }
-        }
+        // Create CPU pool first
+        let cpu_pool = Mutex::new(CpuMemoryPool::new());
 
         #[cfg(not(feature = "cuda"))]
         {
             println!("CUDA feature not enabled, using CPU only");
+            Self::new(cpu_pool)
         }
 
-        manager
+        #[cfg(feature = "cuda")]
+        {
+            // Create base manager with CPU pool
+            let mut manager = Self::new(cpu_pool);
+
+            // Try to initialize CUDA backend and pool
+            if let Ok(cuda_backend) = CudaContextManager::<T>::new() {
+                let stream = match cuda_backend.stream_manager().get_stream("memset") {
+                            Some(memset_stream) => memset_stream,
+                        None => cuda_backend.stream_manager().default_stream(),
+                };
+                
+                let cuda_pool = CudaMemoryPool::new(stream.clone());
+                manager.cuda_backend = Some(cuda_backend);
+                manager.cuda_pool = Some(Mutex::new(cuda_pool));
+                println!("CUDA backend and pool initialized successfully");
+            } else {
+                println!("CUDA backend not available, using CPU only");
+            }
+
+            manager
+        }
     }
 
     pub fn has_cuda(&self) -> bool {
@@ -117,20 +146,19 @@ impl<T: FerroxCudaF> BackendManager<T> {
         let validated_device = self.validate_device(device)?;
 
         let storage: Box<dyn StorageBackend<T>> = match validated_device {
-            Device::CPU => {
-                CPUStorage::<T>::zeros(shape)?
-            }
+            Device::CPU => CPUStorage::<T>::zeros(shape)?,
             #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                CUDAStorage::<T>::zeros(shape)?
-            }
+            Device::CUDA(_) => CUDAStorage::<T>::zeros(shape)?,
         };
 
         Ok((validated_device, storage))
     }
 
     /// Create storage on best available device
-    pub fn create_storage_auto(&self, shape: &[usize]) -> Result<(Device, Box<dyn StorageBackend<T>>), String>
+    pub fn create_storage_auto(
+        &self,
+        shape: &[usize],
+    ) -> Result<(Device, Box<dyn StorageBackend<T>>), String>
     where
         T: Clone + rand_distr::num_traits::One,
     {
@@ -150,13 +178,9 @@ impl<T: FerroxCudaF> BackendManager<T> {
         let validated_device = self.validate_device(device)?;
 
         let storage: Box<dyn StorageBackend<T>> = match validated_device {
-            Device::CPU => {
-                CPUStorage::<T>::ones(shape)?
-            }
+            Device::CPU => CPUStorage::<T>::ones(shape)?,
             #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                CUDAStorage::<T>::ones(shape)?
-            }
+            Device::CUDA(_) => CUDAStorage::<T>::ones(shape)?,
         };
 
         Ok((validated_device, storage))
@@ -175,13 +199,9 @@ impl<T: FerroxCudaF> BackendManager<T> {
         let validated_device = self.validate_device(device)?;
 
         let storage: Box<dyn StorageBackend<T>> = match validated_device {
-            Device::CPU => {
-                CPUStorage::<T>::full(shape, value)?
-            }
+            Device::CPU => CPUStorage::<T>::full(shape, value)?,
             #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                CUDAStorage::<T>::full(shape, value)?
-            }
+            Device::CUDA(_) => CUDAStorage::<T>::full(shape, value)?,
         };
 
         Ok((validated_device, storage))
@@ -200,13 +220,9 @@ impl<T: FerroxCudaF> BackendManager<T> {
         let validated_device = self.validate_device(device)?;
 
         let storage: Box<dyn StorageBackend<T>> = match validated_device {
-            Device::CPU => {
-                CPUStorage::<T>::randn(shape)?
-            }
+            Device::CPU => CPUStorage::<T>::randn(shape)?,
             #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                CUDAStorage::<T>::randn(shape)?
-            }
+            Device::CUDA(_) => CUDAStorage::<T>::randn(shape)?,
         };
 
         Ok((validated_device, storage))
@@ -224,9 +240,7 @@ impl<T: FerroxCudaF> BackendManager<T> {
         let validated_device = self.validate_device(device)?;
 
         let storage: Box<dyn StorageBackend<T>> = match validated_device {
-            Device::CPU => {
-                Box::new(CPUStorage::<T>::new(data.clone()))
-            }
+            Device::CPU => Box::new(CPUStorage::<T>::new(data.clone())),
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
                 let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
@@ -293,7 +307,8 @@ impl<T: FerroxCudaF> BackendManager<T> {
                         )
                         .map_err(|e| format!("Failed to create CPU array: {}", e))?;
 
-                        let cpu_storage: Box<dyn StorageBackend<T>> = Box::new(CPUStorage::<T>::new(cpu_array));
+                        let cpu_storage: Box<dyn StorageBackend<T>> =
+                            Box::new(CPUStorage::<T>::new(cpu_array));
                         return Ok((validated_target, cpu_storage));
                     }
                 }
@@ -308,7 +323,8 @@ impl<T: FerroxCudaF> BackendManager<T> {
                     crate::backend::cuda::CudaTensor::from_cpu_array(ctx, cpu_data)
                 })?;
 
-                let cuda_storage: Box<dyn StorageBackend<T>> = Box::new(CUDAStorage::<T>::new(cuda_tensor));
+                let cuda_storage: Box<dyn StorageBackend<T>> =
+                    Box::new(CUDAStorage::<T>::new(cuda_tensor));
                 Ok((validated_target, cuda_storage))
             }
         }
@@ -345,12 +361,12 @@ pub fn best_f64_device() -> Device {
 
 pub fn get_backend<T: FerroxCudaF>() -> &'static BackendManager<T> {
     match std::any::TypeId::of::<T>() {
-        id if id == std::any::TypeId::of::<f32>() => {
-            unsafe { std::mem::transmute(get_f32_backend()) }
-        }
-        id if id == std::any::TypeId::of::<f64>() => {
-            unsafe { std::mem::transmute(get_f64_backend()) }
-        }
+        id if id == std::any::TypeId::of::<f32>() => unsafe {
+            std::mem::transmute(get_f32_backend())
+        },
+        id if id == std::any::TypeId::of::<f64>() => unsafe {
+            std::mem::transmute(get_f64_backend())
+        },
         _ => panic!("Unsupported float type for backend"),
     }
 }
@@ -396,4 +412,56 @@ where
 
     let ops: Arc<CudaOps<T>> = context_manager.ops();
     f(&ops)
+}
+
+#[cfg(feature = "cuda")]
+pub fn with_cuda_pool<F, R, T>(f: F) -> Result<R, String>
+where
+    T: FerroxCudaF,
+    F: FnOnce(&mut CudaMemoryPool<T>) -> Result<R, String>,
+{
+    let backend: &'static BackendManager<T> = get_backend::<T>();
+    let pool_mutex = backend.cuda_pool().ok_or("CUDA pool not available")?;
+    let mut pool = pool_mutex
+        .lock()
+        .map_err(|e| format!("Failed to lock CUDA pool: {}", e))?;
+
+    f(&mut pool)
+}
+
+// Pool-aware allocation wrappers that pass context manager
+#[cfg(feature = "cuda")]
+pub fn alloc_cuda_slice<T>(size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String>
+where
+    T: FerroxCudaF,
+{
+    with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.allocate(size))
+}
+
+
+
+// CPU pool interface function
+pub fn with_cpu_pool<F, R, T>(f: F) -> Result<R, String>
+where
+    T: FerroxCudaF,
+    F: FnOnce(&mut CpuMemoryPool<T>) -> Result<R, String>,
+{
+    let backend: &'static BackendManager<T> = get_backend::<T>();
+    let mut pool = backend.cpu_pool().lock().map_err(|e| format!("Failed to lock CPU pool: {}", e))?;
+    f(&mut pool)
+}
+
+// Pool-aware CPU allocation wrapper
+pub fn alloc_cpu_vec<T: FerroxCudaF>(size: usize) -> Result<PoolAllocation<Vec<T>>, String> {
+    with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.allocate_vec(size))
+}
+
+// Return CPU vector to pool
+pub fn return_cpu_vec<T: FerroxCudaF>(allocation_id: u64, vec: Vec<T>) -> Result<(), String> {
+    with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.return_to_pool(allocation_id, vec))
+}
+
+// Pool cleanup functions for memory management
+pub fn cleanup_cpu_pool<T: FerroxCudaF>() -> Result<(), String> {
+    with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.cleanup())
 }
