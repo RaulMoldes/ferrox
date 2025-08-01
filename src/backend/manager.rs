@@ -445,9 +445,7 @@ mod backend_manager_tests {
 
     #[test]
     fn test_backend_manager_initialization() {
-        // Test that backend managers initialize correctly for both types
-        let f32_backend = get_f32_backend();
-        let f64_backend = get_f64_backend();
+
 
         // Test best device selection returns valid device
         let f32_device = best_f32_device();

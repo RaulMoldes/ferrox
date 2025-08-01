@@ -1353,3 +1353,375 @@ where
 }
 
 impl<T> Eq for Tensor<T> where T: FerroxCudaF + Clone + PartialEq {}
+
+
+#[cfg(test)]
+mod tensor_ops_tests {
+    use super::*;
+    use crate::backend::Device;
+
+    #[test]
+    fn test_tensor_creation() {
+        let data = vec![1.0f32, 2.0, 3.0, 4.0];
+        let shape = vec![2, 2];
+        let tensor = Tensor::from_vec(data, &shape).unwrap();
+
+        assert_eq!(tensor.shape(), &shape);
+        assert_eq!(tensor.size(), 4);
+    }
+
+    #[test]
+    fn test_zeros_creation() {
+        let tensor = Tensor::<f32>::zeros(&[2, 3]).unwrap();
+        let data = tensor.cpu_data().unwrap();
+
+        assert!(data.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn test_ones_creation() {
+        let tensor = Tensor::<f32>::ones(&[2, 2]).unwrap();
+        let data = tensor.cpu_data().unwrap();
+
+        assert!(data.iter().all(|&x| x == 1.0));
+    }
+
+    #[test]
+    fn test_fill_creation() {
+        let tensor = Tensor::full(&[2, 2], 5.0f32).unwrap();
+        let data = tensor.cpu_data().unwrap();
+
+        assert!(data.iter().all(|&x| x == 5.0));
+    }
+
+    #[test]
+    fn test_add_operation() {
+        let a = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![3.0f32, 4.0], &[2]).unwrap();
+
+        let result = a.add(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 4.0); // 1 + 3
+        assert_eq!(data[1], 6.0); // 2 + 4
+    }
+
+    #[test]
+    fn test_sub_operation() {
+        let a = Tensor::from_vec(vec![5.0f32, 8.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+
+        let result = a.sub(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 3.0); // 5 - 2
+        assert_eq!(data[1], 5.0); // 8 - 3
+    }
+
+    #[test]
+    fn test_mul_operation() {
+        let a = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![4.0f32, 5.0], &[2]).unwrap();
+
+        let result = a.mul(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 8.0);  // 2 * 4
+        assert_eq!(data[1], 15.0); // 3 * 5
+    }
+
+    #[test]
+    fn test_div_operation() {
+        let a = Tensor::from_vec(vec![8.0f32, 15.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+
+        let result = a.div(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 4.0); // 8 / 2
+        assert_eq!(data[1], 5.0); // 15 / 3
+    }
+
+    #[test]
+    fn test_add_scalar() {
+        let tensor = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
+
+        let result = tensor.add_scalar(3.0).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 4.0); // 1 + 3
+        assert_eq!(data[1], 5.0); // 2 + 3
+    }
+
+    #[test]
+    fn test_mul_scalar() {
+        let tensor = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+
+        let result = tensor.mul_scalar(4.0).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 8.0);  // 2 * 4
+        assert_eq!(data[1], 12.0); // 3 * 4
+    }
+
+    #[test]
+    fn test_div_scalar() {
+        let tensor = Tensor::from_vec(vec![8.0f32, 12.0], &[2]).unwrap();
+
+        let result = tensor.div_scalar(2.0).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 4.0); // 8 / 2
+        assert_eq!(data[1], 6.0); // 12 / 2
+    }
+
+    #[test]
+    fn test_power_operation() {
+        let base = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+        let exp = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+
+        let result = base.powf(&exp).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 4.0);  // 2^2
+        assert_eq!(data[1], 27.0); // 3^3
+    }
+
+    #[test]
+    fn test_power_scalar() {
+        let tensor = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+
+        let result = tensor.power_scalar(3.0).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 8.0);  // 2^3
+        assert_eq!(data[1], 27.0); // 3^3
+    }
+
+    #[test]
+    fn test_matmul_operation() {
+        // A: 2x2, B: 2x2 -> C: 2x2
+        let a = Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0f32, 0.0, 1.0, 3.0], &[2, 2]).unwrap();
+
+        let result = a.matmul(&b).unwrap();
+
+        let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
+
+        // [[1,2],[3,4]] * [[2,0],[1,3]] = [[4,6],[10,12]]
+        assert_eq!(data[0], 4.0);  // 1*2 + 2*1
+        assert_eq!(data[1], 6.0);  // 1*0 + 2*3
+        assert_eq!(data[2], 10.0); // 3*2 + 4*1
+        assert_eq!(data[3], 12.0); // 3*0 + 4*3
+    }
+
+    #[test]
+    fn test_sigmoid_activation() {
+        let tensor = Tensor::from_vec(vec![0.0f32, 1000.0, -1000.0], &[3]).unwrap();
+
+        let result = tensor.sigmoid().unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert!((data[0] - 0.5).abs() < 1e-6);     // sigmoid(0) = 0.5
+        assert!(data[1] > 0.99);                   // sigmoid(large) ≈ 1
+        assert!(data[2] < 0.01);                   // sigmoid(-large) ≈ 0
+    }
+
+    #[test]
+    fn test_tanh_activation() {
+        let tensor = Tensor::from_vec(vec![0.0f32, 1000.0, -1000.0], &[3]).unwrap();
+
+        let result = tensor.tanh().unwrap();
+        let data = result.cpu_data().unwrap();
+
+        println!("Data: {}", data);
+
+        assert!(data[0].abs() < 1e-6);             // tanh(0) = 0
+        assert!(data[1] > 0.99);                   // tanh(large) ≈ 1
+        assert!(data[2] < -0.99);                  // tanh(-large) ≈ -1
+    }
+
+    #[test]
+    fn test_relu_activation() {
+        let tensor = Tensor::from_vec(vec![-2.0f32, 0.0, 3.0], &[3]).unwrap();
+
+        let result = tensor.relu().unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 0.0); // ReLU(-2) = 0
+        assert_eq!(data[1], 0.0); // ReLU(0) = 0
+        assert_eq!(data[2], 3.0); // ReLU(3) = 3
+    }
+
+    #[test]
+    fn test_exp_function() {
+        let tensor = Tensor::from_vec(vec![0.0f32, 1.0, 2.0], &[3]).unwrap();
+
+        let result = tensor.exp().unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert!((data[0] - 1.0).abs() < 1e-6);                    // e^0 = 1
+        assert!((data[1] - std::f32::consts::E).abs() < 1e-6);    // e^1 = e
+        assert!((data[2] - std::f32::consts::E.powi(2)).abs() < 1e-5); // e^2
+    }
+
+
+
+    #[test]
+    fn test_sum_reduction() {
+        let tensor = Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2]).unwrap();
+
+        let result = tensor.sum(None).unwrap();
+        let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
+
+        assert_eq!(data[0], 10.0); // 1 + 2 + 3 + 4
+    }
+
+    #[test]
+    fn test_mean_reduction() {
+        let tensor = Tensor::from_vec(vec![2.0f32, 4.0, 6.0, 8.0], &[2, 2]).unwrap();
+
+        let result = tensor.mean(None).unwrap();
+        let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
+
+         // (2 + 4 + 6 + 8) / 4
+          assert_eq!(data[0], 5.0);
+    }
+
+    #[test]
+    fn test_max_reduction() {
+        let tensor = Tensor::from_vec(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2]).unwrap();
+
+        let result = tensor.max_reduce(None).unwrap();
+        let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
+
+        assert_eq!(data[0], 4.0); // Maximum value
+    }
+
+    #[test]
+    fn test_min_reduction() {
+        let tensor = Tensor::from_vec(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2]).unwrap();
+
+        let result = tensor.min_reduce(None).unwrap();
+        let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
+
+        assert_eq!(data[0], 1.0); // Minimum value
+    }
+
+    #[test]
+    fn test_reshape_operation() {
+        let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let mut tensor = Tensor::from_vec(data, &[2, 3]).unwrap();
+
+        tensor.reshape(&[3, 2]).unwrap();
+
+        assert_eq!(tensor.shape(), &[3, 2]);
+        assert_eq!(tensor.size(), 6);
+    }
+
+    #[test]
+    fn test_transpose_operation() {
+        let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let mut tensor = Tensor::from_vec(data, &[2, 3]).unwrap();
+
+        tensor.transpose(None).unwrap();
+
+        assert_eq!(tensor.shape(), &[3, 2]); // Dimensions swapped
+    }
+
+    #[test]
+    fn test_unsqueeze_operation() {
+        let mut tensor = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
+
+        tensor.unsqueeze(0).unwrap();
+
+        assert_eq!(tensor.shape(), &[1, 2]); // Added dimension at axis 0
+    }
+
+    #[test]
+    fn test_squeeze_operation() {
+        let mut tensor = Tensor::from_vec(vec![1.0f32, 2.0], &[1, 2, 1]).unwrap();
+
+        tensor.squeeze(None).unwrap();
+
+        assert_eq!(tensor.shape(), &[2]); // Removed size-1 dimensions
+    }
+
+    #[test]
+    fn test_broadcast_to() {
+        let mut tensor = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
+
+        tensor.broadcast_to(&[3, 2]).unwrap();
+
+        assert_eq!(tensor.shape(), &[3, 2]);
+        assert_eq!(tensor.size(), 6);
+    }
+
+    #[test]
+    fn test_greater_comparison() {
+        let a = Tensor::from_vec(vec![3.0f32, 1.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0f32, 2.0], &[2]).unwrap();
+
+        let result = a.greater(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 1.0); // 3 > 2 = true
+        assert_eq!(data[1], 0.0); // 1 > 2 = false
+    }
+
+    #[test]
+    fn test_less_comparison() {
+        let a = Tensor::from_vec(vec![1.0f32, 3.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0f32, 2.0], &[2]).unwrap();
+
+        let result = a.less(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 1.0); // 1 < 2 = true
+        assert_eq!(data[1], 0.0); // 3 < 2 = false
+    }
+
+    #[test]
+    fn test_equal_comparison() {
+        let a = Tensor::from_vec(vec![2.0f32, 3.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![2.0f32, 4.0], &[2]).unwrap();
+
+        let result = a.equal(&b).unwrap();
+        let data = result.cpu_data().unwrap();
+
+        assert_eq!(data[0], 1.0); // 2 == 2 = true
+        assert_eq!(data[1], 0.0); // 3 == 4 = false
+    }
+
+    #[test]
+    fn test_all_equal_check() {
+        let a = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
+        let b = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
+        let c = Tensor::from_vec(vec![1.0f32, 3.0], &[2]).unwrap();
+
+        assert!(a.all_equal(&b).unwrap());  // Same tensors
+        assert!(!a.all_equal(&c).unwrap()); // Different tensors
+    }
+
+    #[test]
+    fn test_slice_access() {
+        let tensor = Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], &[4]).unwrap();
+
+        let slice = tensor.as_slice().unwrap();
+
+        assert_eq!(slice.len(), 4);
+        assert_eq!(slice[0], 1.0);
+        assert_eq!(slice[3], 4.0);
+    }
+
+    #[test]
+    fn test_range_slice() {
+        let tensor = Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], &[4]).unwrap();
+
+        let slice = tensor.slice_range(1, 2).unwrap();
+
+        assert_eq!(slice.len(), 2);
+        assert_eq!(slice[0], 2.0);
+        assert_eq!(slice[1], 3.0);
+    }
+}

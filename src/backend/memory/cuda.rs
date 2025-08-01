@@ -59,7 +59,46 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaF> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
     fn allocate(&mut self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String> {
-        self.allocate_with_stream(size, &self.stream)
+
+         if size == 0 {
+            return Err("Cannot allocate zero-sized CUDA memory".to_string());
+        }
+
+        self.allocation_counter += 1;
+        let allocation_id = self.allocation_counter;
+
+        // Try pool reuse first
+        if let Some(bucket_idx) = self.find_bucket(size) {
+            self.active_allocations.insert(allocation_id, bucket_idx);
+
+            if let Some(pooled_slice) = self.buckets[bucket_idx].get_allocation() {
+                if pooled_slice.len() >= size {
+                    self.stats.pool_hits += 1;
+                    self.stats.active_allocations += 1;
+
+                    return Ok(PoolAllocation {
+                        data: pooled_slice,
+                        size,
+                        allocation_id,
+                    });
+                } else {
+                    self.buckets[bucket_idx].return_allocation(pooled_slice);
+                }
+            }
+        }
+
+        // Create new allocation using specified stream
+        let new_slice = self.stream
+            .alloc_zeros(size)
+            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))?;
+
+        self.update_stats_for_new_allocation(size);
+
+        Ok(PoolAllocation {
+            data: new_slice,
+            size,
+            allocation_id,
+        })
     }
 
     fn deallocate(&mut self, allocation_id: u64) -> Result<(), String> {

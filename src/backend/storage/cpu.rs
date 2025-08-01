@@ -876,7 +876,7 @@ where
 
         // Perform matrix multiplication using ndarray's dot product
         let result = a.dot(&b);
-
+        println!("{}", format!("Result = {result}"));
         Ok(Box::new(CPUStorage::new(result.into_dyn())))
     }
 
@@ -914,15 +914,51 @@ where
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        // Hyperbolic tangent using the same formula as your original
-        let result_data = self.data.mapv(|x| {
-            let e_x = x.exp();
-            let e_neg_x = (-x).exp();
-            (e_x - e_neg_x) / (e_x + e_neg_x)
-        });
+    // Numerically stable hyperbolic tangent implementation
+    // Avoids overflow for large positive/negative values
+    let result_data = self.data.mapv(|x| {
+        // For numerical stability, we use different formulas based on the sign of x
+        // This prevents overflow when x is very large or very small
 
-        Ok(Box::new(CPUStorage::new(result_data)))
-    }
+        if x > <T as FerroxF>::from_f64(20.0).unwrap() {
+            // For large positive x, tanh(x) ≈ 1
+            // Avoids computing exp(x) which would overflow
+            <T as FerroxF>::one()
+        } else if x < <T as FerroxF>::from_f64(-20.0).unwrap() {
+            // For large negative x, tanh(x) ≈ -1
+            // Avoids computing exp(-x) which would overflow
+            <T as FerroxF>::from_f64(-1.0).unwrap()
+        } else if x >= <T as FerroxF>::zero() {
+            // For non-negative x, use: tanh(x) = (1 - exp(-2x)) / (1 + exp(-2x))
+            // This formulation is stable for positive x
+            let exp_neg_2x = (-x * <T as FerroxF>::from_f64(2.0).unwrap()).exp();
+            let numerator = <T as FerroxF>::one() - exp_neg_2x;
+            let denominator = <T as FerroxF>::one() + exp_neg_2x;
+
+            // Check for potential division by zero (shouldn't happen with this formulation)
+            if denominator == <T as FerroxF>::zero() {
+                <T as FerroxF>::one() // Return 1 as limit
+            } else {
+                numerator / denominator
+            }
+        } else {
+            // For negative x, use: tanh(x) = (exp(2x) - 1) / (exp(2x) + 1)
+            // This formulation is stable for negative x
+            let exp_2x = (x * <T as FerroxF>::from_f64(2.0).unwrap()).exp();
+            let numerator = exp_2x - <T as FerroxF>::one();
+            let denominator = exp_2x + <T as FerroxF>::one();
+
+            // Check for potential division by zero (shouldn't happen with this formulation)
+            if denominator == <T as FerroxF>::zero() {
+                <T as FerroxF>::from_f64(-1.0).unwrap() // Return -1 as limit
+            } else {
+                numerator / denominator
+            }
+        }
+    });
+
+    Ok(Box::new(CPUStorage::new(result_data)))
+}
 
     fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let other_data = other.cpu_data()?;
