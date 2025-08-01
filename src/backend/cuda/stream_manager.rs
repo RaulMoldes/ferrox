@@ -1,10 +1,10 @@
 // src/backend/cuda/stream_manager.rs
 // Stream management helper - does NOT own the CUDA context
+use crate::FerroxCudaF;
+use crate::backend::manager::alloc_cpu_vec;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream, DeviceRepr, ValidAsZeroBits};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::backend::manager::alloc_cpu_vec;
-use crate::FerroxCudaF;
 
 /// Helper for managing named CUDA streams - used by CudaContextManager
 pub struct StreamManager {

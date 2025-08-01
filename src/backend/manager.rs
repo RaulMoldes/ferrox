@@ -72,10 +72,10 @@ impl<T: FerroxCudaF> BackendManager<T> {
             // Try to initialize CUDA backend and pool
             if let Ok(cuda_backend) = CudaContextManager::<T>::new() {
                 let stream = match cuda_backend.stream_manager().get_stream("memset") {
-                            Some(memset_stream) => memset_stream,
-                        None => cuda_backend.stream_manager().default_stream(),
+                    Some(memset_stream) => memset_stream,
+                    None => cuda_backend.stream_manager().default_stream(),
                 };
-                
+
                 let cuda_pool = CudaMemoryPool::new(stream.clone());
                 manager.cuda_backend = Some(cuda_backend);
                 manager.cuda_pool = Some(Mutex::new(cuda_pool));
@@ -438,8 +438,6 @@ where
     with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.allocate(size))
 }
 
-
-
 // CPU pool interface function
 pub fn with_cpu_pool<F, R, T>(f: F) -> Result<R, String>
 where
@@ -447,7 +445,10 @@ where
     F: FnOnce(&mut CpuMemoryPool<T>) -> Result<R, String>,
 {
     let backend: &'static BackendManager<T> = get_backend::<T>();
-    let mut pool = backend.cpu_pool().lock().map_err(|e| format!("Failed to lock CPU pool: {}", e))?;
+    let mut pool = backend
+        .cpu_pool()
+        .lock()
+        .map_err(|e| format!("Failed to lock CPU pool: {}", e))?;
     f(&mut pool)
 }
 

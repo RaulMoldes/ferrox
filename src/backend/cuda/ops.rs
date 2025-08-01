@@ -12,8 +12,8 @@ use crate::{FerroxCudaF, FerroxF};
 use cudarc::driver::CudaSlice;
 use cudarc::driver::LaunchConfig;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-use std::marker::Unpin;
 use ndarray::ArrayD;
+use std::marker::Unpin;
 
 const BLOCK_SIZE: u32 = 256;
 const TILE_SIZE: u32 = 16;
@@ -152,8 +152,6 @@ impl<T: FerroxCudaF> CudaOps<T> {
             strides: strides,
         })
     }
-
-    
 
     /// Element-wise addition: result = a + b
     pub fn add(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {

@@ -53,9 +53,10 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
     }
 
     fn create_new_allocation(&self, size: usize) -> Result<CudaSlice<T>, String> {
-        self.stream.alloc_zeros(size).map_err(|e| format!("Failed to allocate GPU memory: {}", e))
+        self.stream
+            .alloc_zeros(size)
+            .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
     }
-
 }
 
 #[cfg(feature = "cuda")]

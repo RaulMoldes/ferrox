@@ -2,7 +2,7 @@
 use super::kernels::{KernelManager, load_all_kernels};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
-use crate::backend::manager::{alloc_cuda_slice, alloc_cpu_vec};
+use crate::backend::manager::{alloc_cpu_vec, alloc_cuda_slice};
 
 use crate::FerroxCudaF;
 #[allow(unused_imports)]
@@ -68,7 +68,6 @@ where
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
-
         let alloc_result = alloc_cuda_slice::<T>(size)?;
         Ok(alloc_result.data)
     }
@@ -90,7 +89,7 @@ where
         }
     }
 
-    pub fn stream_manager(&self) -> &StreamManager{
+    pub fn stream_manager(&self) -> &StreamManager {
         &self.stream_manager
     }
 
@@ -194,7 +193,7 @@ where
         shape: Vec<usize>,
     ) -> Result<CudaTensor<T>, String>
     where
-        T: FerroxCudaF
+        T: FerroxCudaF,
     {
         let size = shape.iter().product::<usize>();
         if data.len() != size {
