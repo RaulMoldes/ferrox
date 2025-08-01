@@ -281,8 +281,10 @@ impl<T: FerroxCudaF> CPUStorage<T>
                 for &ax in &sorted_axes {
                     result = reduction_fn(&result, ndarray::Axis(ax));
                 }
+
+                let storage = CPUStorage::new(result);
                 CPUStorage::<T>::return_to_pool(id, self.shape())?;
-                Ok(CPUStorage::new(result))
+                Ok(storage)
             }
             None => {
                 // Reduce across all dimensions to get scalar result
@@ -291,8 +293,9 @@ impl<T: FerroxCudaF> CPUStorage<T>
                 for dim in (0..result.ndim()).rev() {
                     result = reduction_fn(&result, ndarray::Axis(dim));
                 }
+                let storage = CPUStorage::new(result);
                 CPUStorage::<T>::return_to_pool(id, self.shape())?;
-                Ok(CPUStorage::new(result))
+                Ok(storage)
             }
         }
     }
@@ -324,8 +327,9 @@ impl<T: FerroxCudaF> CPUStorage<T>
             .map_collect(|&a, &b| comparison_fn(&a, &b));
 
         // Return the owned storage result
+        let storage = CPUStorage::new(result_data);
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(CPUStorage::new(result_data))
+        Ok(storage)
     }
 
     pub fn zeros(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
@@ -757,38 +761,44 @@ where
         // ndarray's scalar operations are very efficient - no broadcasting overhead
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = &self.data + scalar;
+
+        let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = &self.data * scalar;
+        let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ndarray's scalar operations are very efficient - no broadcasting overhead
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = &self.data - scalar;
+       let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = &self.data / scalar;
+        let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Unary negation - ndarray handles this efficiently
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = self.data.mapv(|x| -x);
+       let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -796,8 +806,8 @@ where
         let mut result = alloc_cpu_vec::<T>(self.size())?;
         result.data = self.data.iter().map(|&x| x.abs()).collect();
         let result_array = CPUStorage::vec_to_array(result, self.data.shape())?;
-
-        Ok(Box::new(CPUStorage::new(result_array)))
+        let output = Box::new(CPUStorage::new(result_array));
+        Ok(output)
     }
 
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -812,15 +822,17 @@ where
                 x
             }
         });
+        let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = self.data.mapv(|x| x.sqrt());
+        let output = Box::new(CPUStorage::new(result));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result)))
+        Ok(output)
     }
 
     fn greater_equal(
@@ -894,9 +906,9 @@ where
                 <T as FerroxF>::zero()
             }
         });
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -909,8 +921,9 @@ where
                 <T as FerroxF>::zero()
             }
         });
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -925,8 +938,9 @@ where
                 <T as FerroxF>::zero()
             }
         });
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn matmul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
@@ -963,8 +977,9 @@ where
         // Perform matrix multiplication using ndarray's dot product
         let (mut result, id) = CPUStorage::create_result(self.shape())?;
         result = a.dot(&b).into_dyn();
+        let output = Box::new(CPUStorage::new(result.into_dyn()));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result.into_dyn())))
+        Ok(output)
     }
 
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -975,8 +990,9 @@ where
             let neg_x = -x;
             one / (one + neg_x.exp())
         });
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -986,24 +1002,27 @@ where
             let zero = <T as FerroxF>::zero();
             if x > zero { x } else { zero }
         });
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise exponential
         let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
         result_data = self.data.mapv(|x| x.exp());
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise natural logarithm
         let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
         result_data = self.data.mapv(|x| x.ln());
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -1014,8 +1033,9 @@ where
             let e_neg_x = (-x).exp();
             (e_x - e_neg_x) / (e_x + e_neg_x)
         });
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -1034,16 +1054,18 @@ where
         result_data = ndarray::Zip::from(&self.data)
             .and(other_data)
             .map_collect(|&a, &b| a.powf(b));
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Scalar power operation
         let (mut result_data, id) = CPUStorage::create_result(self.shape())?;
         result_data = self.data.mapv(|x| x.powf(scalar));
+        let output = Box::new(CPUStorage::new(result_data));
         CPUStorage::<T>::return_to_pool(id, self.shape())?;
-        Ok(Box::new(CPUStorage::new(result_data)))
+        Ok(output)
     }
 
     fn sum(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
