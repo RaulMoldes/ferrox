@@ -2,7 +2,8 @@
 use crate::backend::Device;
 #[cfg(feature = "cuda")]
 use crate::backend::memory::CudaMemoryPool;
-use crate::backend::memory::{CpuMemoryPool, MemoryPool, PoolAllocation};
+#[allow(unused_imports)]
+use crate::backend::memory::{MemoryPool, PoolAllocation};
 use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
 #[cfg(feature = "cuda")]
@@ -20,7 +21,6 @@ use crate::backend::storage::CUDAStorage;
 pub struct BackendManager<T: FerroxCudaF> {
     #[cfg(feature = "cuda")]
     cuda_backend: Option<CudaContextManager<T>>,
-    cpu_pool: std::sync::Mutex<CpuMemoryPool<T>>,
     #[cfg(feature = "cuda")]
     cuda_pool: Option<std::sync::Mutex<CudaMemoryPool<T>>>,
     _phantom: std::marker::PhantomData<T>,
@@ -33,20 +33,14 @@ impl<T: FerroxCudaF> Default for BackendManager<T> {
 }
 
 impl<T: FerroxCudaF> BackendManager<T> {
-    pub fn new(cpu_pool: Mutex<CpuMemoryPool<T>>) -> Self {
+    pub fn new() -> Self {
         Self {
             #[cfg(feature = "cuda")]
             cuda_backend: None,
-            cpu_pool, // Actually assign the pool, not None
             #[cfg(feature = "cuda")]
             cuda_pool: None,
             _phantom: std::marker::PhantomData,
         }
-    }
-
-    // CPU pool accessor methods
-    pub fn cpu_pool(&self) -> &Mutex<CpuMemoryPool<T>> {
-        &self.cpu_pool
     }
 
     #[cfg(feature = "cuda")]
@@ -55,19 +49,16 @@ impl<T: FerroxCudaF> BackendManager<T> {
     }
 
     pub fn init() -> Self {
-        // Create CPU pool first
-        let cpu_pool = Mutex::new(CpuMemoryPool::new());
-
         #[cfg(not(feature = "cuda"))]
         {
             println!("CUDA feature not enabled, using CPU only");
-            Self::new(cpu_pool)
+            Self::new()
         }
 
         #[cfg(feature = "cuda")]
         {
             // Create base manager with CPU pool
-            let mut manager = Self::new(cpu_pool);
+            let mut manager = Self::new();
 
             // Try to initialize CUDA backend and pool
             if let Ok(cuda_backend) = CudaContextManager::<T>::new() {
@@ -243,10 +234,10 @@ impl<T: FerroxCudaF> BackendManager<T> {
             Device::CPU => Box::new(CPUStorage::<T>::new(data.clone())),
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
-                let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                let (cuda_tensor, id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
                     crate::backend::cuda::CudaTensor::from_cpu_array(ctx, data)
                 })?;
-                Box::new(CUDAStorage::<T>::new(cuda_tensor))
+                Box::new(CUDAStorage::<T>::new(cuda_tensor, Some(id)))
             }
         };
 
@@ -319,12 +310,12 @@ impl<T: FerroxCudaF> BackendManager<T> {
                 // CPU -> GPU: get CPU data and create GPU storage from it
                 let cpu_data = storage.cpu_data()?;
 
-                let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                let (cuda_tensor, id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
                     crate::backend::cuda::CudaTensor::from_cpu_array(ctx, cpu_data)
                 })?;
 
                 let cuda_storage: Box<dyn StorageBackend<T>> =
-                    Box::new(CUDAStorage::<T>::new(cuda_tensor));
+                    Box::new(CUDAStorage::<T>::new(cuda_tensor, Some(id)));
                 Ok((validated_target, cuda_storage))
             }
         }
@@ -438,35 +429,14 @@ where
     with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.allocate(size))
 }
 
-// CPU pool interface function
-pub fn with_cpu_pool<F, R, T>(f: F) -> Result<R, String>
-where
-    T: FerroxCudaF,
-    F: FnOnce(&mut CpuMemoryPool<T>) -> Result<R, String>,
-{
-    let backend: &'static BackendManager<T> = get_backend::<T>();
-    let mut pool = backend
-        .cpu_pool()
-        .lock()
-        .map_err(|e| format!("Failed to lock CPU pool: {}", e))?;
-    f(&mut pool)
+// Main function for CUDA ops and context to return memory to pool
+#[cfg(feature = "cuda")]
+pub fn return_cuda_slice<T: FerroxCudaF>(
+    allocation_id: u64,
+    slice: CudaSlice<T>,
+) -> Result<(), String> {
+    with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.return_to_pool(allocation_id, slice))
 }
-
-// Pool-aware CPU allocation wrapper
-pub fn alloc_cpu_vec<T: FerroxCudaF>(size: usize) -> Result<PoolAllocation<Vec<T>>, String> {
-    with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.allocate_vec(size))
-}
-
-// Return CPU vector to pool
-pub fn return_cpu_vec<T: FerroxCudaF>(allocation_id: u64, vec: Vec<T>) -> Result<(), String> {
-    with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.return_to_pool(allocation_id, vec))
-}
-
-// Pool cleanup functions for memory management
-pub fn cleanup_cpu_pool<T: FerroxCudaF>() -> Result<(), String> {
-    with_cpu_pool(|pool: &mut CpuMemoryPool<T>| pool.cleanup())
-}
-
 
 #[cfg(test)]
 mod backend_manager_tests {
@@ -479,44 +449,20 @@ mod backend_manager_tests {
         let f32_backend = get_f32_backend();
         let f64_backend = get_f64_backend();
 
-        // Verify CPU pools are accessible
-        assert!(f32_backend.cpu_pool().lock().is_ok());
-        assert!(f64_backend.cpu_pool().lock().is_ok());
-
         // Test best device selection returns valid device
         let f32_device = best_f32_device();
         let f64_device = best_f64_device();
 
         match f32_device {
             Device::CPU => assert!(true), // CPU always available
-            #[cfg(feature ="cuda")]
+            #[cfg(feature = "cuda")]
             Device::CUDA(_) => assert!(has_f32_cuda()), // CUDA only if available
         }
 
         match f64_device {
             Device::CPU => assert!(true),
-            #[cfg(feature ="cuda")]
+            #[cfg(feature = "cuda")]
             Device::CUDA(_) => assert!(has_f64_cuda()),
-        }
-    }
-
-    #[test]
-    fn test_memory_pool_allocation() {
-        // Test CPU memory pool allocation works
-        let backend = get_f32_backend();
-        let pool = backend.cpu_pool();
-        let mut pool_guard = pool.lock().unwrap();
-
-        // Request memory allocation
-        let size = 1024;
-        let allocation_result = pool_guard.allocate(size);
-
-        // Memory allocation should succeed
-        assert!(allocation_result.is_ok());
-
-        if let Ok(allocation) = allocation_result {
-            // Verify allocation has correct size
-            assert_eq!(allocation.size, size);
         }
     }
 }

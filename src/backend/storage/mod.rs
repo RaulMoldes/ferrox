@@ -233,10 +233,9 @@ where
     fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
 }
 
-
 #[cfg(test)]
 mod storage_backend_tests {
-    
+
     use crate::backend::storage::{CPUStorage, StorageBackend};
     use ndarray::ArrayD;
 

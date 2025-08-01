@@ -1,8 +1,7 @@
 // src/backend/cuda/stream_manager.rs
 // Stream management helper - does NOT own the CUDA context
 use crate::FerroxCudaF;
-use crate::backend::manager::alloc_cpu_vec;
-use cudarc::driver::{CudaContext, CudaSlice, CudaStream,  ValidAsZeroBits};
+use cudarc::driver::{CudaContext, CudaSlice, CudaStream, ValidAsZeroBits};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -162,8 +161,7 @@ impl StreamManager {
         };
 
         // Allocate host buffer
-        let alloc_result = alloc_cpu_vec::<T>(data.len())?;
-        let mut host_buffer = alloc_result.data;
+        let mut host_buffer = vec![T::default(); data.len()];
 
         // Copy data from device to host using the correct cudarc API
         stream

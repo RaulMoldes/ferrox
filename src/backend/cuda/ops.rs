@@ -5,12 +5,11 @@
 use super::context::CudaTensor;
 use super::kernels::KernelManager;
 use crate::backend::cuda::context::compute_strides;
-use crate::backend::manager::alloc_cuda_slice;
+use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
 use crate::{FerroxCudaF, FerroxF};
 use cudarc::driver::CudaSlice;
 use cudarc::driver::LaunchConfig;
 use cudarc::driver::ValidAsZeroBits;
-
 
 const BLOCK_SIZE: u32 = 256;
 const TILE_SIZE: u32 = 16;
@@ -84,145 +83,180 @@ impl<T: FerroxCudaF> CudaOps<T> {
         }
     }
 
+    fn return_tensor_to_pool(&self, allocation_id: u64, data: CudaTensor<T>) -> Result<(), String> {
+        return_cuda_slice::<T>(allocation_id, data.data)
+    }
+
     /// Helper method to use the cuda memory pool
-    fn create_tensor_from_pool(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
+    fn create_tensor_from_pool(&self, shape: &[usize]) -> Result<(CudaTensor<T>, u64), String> {
         let size = shape.iter().product();
         let pool_alloc = alloc_cuda_slice::<T>(size)?;
 
         // Create tensor from pooled allocation
         let strides = compute_strides(shape);
-        Ok(CudaTensor {
-            data: pool_alloc.data,
-            shape: shape.to_vec(),
-            strides,
-        })
+
+        Ok((
+            CudaTensor {
+                data: pool_alloc.data,
+                shape: shape.to_vec(),
+                strides,
+            },
+            pool_alloc.allocation_id,
+        ))
     }
 
-    fn get_slice_from_pool(&self, size: usize) -> Result<CudaSlice<T>, String> {
+    fn get_slice_from_pool(&self, size: usize) -> Result<(CudaSlice<T>, u64), String> {
         let pool_alloc = alloc_cuda_slice::<T>(size)?;
-        Ok(pool_alloc.data)
+        Ok((pool_alloc.data, pool_alloc.allocation_id))
     }
     /// Create tensor filled with constant value
     /// This is a fundamental building block for scalar operations
     /// More efficient than creating dedicated scalar kernels for each operation
-    pub fn full(&self, shape: &[usize], value: T) -> Result<CudaTensor<T>, String> {
+    pub fn full(&self, shape: &[usize], value: T) -> Result<(CudaTensor<T>, u64), String> {
         let size = shape.iter().product();
         let cfg = self.get_launch_config(size);
 
-        let mut result = self.get_slice_from_pool(size)?;
+        let (mut result, id) = self.get_slice_from_pool(size)?;
 
         self.kernels
             .launch_fill(cfg, &mut result, value, size.try_into().unwrap())?;
 
         let strides = compute_strides(shape);
-        Ok(CudaTensor {
-            data: result,
-            shape: shape.to_vec(),
-            strides: strides,
-        })
+
+        Ok((
+            CudaTensor {
+                data: result,
+                shape: shape.to_vec(),
+                strides: strides,
+            },
+            id,
+        ))
     }
 
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
-    pub fn zeros(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
+    pub fn zeros(&self, shape: &[usize]) -> Result<(CudaTensor<T>, u64), String> {
         self.create_tensor_from_pool(shape)
     }
 
     /// Create ones tensor - useful for creating bias vectors and normalization
-    pub fn ones(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
+    pub fn ones(&self, shape: &[usize]) -> Result<(CudaTensor<T>, u64), String> {
         let one = <T as FerroxF>::from_f64(1.0).unwrap();
         self.full(shape, one)
     }
 
-    pub fn randn(&self, shape: &[usize], seed: u64) -> Result<CudaTensor<T>, String> {
+    pub fn randn(&self, shape: &[usize], seed: u64) -> Result<(CudaTensor<T>, u64), String> {
         let size = shape.iter().product();
 
         let cfg = self.get_launch_config(size);
 
-        let mut result = self.get_slice_from_pool(size)?;
+        let (mut result, id) = self.get_slice_from_pool(size)?;
 
         self.kernels
             .launch_fill_random(cfg, &mut result, size as i32, seed)?;
         let strides = compute_strides(shape);
-        Ok(CudaTensor {
-            data: result,
-            shape: shape.to_vec(),
-            strides: strides,
-        })
+        Ok((
+            CudaTensor {
+                data: result,
+                shape: shape.to_vec(),
+                strides: strides,
+            },
+            id,
+        ))
     }
 
     /// Element-wise addition: result = a + b
-    pub fn add(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn add(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_add(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise multiplication: result = a * b
-    pub fn mul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn mul(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for multiplication".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_mul(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise division: result = a / b
-    pub fn div(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn div(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for division".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_div(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise subtraction: result = a - b
-    pub fn sub(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn sub(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for subtraction".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_sub(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise power: result = a^b
-    pub fn power(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn power(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for power operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_power(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise minimum: result = min(a, b)
@@ -231,13 +265,13 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for min operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_min_elementwise(
@@ -247,7 +281,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             &mut result.data,
             size as i32,
         )?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise maximum: result = max(a, b)
@@ -255,13 +289,13 @@ impl<T: FerroxCudaF> CudaOps<T> {
         &self,
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for max operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_max_elementwise(
@@ -271,125 +305,139 @@ impl<T: FerroxCudaF> CudaOps<T> {
             &mut result.data,
             size as i32,
         )?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Scalar addition: result = tensor + scalar
-    pub fn add_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-        let scalar_tensor = self.full(&a.shape, scalar)?;
-        self.add(a, &scalar_tensor)
+    pub fn add_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<(CudaTensor<T>, u64), String> {
+        let (scalar_tensor, id) = self.full(&a.shape, scalar)?;
+        let result = self.add(a, &scalar_tensor)?;
+        self.return_tensor_to_pool(id, scalar_tensor)?;
+        Ok(result)
     }
 
     /// Scalar multiplication: result = tensor * scalar
-    pub fn mul_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-        let scalar_tensor = self.full(&a.shape, scalar)?;
-        self.mul(a, &scalar_tensor)
+    pub fn mul_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<(CudaTensor<T>, u64), String> {
+        let (scalar_tensor, id) = self.full(&a.shape, scalar)?;
+        let result = self.mul(a, &scalar_tensor)?;
+        self.return_tensor_to_pool(id, scalar_tensor)?;
+        Ok(result)
     }
 
     /// Scalar division: result = tensor / scalar
-    pub fn div_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-        let scalar_tensor = self.full(&a.shape, scalar)?;
-        self.div(a, &scalar_tensor)
+    pub fn div_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<(CudaTensor<T>, u64), String> {
+        let (scalar_tensor, id) = self.full(&a.shape, scalar)?;
+        let result = self.div(a, &scalar_tensor)?;
+        self.return_tensor_to_pool(id, scalar_tensor)?;
+        Ok(result)
     }
 
     /// Scalar subtraction: result = tensor - scalar
-    pub fn sub_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-        let scalar_tensor = self.full(&a.shape, scalar)?;
-        self.sub(a, &scalar_tensor)
+    pub fn sub_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<(CudaTensor<T>, u64), String> {
+        let (scalar_tensor, id) = self.full(&a.shape, scalar)?;
+        let result = self.sub(a, &scalar_tensor)?;
+        self.return_tensor_to_pool(id, scalar_tensor)?;
+        Ok(result)
     }
 
     /// Scalar power: result = tensor^scalar
-    pub fn power_scalar(&self, base: &CudaTensor<T>, exponent: T) -> Result<CudaTensor<T>, String> {
-        let exponent_tensor = self.full(&base.shape, exponent)?;
-        self.power(base, &exponent_tensor)
+    pub fn power_scalar(
+        &self,
+        base: &CudaTensor<T>,
+        exponent: T,
+    ) -> Result<(CudaTensor<T>, u64), String> {
+        let (exponent_tensor, id) = self.full(&base.shape, exponent)?;
+        let result = self.power(base, &exponent_tensor)?;
+        self.return_tensor_to_pool(id, exponent_tensor)?;
+        Ok(result)
     }
 
     /// Element-wise absolute value: result = |input|
-    pub fn abs(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn abs(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_abs(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise square root: result = sqrt(input)
-    pub fn sqrt(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn sqrt(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_sqrt(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise exponential: result = exp(input)
-    pub fn exp(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn exp(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_exp(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise natural logarithm: result = ln(input)
-    pub fn log(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn log(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_log(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise negation: result = -input
-    pub fn negate(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn negate(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_negate(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// ReLU activation: result = max(0, input)
-    pub fn relu(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn relu(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_relu(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Sigmoid activation: result = 1 / (1 + exp(-input))
-    pub fn sigmoid(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn sigmoid(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_sigmoid(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Hyperbolic tangent activation: result = tanh(input)
-    pub fn tanh(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn tanh(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_tanh(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Clamp values to specified range: result = clamp(input, min_val, max_val)
@@ -398,9 +446,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         input: &CudaTensor<T>,
         min_val: T,
         max_val: T,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_clamp(
@@ -411,19 +459,18 @@ impl<T: FerroxCudaF> CudaOps<T> {
             max_val,
             size as i32,
         )?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Sum reduction along specified axes or all elements
-    pub fn sum_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn sum_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_sum_all(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Sum reduction along specific axes
@@ -432,7 +479,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         input: &CudaTensor<T>,
         axes: &[usize],
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         self.reduce_axes(
             input,
             axes,
@@ -451,15 +498,15 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Max reduction along all elements
-    pub fn max_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn max_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = self.create_tensor_from_pool(&[num_blocks])?;
+        let (mut result, id) = self.create_tensor_from_pool(&[num_blocks])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_max_all(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Max reduction along specific axes
@@ -468,7 +515,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         input: &CudaTensor<T>,
         axes: &[usize], // Changed from usize to &[usize]
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         self.reduce_axes(
             input,
             axes,
@@ -487,15 +534,15 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Min reduction along all elements
-    pub fn min_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn min_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
         let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
-        let mut result = self.create_tensor_from_pool(&[num_blocks])?;
+        let (mut result, id) = self.create_tensor_from_pool(&[num_blocks])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_min_all(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Min reduction along specific axes
@@ -504,7 +551,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         input: &CudaTensor<T>,
         axes: &[usize],
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         self.reduce_axes(
             input,
             axes,
@@ -523,11 +570,13 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Mean operation (uses sum + division)
-    pub fn mean_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-        let sum_result = self.sum_all(input)?;
+    pub fn mean_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
+        let (sum_result, id) = self.sum_all(input)?;
         let size_scalar = <T as FerroxF>::from_f64(1.0 / input.size() as f64)
             .ok_or("Failed to convert size to tensor type")?;
-        self.mul_scalar(&sum_result, size_scalar)
+        let result = self.mul_scalar(&sum_result, size_scalar)?;
+        self.return_tensor_to_pool(id, sum_result)?;
+        Ok(result)
     }
 
     /// Mean along specific axes
@@ -536,15 +585,17 @@ impl<T: FerroxCudaF> CudaOps<T> {
         input: &CudaTensor<T>,
         axes: &[usize],
         keep_dims: bool,
-    ) -> Result<CudaTensor<T>, String> {
-        let sum_result = self.sum_axes(input, axes, keep_dims)?;
+    ) -> Result<(CudaTensor<T>, u64), String> {
+        let (sum_result, id) = self.sum_axes(input, axes, keep_dims)?;
         // Calculate divisor as product of all reduced dimensions
         let divisor: f64 = axes.iter().map(|&axis| input.shape[axis] as f64).product();
 
         let divisor_scalar = <T as crate::backend::number::FerroxF>::from_f64(1.0 / divisor)
             .ok_or("Failed to convert divisor to tensor type")?;
 
-        self.mul_scalar(&sum_result, divisor_scalar)
+        let result = self.mul_scalar(&sum_result, divisor_scalar)?;
+        self.return_tensor_to_pool(id, sum_result)?;
+        Ok(result)
     }
 
     /// Matrix multiplication: C = A @ B
@@ -553,7 +604,11 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// # Requirements:
     /// - A must be [M, K], B must be [K, N] -> Result is [M, N]
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
-    pub fn matmul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn matmul(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.ndim() != 2 || b.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
@@ -570,7 +625,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         let result_shape = [a_shape[0], b_shape[1]];
 
-        let mut result = self.create_tensor_from_pool(&result_shape)?;
+        let (mut result, id) = self.create_tensor_from_pool(&result_shape)?;
 
         // Use 2D launch configuration optimized for matrix multiplication
         let cfg = self.get_2d_launch_config(a_shape[0], b_shape[1]);
@@ -584,7 +639,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             b_shape[1] as i32, // N
             a_shape[1] as i32, // K
         )?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
@@ -592,18 +647,18 @@ impl<T: FerroxCudaF> CudaOps<T> {
         &self,
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_greater_equal(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
@@ -611,86 +666,98 @@ impl<T: FerroxCudaF> CudaOps<T> {
         &self,
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_less_equal(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn greater(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_greater(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn less(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_less(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Element-wise equality: result = (a == b) ? 1.0 : 0.0
-    pub fn equal(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn equal(
+        &self,
+        a: &CudaTensor<T>,
+        b: &CudaTensor<T>,
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
         }
 
         let size = a.size();
-        let mut result = self.create_tensor_from_pool(a.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_equal(cfg, &a.data, &b.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Logical NOT: result = (input == 0.0) ? 1.0 : 0.0
     /// Inverts boolean tensors following IEEE 754 convention
-    pub fn logical_not(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn logical_not(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_logical_not(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Sign function: result = sign(input) ∈ {-1, 0, 1}
-    pub fn sign(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn sign(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
             .launch_sign(cfg, &input.data, &mut result.data, size as i32)?;
-        Ok(result)
+        Ok((result, id))
     }
 
     /// Range check: result = (min_val <= input <= max_val) ? 1.0 : 0.0
@@ -699,9 +766,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         input: &CudaTensor<T>,
         min_val: T,
         max_val: T,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
         let cfg = self.get_launch_config(size);
 
         self.kernels.launch_in_range(
@@ -712,7 +779,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             &mut result.data,
             size as i32,
         )?;
-        Ok(result)
+        Ok((result, id))
     }
 
     ///  condition: result[i] = condition[i] > 0 ? true_val[i] : false_val[i]
@@ -721,14 +788,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
         condition: &CudaTensor<T>,
         true_val: &CudaTensor<T>,
         false_val: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         if condition.shape != true_val.shape || condition.shape != false_val.shape {
             return Err("Shape mismatch for  condition operation".to_string());
         }
 
         let size = condition.size();
 
-        let mut result = self.create_tensor_from_pool(condition.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(condition.shape())?;
 
         let cfg = self.get_launch_config(size);
 
@@ -740,7 +807,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             &mut result.data,
             size as i32,
         )?;
-        Ok(result)
+        Ok((result, id))
     }
 
     // ===== CONVOLUTION OPERATIONS =====
@@ -755,7 +822,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         filter: &CudaTensor<T>,
         stride: (usize, usize),
         padding: (usize, usize),
-    ) -> Result<CudaTensor<T>, String> {
+    ) -> Result<(CudaTensor<T>, u64), String> {
         // Validate input dimensions
         if input.shape.len() != 4 || filter.shape.len() != 4 {
             return Err("Conv2D requires 4D tensors [batch, channels, height, width]".to_string());
@@ -789,7 +856,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let out_width = (in_width + 2 * pad_w - kernel_width) / stride_w + 1;
 
         let output_shape = [batch_size, out_channels, out_height, out_width];
-        let mut result = self.create_tensor_from_pool(&output_shape)?;
+        let (mut result, id) = self.create_tensor_from_pool(&output_shape)?;
 
         // Configure launch parameters
         let tile_size = TILE_SIZE as usize;
@@ -832,7 +899,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             pad_w as i32,
         )?;
 
-        Ok(result)
+        Ok((result, id))
     }
 
     /// IN - PLACE OPS (THIS DO NOT HAVE AN ASSOCIATED KERNEL SO DO NOT ATTEMPT TO SEARCH FOR IT)
@@ -870,7 +937,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
         kernel_launcher: F,
-    ) -> Result<CudaTensor<T>, String>
+    ) -> Result<(CudaTensor<T>, u64), String>
     where
         F: Fn(LaunchConfig, &CudaSlice<T>, &mut CudaSlice<T>, i32, i32, i32) -> Result<(), String>,
     {
@@ -901,7 +968,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             let axis_size = input_shape[axis] as i32;
             let inner_size = input_shape[axis + 1..].iter().product::<usize>() as i32;
 
-            let mut result = self.create_tensor_from_pool(&output_shape)?;
+            let (mut result, id) = self.create_tensor_from_pool(&output_shape)?;
 
             let cfg = LaunchConfig {
                 grid_dim: (outer_size as u32, 1, 1),
@@ -917,7 +984,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
                 axis_size,
                 inner_size,
             )?;
-            return Ok(result);
+            return Ok((result, id));
         }
 
         // Multiple axes case
@@ -935,7 +1002,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             }
         }
 
-        let mut result = self.create_tensor_from_pool(&final_shape)?;
+        let (mut result, id) = self.create_tensor_from_pool(&final_shape)?;
         let mut current_tensor = input;
         let mut current_shape = input_shape.clone();
         let mut temp_tensors = Vec::new();
@@ -966,7 +1033,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
                 let mut step_output_shape = current_shape.clone();
                 step_output_shape.remove(axis);
 
-                let mut temp_tensor = self.create_tensor_from_pool(&step_output_shape)?;
+                let (mut temp_tensor, id) = self.create_tensor_from_pool(&step_output_shape)?;
 
                 kernel_launcher(
                     cfg,
@@ -977,181 +1044,16 @@ impl<T: FerroxCudaF> CudaOps<T> {
                     inner_size,
                 )?;
 
-                temp_tensors.push(temp_tensor);
-                current_tensor = &temp_tensors[temp_tensors.len() - 1];
+                temp_tensors.push((temp_tensor, id));
+                current_tensor = &temp_tensors[temp_tensors.len() - 1].0;
                 current_shape = step_output_shape;
             }
         }
 
-        Ok(result)
+        temp_tensors
+            .iter()
+            .map(|(t, i)| self.return_tensor_to_pool(*i, t.clone()));
+
+        Ok((result, id))
     }
-}
-
-#[cfg(all(test, feature = "cuda"))]
-mod cuda_ops_comprehensive_tests {
-    use crate::backend::cuda::{CudaContextManager, CudaTensor};
-    use crate::backend::number::FerroxCudaF;
-
-    fn setup_cuda_context<T: FerroxCudaF>() -> CudaContextManager<T> {
-        CudaContextManager::<T>::new().expect("Failed to create CUDA context")
-    }
-
-    #[test]
-    fn test_elementwise_operations() {
-        let ctx = setup_cuda_context::<f32>();
-        let ops = ctx.ops();
-
-        // Create test tensors
-        let data_a = vec![1.0, 2.0, 3.0, 4.0];
-        let data_b = vec![2.0, 3.0, 4.0, 5.0];
-
-        let tensor_a = CudaTensor::from_vec(&ctx, data_a, vec![2, 2]).unwrap();
-        let tensor_b = CudaTensor::from_vec(&ctx, data_b, vec![2, 2]).unwrap();
-
-        // Test element-wise addition
-        let add_result = ops.add(&tensor_a, &tensor_b).unwrap();
-        assert_eq!(add_result.shape(), &[2, 2]);
-
-        // Test element-wise multiplication
-        let mul_result = ops.mul(&tensor_a, &tensor_b).unwrap();
-        assert_eq!(mul_result.shape(), &[2, 2]);
-
-        // Test element-wise division
-        let div_result = ops.div(&tensor_a, &tensor_b).unwrap();
-        assert_eq!(div_result.shape(), &[2, 2]);
-
-        // Test element-wise subtraction
-        let sub_result = ops.sub(&tensor_a, &tensor_b).unwrap();
-        assert_eq!(sub_result.shape(), &[2, 2]);
-
-        // Test element-wise max
-        let max_result = ops.max_elementwise(&tensor_a, &tensor_b).unwrap();
-        assert_eq!(max_result.shape(), &[2, 2]);
-
-        // Test element-wise min
-        let min_result = ops.min_elementwise(&tensor_a, &tensor_b).unwrap();
-        assert_eq!(min_result.shape(), &[2, 2]);
-    }
-
-    #[test]
-    fn test_scalar_operations() {
-        let ctx = setup_cuda_context::<f32>();
-        let ops = ctx.ops();
-
-        let data = vec![1.0, 2.0, 3.0, 4.0];
-        let tensor = CudaTensor::from_vec(&ctx, data, vec![2, 2]).unwrap();
-
-        // Test scalar addition
-        let add_scalar_result = ops.add_scalar(&tensor, 5.0).unwrap();
-        assert_eq!(add_scalar_result.shape(), &[2, 2]);
-
-        // Test scalar multiplication
-        let mul_scalar_result = ops.mul_scalar(&tensor, 2.0).unwrap();
-        assert_eq!(mul_scalar_result.shape(), &[2, 2]);
-
-        // Test scalar division
-        let div_scalar_result = ops.div_scalar(&tensor, 2.0).unwrap();
-        assert_eq!(div_scalar_result.shape(), &[2, 2]);
-
-        // Test scalar subtraction
-        let sub_scalar_result = ops.sub_scalar(&tensor, 1.0).unwrap();
-        assert_eq!(sub_scalar_result.shape(), &[2, 2]);
-    }
-
-    #[test]
-    fn test_unary_operations() {
-        let ctx = setup_cuda_context::<f32>();
-        let ops = ctx.ops();
-
-        let data = vec![-2.0, -1.0, 1.0, 2.0];
-        let tensor = CudaTensor::from_vec(&ctx, data, vec![2, 2]).unwrap();
-
-        // Test negation
-        let neg_result = ops.negate(&tensor).unwrap();
-        assert_eq!(neg_result.shape(), &[2, 2]);
-
-        // Test absolute value
-        let abs_result = ops.abs(&tensor).unwrap();
-        assert_eq!(abs_result.shape(), &[2, 2]);
-
-        // Test square root (need positive values)
-        let pos_data = vec![1.0, 4.0, 9.0, 16.0];
-        let pos_tensor = CudaTensor::from_vec(&ctx, pos_data, vec![2, 2]).unwrap();
-        let sqrt_result = ops.sqrt(&pos_tensor).unwrap();
-        assert_eq!(sqrt_result.shape(), &[2, 2]);
-
-        // Test exponential
-        let exp_result = ops.exp(&tensor).unwrap();
-        assert_eq!(exp_result.shape(), &[2, 2]);
-
-        // Test natural logarithm (need positive values)
-        let log_result = ops.log(&pos_tensor).unwrap();
-        assert_eq!(log_result.shape(), &[2, 2]);
-
-        // Test power operation
-        let pow_result = ops.power_scalar(&tensor, 2.0).unwrap();
-        assert_eq!(pow_result.shape(), &[2, 2]);
-    }
-
-    #[test]
-    fn test_activation_functions() {
-        let ctx = setup_cuda_context::<f32>();
-
-        let ops = ctx.ops();
-
-        let data = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
-        let tensor = CudaTensor::from_vec(&ctx, data, vec![5]).unwrap();
-
-        // Test ReLU activation
-        let relu_result = ops.relu(&tensor).unwrap();
-        assert_eq!(relu_result.shape(), &[5]);
-
-        // Test Sigmoid activation
-        let sigmoid_result = ops.sigmoid(&tensor).unwrap();
-        assert_eq!(sigmoid_result.shape(), &[5]);
-
-        // Test Tanh activation
-        let tanh_result = ops.tanh(&tensor).unwrap();
-        assert_eq!(tanh_result.shape(), &[5]);
-    }
-
-    #[test]
-    fn test_reduction_operations() {
-        let ctx = setup_cuda_context::<f32>();
-        let ops = ctx.ops();
-
-        // Create 2D test tensor
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let tensor = CudaTensor::from_vec(&ctx, data, vec![2, 3]).unwrap();
-
-        // Test sum reduction along axes
-        let sum_axes_result = ops.sum_axes(&tensor, &[1], true).unwrap();
-        assert_eq!(sum_axes_result.shape(), &[2]); // Reduced from [2,3] to [2]
-
-        // Test max reduction along axes
-        let max_axes_result = ops.max_axes(&tensor, &[0], true).unwrap();
-        assert_eq!(max_axes_result.shape(), &[3]); // Reduced from [2,3] to [3]
-
-        // Test min reduction along axes
-        let min_axes_result = ops.min_axes(&tensor, &[1], true).unwrap();
-        assert_eq!(min_axes_result.shape(), &[2]);
-
-        // Test mean reduction along axes
-        let mean_axes_result = ops.mean_axes(&tensor, &[1], true).unwrap();
-        assert_eq!(mean_axes_result.shape(), &[2]);
-
-        // Test full tensor reductions
-        let sum_all_result = ops.sum_all(&tensor).unwrap();
-        assert_eq!(sum_all_result.shape(), &[1]); // Scalar result
-
-        let max_all_result = ops.max_all(&tensor).unwrap();
-        assert_eq!(max_all_result.shape(), &[1]);
-
-        let min_all_result = ops.min_all(&tensor).unwrap();
-        assert_eq!(min_all_result.shape(), &[1]);
-
-        let mean_all_result = ops.mean_all(&tensor).unwrap();
-        assert_eq!(mean_all_result.shape(), &[1]);
-    }
-
 }

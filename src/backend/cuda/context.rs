@@ -2,7 +2,7 @@
 use super::kernels::{KernelManager, load_all_kernels};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
-use crate::backend::manager::{alloc_cpu_vec, alloc_cuda_slice};
+use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
 
 use crate::FerroxCudaF;
 #[allow(unused_imports)]
@@ -64,38 +64,23 @@ where
     // ============= GPU MEMORY MANAGEMENT =============
 
     /// Allocates zeroed memory on the GPU
-    pub fn alloc_zeros(&self, size: usize) -> Result<CudaSlice<T>, String>
+    pub fn alloc_zeros(&self, size: usize) -> Result<(CudaSlice<T>,u64), String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
         let alloc_result = alloc_cuda_slice::<T>(size)?;
-        Ok(alloc_result.data)
+        Ok((alloc_result.data, alloc_result.allocation_id))
     }
 
-    /// Allocates uninitialized memory on the GPU
-    pub unsafe fn alloc(&self, size: usize) -> Result<CudaSlice<T>, String>
-    where
-        T: cudarc::driver::DeviceRepr,
-    {
-        let stream = match self.stream_manager.get_stream("memset") {
-            Some(memset_stream) => memset_stream,
-            None => self.stream_manager.default_stream(),
-        };
-        alloc_cuda_slice::<T>(size)?;
-        unsafe {
-            stream
-                .alloc(size)
-                .map_err(|e| format!("Failed to allocate GPU memory: {}", e))
-        }
-    }
+
 
     pub fn stream_manager(&self) -> &StreamManager {
         &self.stream_manager
     }
 
     /// Synchronous host to device transfer
-    pub fn host_to_device(&self, data: &[T]) -> Result<CudaSlice<T>, String> {
-        let mut device_buffer = self.alloc_zeros(data.len())?;
+    pub fn host_to_device(&self, data: &[T]) -> Result<(CudaSlice<T>,u64), String> {
+        let (mut device_buffer, id) = self.alloc_zeros(data.len())?;
 
         let stream = match self.stream_manager.get_stream("copy_h2d") {
             Some(h2d_stream) => h2d_stream,
@@ -108,7 +93,7 @@ where
             .memcpy_htod(data, &mut device_buffer) // data is now &[T]
             .map_err(|e| format!("Host to device transfer failed: {}", e))?;
 
-        Ok(device_buffer)
+        Ok((device_buffer, id))
     }
 
     /// Synchronous device to host transfer
@@ -117,8 +102,7 @@ where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
         // Allocate host buffer
-        let alloc_result = alloc_cpu_vec::<T>(data.len())?;
-        let mut host_buffer = alloc_result.data;
+        let mut host_buffer = vec![T::default(); data.len()];
 
         let stream = match self.stream_manager.get_stream("copy_d2h") {
             Some(d2h_stream) => d2h_stream,
@@ -134,28 +118,6 @@ where
         Ok(host_buffer)
     }
 
-    /// Device to device memory copy
-    pub fn device_to_device(&self, src: &CudaSlice<T>, dst: &mut CudaSlice<T>) -> Result<(), String>
-    where
-        T: cudarc::driver::DeviceRepr,
-    {
-        if src.len() != dst.len() {
-            return Err(format!(
-                "Source and destination sizes don't match: {} vs {}",
-                src.len(),
-                dst.len()
-            ));
-        }
-
-        // Copy data from device to device using the correct cudarc API
-
-        self.stream_manager
-            .default_stream() // Use default stream as we cannot go async on device to device transfers.
-            .memcpy_dtod(src, dst)
-            .map_err(|e| format!("Device to device copy failed: {}", e))?;
-
-        Ok(())
-    }
 
     // ============= BACKEND INTERFACE METHODS =============
 
@@ -191,7 +153,7 @@ where
         &self,
         data: &[T],
         shape: Vec<usize>,
-    ) -> Result<CudaTensor<T>, String>
+    ) -> Result<(CudaTensor<T>,u64), String>
     where
         T: FerroxCudaF,
     {
@@ -205,9 +167,11 @@ where
             ));
         }
 
-        let cuda_data = self.host_to_device(data)?; // Pass slice reference
-        Ok(CudaTensor::new(cuda_data, shape))
+        let (cuda_data, id) = self.host_to_device(data)?; // Pass slice reference
+        Ok((CudaTensor::new(cuda_data, shape), id))
     }
+
+
 
     // ============= STREAM MANAGEMENT (DELEGATED TO STREAMMANAGER) =============
 
@@ -313,12 +277,28 @@ where
         }
     }
 
+    // Extract the underlying CudaSlice, consuming the tensor
+    // This is needed for memory pool cleanup in Drop implementations
+    pub fn into_data(self) -> CudaSlice<T> {
+        self.data
+    }
+
+    // Alternative: take ownership of the data, leaving empty slice
+    pub fn take_data(&mut self) -> CudaSlice<T> {
+        // Replace with an empty slice to avoid Default requirement
+        let empty_slice = unsafe {
+            // Create an empty CudaSlice - this is safe because we're immediately replacing it
+            std::mem::zeroed::<CudaSlice<T>>()
+        };
+        std::mem::replace(&mut self.data, empty_slice)
+    }
+
     /// Create tensor from CPU ndarray without taking ownership
     /// This allows borrowing external ndarray data for GPU transfer
     pub fn from_cpu_array(
         context_manager: &CudaContextManager<T>,
         array: &ArrayD<T>,
-    ) -> Result<Self, String> {
+    ) -> Result<(Self,u64), String> {
         let shape = array.shape().to_vec();
         let expected_size = shape.iter().product::<usize>();
 
@@ -343,8 +323,8 @@ where
         }
 
         // Transfer ndarray data to GPU - this copies the data to GPU
-        let cuda_data = context_manager.host_to_device(data_slice)?;
-        Ok(Self::new(cuda_data, shape))
+        let (cuda_data, id) = context_manager.host_to_device(data_slice)?;
+        Ok((Self::new(cuda_data, shape), id))
     }
 
     /// Create tensor from CPU ndarray asynchronously without taking ownership
@@ -408,7 +388,7 @@ where
         context_manager: &CudaContextManager<T>,
         data: Vec<T>,
         shape: Vec<usize>,
-    ) -> Result<Self, String> {
+    ) -> Result<(Self,u64), String> {
         let expected_size = shape.iter().product::<usize>();
         if data.len() != expected_size {
             return Err(format!(
@@ -419,8 +399,8 @@ where
             ));
         }
 
-        let cuda_data = context_manager.host_to_device(&data)?; // Pass slice reference
-        Ok(Self::new(cuda_data, shape))
+        let (cuda_data, id) = context_manager.host_to_device(&data)?; // Pass slice reference
+        Ok((Self::new(cuda_data, shape), id))
     }
 
     /// Create async tensor from host data
@@ -470,10 +450,10 @@ where
     pub fn alloc_init(
         context_manager: &CudaContextManager<T>,
         shape: Vec<usize>,
-    ) -> Result<Self, String> {
+    ) -> Result<(Self, u64), String> {
         let size = shape.iter().product();
-        let data = context_manager.alloc_zeros(size)?;
-        Ok(Self::new(data, shape))
+        let (data, id) = context_manager.alloc_zeros(size)?;
+        Ok((Self::new(data, shape), id))
     }
 
     // ============= TENSOR METADATA =============
@@ -494,19 +474,7 @@ where
         &self.strides
     }
 
-    /// Deep clone tensor data
-    pub fn deep_clone(&self, context_manager: &CudaContextManager<T>) -> Result<Self, String> {
-        let num_elements = self.data.len();
-        let mut new_data: CudaSlice<T> = context_manager.alloc_zeros(num_elements)?;
 
-        context_manager.device_to_device(&self.data, &mut new_data)?;
-
-        Ok(Self {
-            data: new_data,
-            shape: self.shape.clone(),
-            strides: self.strides.clone(),
-        })
-    }
 
     /// Check if tensor is contiguous
     pub fn is_contiguous(&self) -> bool {

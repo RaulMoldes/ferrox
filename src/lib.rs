@@ -14,6 +14,14 @@
 //! - High-level neural network modules
 //! - Written 100% in safe Rust
 //!
+#[cfg(feature = "jemalloc")]
+use jemallocator::Jemalloc;
+
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+#[allow(unused_imports)]
 pub mod backend;
 // Re-export commonly used types for convenience
 pub use backend::{Device, FerroxCudaF, FerroxF, cpu, default_device};

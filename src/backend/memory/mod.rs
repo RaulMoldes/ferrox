@@ -1,15 +1,11 @@
 // src/backend/memory/mod.rs
 // Memory pool abstraction that provides efficient allocation/deallocation
 // The pool reduces frequent GPU allocations which are expensive operations
-
-pub mod cpu;
 #[cfg(feature = "cuda")]
 pub mod cuda;
 
-
 use std::collections::HashMap;
 
-pub use cpu::CpuMemoryPool;
 #[cfg(feature = "cuda")]
 pub use cuda::CudaMemoryPool;
 
@@ -94,52 +90,4 @@ impl<T> PoolBucket<T> {
     pub fn return_allocation(&mut self, allocation: T) {
         self.allocations.push(allocation);
     }
-}
-
-
-#[cfg(test)]
-mod memory_pool_tests {
-    use crate::backend::memory::{CpuMemoryPool, MemoryPool};
-
-
-    #[test]
-    fn test_cpu_memory_pool_basic_operations() {
-        let mut pool = CpuMemoryPool::<f32>::new();
-
-        // Test allocation
-        let size = 1024;
-        let mut allocation = pool.allocate(size).expect("Failed to allocate memory");
-
-        // Verify allocation properties
-        assert_eq!(allocation.size, size);
-        assert!(allocation.data.len() >= size);
-
-        // Test that we can write to allocated memory
-        let data_ptr = allocation.data.as_mut_ptr();
-        unsafe {
-            *data_ptr = 42.0;
-            assert_eq!(*data_ptr, 42.0);
-        }
-    }
-
-    #[test]
-    fn test_memory_pool_multiple_allocations() {
-        let mut pool = CpuMemoryPool::<f32>::new();
-
-        // Allocate multiple blocks
-        let alloc1 = pool.allocate(512).expect("First allocation failed");
-        let alloc2 = pool.allocate(256).expect("Second allocation failed");
-        let alloc3 = pool.allocate(128).expect("Third allocation failed");
-
-        // Verify all allocations are distinct
-        assert_ne!(alloc1.data.as_ptr(), alloc2.data.as_ptr());
-        assert_ne!(alloc2.data.as_ptr(), alloc3.data.as_ptr());
-        assert_ne!(alloc1.data.as_ptr(), alloc3.data.as_ptr());
-
-        // Verify sizes
-        assert_eq!(alloc1.size, 512);
-        assert_eq!(alloc2.size, 256);
-        assert_eq!(alloc3.size, 128);
-    }
-
 }
