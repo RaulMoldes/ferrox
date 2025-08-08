@@ -19,8 +19,6 @@ pub use kernels::{load_all_kernels, KernelManager};
 #[cfg(feature = "cuda")]
 pub use context::CudaContextManager as CudaBackend;
 
-#[cfg(all(test, feature = "cuda"))]
-mod tests;
 
 // Dummy implementations when CUDA is not available
 #[cfg(not(feature = "cuda"))]

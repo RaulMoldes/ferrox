@@ -141,6 +141,10 @@ where
         Self::from_storage_backend(storage, validated_device)
     }
 
+    pub fn to_cpu(self) -> Result<Self, String> {
+        self.to_device(Device::CPU)
+    }
+
     /// Move tensor to different device
     pub fn to_device(self, target_device: Device) -> Result<Self, String> {
 
@@ -1470,7 +1474,7 @@ mod tensor_ops_tests {
     fn test_zeros_creation() {
         let tensor = Tensor::<f32>::zeros(&[2, 3]).unwrap();
         let data = tensor.into_data().unwrap();
-
+        
         assert!(data.iter().all(|&x| x == 0.0));
     }
 
@@ -1818,11 +1822,11 @@ mod tensor_ops_tests {
     fn test_all_equal_check() {
         let device = best_device::<f32>();
         let a = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2], device).unwrap();
-        let a = a.to_device(Device::CPU).expect("Move out of empty tensor not allowed");
+        let a = a.to_cpu().expect("Move out of empty tensor not allowed");
         let b = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2], device).unwrap();
-        let b = b.to_device(Device::CPU).expect("Move out of empty tensor not allowed");
+        let b = b.to_cpu().expect("Move out of empty tensor not allowed");
         let c = Tensor::from_vec_with_device(vec![1.0f32, 3.0], &[2], device).unwrap();
-        let c = c.to_device(Device::CPU).expect("Move out of empty tensor not allowed");
+        let c = c.to_cpu().expect("Move out of empty tensor not allowed");
 
         assert!(a.all_equal(&b).unwrap()); // Same tensors
         assert!(!a.all_equal(&c).unwrap()); // Different tensors

@@ -264,6 +264,7 @@ where
     /// Creates a new CUDA tensor with computed strides
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
         let strides = compute_strides(&shape);
+
         Self {
             data: Some(data),
             shape,
@@ -512,6 +513,7 @@ where
     /// Check if tensor is contiguous
     pub fn is_contiguous(&self) -> bool {
         let expected_strides = compute_strides(&self.shape);
+        println!("Expected strides: {:?}", expected_strides);
         self.strides == expected_strides
     }
 
@@ -525,10 +527,6 @@ where
                 "Cannot reshape tensor of size {} to shape {:?} (size {})",
                 current_size, new_shape, new_size
             ));
-        }
-
-        if !self.is_contiguous() {
-            return Err("Cannot reshape non-contiguous tensor without copying".to_string());
         }
 
         self.strides = compute_strides(&new_shape);

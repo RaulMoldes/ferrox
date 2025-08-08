@@ -4,8 +4,9 @@ use std::fs::File;
 use std::io::Write as IoWrite;
 use std::process::Command;
 
-use super::engine::Engine;
-use super::node::{Node, NodeId};
+use super::engine::AutoFerroxEngine;
+use crate::ops::Operator;
+use super::engine::{Node, NodeId};
 use crate::backend::number::FerroxCudaF;
 
 /// Graph visualization module for the computational graph engine
@@ -57,7 +58,7 @@ impl GraphVisualizer {
     }
 
     /// Generate DOT format representation of the computational graph
-    pub fn to_dot<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> String
+    pub fn to_dot<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> String
     where
         T: FerroxCudaF
             + Clone
@@ -77,7 +78,7 @@ impl GraphVisualizer {
 
         // Add nodes
         for &node_id in &relevant_nodes {
-            let node = engine.nodes[&node_id].borrow();
+            let node = engine.get_node(&node_id);
             let label = self.create_node_label(engine, node_id, &node);
             let color = self.get_node_color(&node);
 
@@ -90,7 +91,7 @@ impl GraphVisualizer {
 
         // Add edges
         for &node_id in &relevant_nodes {
-            let node = engine.nodes[&node_id].borrow();
+            let node = engine.get_node(&node_id);
             for &input_id in &node.inputs {
                 writeln!(dot, "    {input_id} -> {node_id};").unwrap();
             }
@@ -101,7 +102,7 @@ impl GraphVisualizer {
     }
 
     /// Find all nodes that are relevant to the given output nodes
-    fn find_relevant_nodes<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId]) -> Vec<NodeId>
+    fn find_relevant_nodes<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> Vec<NodeId>
     where
         T: FerroxCudaF,
     {
@@ -119,7 +120,7 @@ impl GraphVisualizer {
     #[allow(clippy::only_used_in_recursion)]
     fn collect_nodes_dfs<T>(
         &self,
-        engine: &Engine<T>,
+        engine: &AutoFerroxEngine<T>,
         node_id: NodeId,
         visited: &mut HashSet<NodeId>,
         relevant: &mut Vec<NodeId>,
@@ -133,21 +134,21 @@ impl GraphVisualizer {
         visited.insert(node_id);
         relevant.push(node_id);
 
-        let node = engine.nodes[&node_id].borrow();
+        let node = engine.get_node(&node_id);
         for &input_id in &node.inputs {
             self.collect_nodes_dfs(engine, input_id, visited, relevant);
         }
     }
 
     /// Create a descriptive label for a node
-    fn create_node_label<T>(&self, engine: &Engine<T>, node_id: NodeId, node: &Node<T>) -> String
+    fn create_node_label<T>(&self, engine: &AutoFerroxEngine<T>, node_id: NodeId, node: &Node<T>) -> String
     where
         T: FerroxCudaF,
     {
         let mut label = String::new();
 
         // Node ID and type
-        if let Some(ref op) = node.op {
+        if let Some(ref op) = node {
             write!(label, "{}\\n{}", node_id, self.get_op_name(op.as_ref())).unwrap();
         } else {
             write!(label, "{node_id}\\nTensor").unwrap();
@@ -193,7 +194,7 @@ impl GraphVisualizer {
     }
 
     /// Get a human-readable name for an operation
-    fn get_op_name<T>(&self, op: &dyn super::op::Operator<T>) -> String
+    fn get_op_name<T>(&self, op: &dyn Operator<T>) -> String
     where
         T: FerroxCudaF,
     {
@@ -204,7 +205,7 @@ impl GraphVisualizer {
     /// Save the graph as a DOT file
     pub fn save_dot<T>(
         &self,
-        engine: &Engine<T>,
+        engine: &AutoFerroxEngine<T>,
         output_nodes: &[NodeId],
         filename: &str,
     ) -> Result<(), std::io::Error>
@@ -225,7 +226,7 @@ impl GraphVisualizer {
     /// Generate and save the graph as an image (requires Graphviz)
     pub fn save_image<T>(
         &self,
-        engine: &Engine<T>,
+        engine: &AutoFerroxEngine<T>,
         output_nodes: &[NodeId],
         filename: &str,
         format: &str,
@@ -269,7 +270,7 @@ impl GraphVisualizer {
     }
 
     /// Print the graph to console (simple text representation)
-    pub fn print_graph<T>(&self, engine: &Engine<T>, output_nodes: &[NodeId])
+    pub fn print_graph<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId])
     where
         T: FerroxCudaF
             + Clone
@@ -330,7 +331,7 @@ where
     -> Result<(), std::io::Error>;
 }
 
-impl<T> EngineVisualization<T> for Engine<T>
+impl<T> EngineVisualization<T> for AutoFerroxEngine<T>
 where
     T: FerroxCudaF
         + Clone

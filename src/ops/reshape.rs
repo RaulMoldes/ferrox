@@ -36,6 +36,8 @@ where
         // For reshape: gradient just needs to be reshaped back to input shape
         let input_shape = inputs[0].shape();
 
+        println!("Initial shape: {:?}", input_shape);
+
         grad_output.reshape(input_shape)?;
 
         Ok(vec![grad_output])

@@ -176,6 +176,15 @@ where
         }
     }
 
+   pub fn get_node(&self, node_id: &NodeId) -> &Node<T> {
+
+           if let Some(node) = self.nodes.get(node_id){
+                        &node
+           }else{
+            panic!("Node not found!")
+           }
+   }
+
     pub fn set_evaluation_mode(&mut self, mode: EvaluationMode) {
         self.evaluation_mode = mode;
     }
@@ -206,9 +215,6 @@ where
         id
     }
 
-    pub fn get_node(&self, node_id: NodeId) -> Option<&Node<T>> {
-        self.nodes.get(&node_id)
-    }
 
     pub fn get_gradient(&self, node_id: NodeId) -> Option<&Tensor<T>> {
         self.gradients.get(&node_id)

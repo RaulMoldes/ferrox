@@ -475,7 +475,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Sum reduction along specified axes or all elements
     pub fn sum_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
+        let (mut result, id) = self.create_tensor_from_pool(&[])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -510,8 +510,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Max reduction along all elements
     pub fn max_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let num_blocks = size.div_ceil(BLOCK_SIZE as usize);
-        let (mut result, id) = self.create_tensor_from_pool(&[num_blocks])?;
+        let (mut result, id) = self.create_tensor_from_pool(&[])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
@@ -546,8 +545,8 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Min reduction along all elements
     pub fn min_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let num_blocks = size.div_ceil(BLOCK_SIZE as usize);
-        let (mut result, id) = self.create_tensor_from_pool(&[num_blocks])?;
+
+        let (mut result, id) = self.create_tensor_from_pool(&[])?;
         let cfg = self.get_launch_config(size);
 
         self.kernels
