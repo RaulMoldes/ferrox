@@ -292,7 +292,7 @@ impl<T: FerroxCudaF> BackendManager<T> {
                             gpu_storage.cuda_data.to_vec(ctx)
                         })?;
 
-              
+
 
                         let cpu_array = ArrayD::from_shape_vec(
                             ndarray::IxDyn(gpu_storage.cuda_data.shape()),
