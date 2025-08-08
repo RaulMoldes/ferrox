@@ -208,6 +208,7 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
         allocation_id: u64,
         slice: Option<CudaSlice<T>>, // None for deallocate-only, Some(slice) for return_to_pool
     ) -> Result<(), String> {
+        println!("Active allocations: {:?}", self.active_allocations);
         if let Some(bucket_idx) = self.active_allocations.remove(&allocation_id) {
             self.stats.active_allocations -= 1;
 

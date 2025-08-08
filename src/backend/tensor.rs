@@ -154,6 +154,8 @@ where
             storage: Some(new_storage),
         })
     }
+
+
 }
 
 // Main implementation block with basic operations
@@ -280,18 +282,27 @@ where
     // Get CPU data reference
     /// This is be the main way to access tensor data
     pub fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
+        self.to_device(Device::CPU
+        )?;
+
         self.storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?
             .cpu_data()
+
     }
 
     /// Get mutable CPU data
     pub fn cpu_data_mut(&mut self) -> Result<&mut ArrayD<T>, String> {
+        self.to_device(Device::CPU
+        )?;
+
+
         self.storage
             .as_mut()
             .ok_or("Tensor has no storage backend")?
             .cpu_data_mut()
+
     }
 
     /// Check if tensor owns its data
@@ -1425,7 +1436,7 @@ mod tensor_ops_tests {
     #[test]
     fn test_zeros_creation() {
         let tensor = Tensor::<f32>::zeros(&[2, 3]).unwrap();
-        let data = tensor.cpu_data().unwrap();
+        let data = tensor.into_data().unwrap();
 
         assert!(data.iter().all(|&x| x == 0.0));
     }
@@ -1433,7 +1444,7 @@ mod tensor_ops_tests {
     #[test]
     fn test_ones_creation() {
         let tensor = Tensor::<f32>::ones(&[2, 2]).unwrap();
-        let data = tensor.cpu_data().unwrap();
+        let data = tensor.into_data().unwrap();
 
         assert!(data.iter().all(|&x| x == 1.0));
     }
@@ -1441,7 +1452,8 @@ mod tensor_ops_tests {
     #[test]
     fn test_fill_creation() {
         let tensor = Tensor::full(&[2, 2], 5.0f32).unwrap();
-        let data = tensor.cpu_data().unwrap();
+        let data = tensor.into_data().unwrap();
+
 
         assert!(data.iter().all(|&x| x == 5.0));
     }

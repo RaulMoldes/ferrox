@@ -463,7 +463,19 @@ where
     /// Get tensor data as vector (alias for to_cpu)
     pub fn to_vec(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
         if let Some(ref data) = self.data {
-            context_manager.device_to_host(data)
+            let mut full_data = context_manager.device_to_host(data)?;
+            let expected_size = self.size(); // This is shape.iter().product()
+            if full_data.len() > expected_size {
+                // Memory pool returned larger slice - truncate to logical size
+                full_data.truncate(expected_size);
+            } else if full_data.len() < expected_size {
+                return Err(format!(
+                    "CudaSlice has {} elements but tensor expects {} - memory corruption!",
+                    full_data.len(), expected_size
+                ));
+            }
+
+            Ok(full_data)
         } else {
             Err("Cannot move from out of an empty cuda tensor".to_string())
         }

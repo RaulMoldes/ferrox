@@ -292,6 +292,8 @@ impl<T: FerroxCudaF> BackendManager<T> {
                             gpu_storage.cuda_data.to_vec(ctx)
                         })?;
 
+              
+
                         let cpu_array = ArrayD::from_shape_vec(
                             ndarray::IxDyn(gpu_storage.cuda_data.shape()),
                             host_data,
@@ -436,4 +438,439 @@ pub fn return_cuda_slice<T: FerroxCudaF>(
     slice: CudaSlice<T>,
 ) -> Result<(), String> {
     with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.return_to_pool(allocation_id, slice))
+}
+
+
+#[cfg(test)]
+mod backend_manager_tests {
+    use super::*;
+    use crate::backend::{get_backend, Device, FerroxCudaF};
+    use crate::backend::storage::StorageBackend;
+    use ndarray::{Array1, ArrayD};
+
+    // Test basic backend initialization for both f32 and f64
+    #[test]
+    fn test_backend_initialization() {
+        let f32_backend = get_backend::<f32>();
+        let f64_backend = get_backend::<f64>();
+
+        // Both backends should be available
+        assert!(f32_backend as *const _ != std::ptr::null());
+        assert!(f64_backend as *const _ != std::ptr::null());
+
+        println!("F32 backend has CUDA: {}", f32_backend.has_cuda());
+        println!("F64 backend has CUDA: {}", f64_backend.has_cuda());
+    }
+
+    // Test that when CUDA feature is enabled, default device is CUDA
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_cuda_feature_default_backend() {
+        let f32_backend = get_backend::<f32>();
+        let f64_backend = get_backend::<f64>();
+
+        // With CUDA feature enabled, backends should prefer CUDA if available
+        let f32_best = f32_backend.best_device();
+        let f64_best = f64_backend.best_device();
+
+        if f32_backend.has_cuda() {
+            assert!(matches!(f32_best, Device::CUDA(_)),
+                "F32 backend should default to CUDA when available, got: {:?}", f32_best);
+        }
+
+        if f64_backend.has_cuda() {
+            assert!(matches!(f64_best, Device::CUDA(_)),
+                "F64 backend should default to CUDA when available, got: {:?}", f64_best);
+        }
+
+        println!("F32 best device: {:?}", f32_best);
+        println!("F64 best device: {:?}", f64_best);
+    }
+
+    // Test that without CUDA feature, default device is CPU
+    #[cfg(not(feature = "cuda"))]
+    #[test]
+    fn test_no_cuda_feature_default_backend() {
+        let f32_backend = get_backend::<f32>();
+        let f64_backend = get_backend::<f64>();
+
+        // Without CUDA feature, should always be CPU
+        assert!(!f32_backend.has_cuda(), "F32 backend should not have CUDA");
+        assert!(!f64_backend.has_cuda(), "F64 backend should not have CUDA");
+
+        let f32_best = f32_backend.best_device();
+        let f64_best = f64_backend.best_device();
+
+        assert!(matches!(f32_best, Device::CPU),
+            "F32 backend should default to CPU without CUDA feature");
+        assert!(matches!(f64_best, Device::CPU),
+            "F64 backend should default to CPU without CUDA feature");
+    }
+
+    // Test CPU to GPU data movement with proper synchronization
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_cpu_to_gpu_movement() {
+        let backend = get_backend::<f32>();
+
+        // Skip test if CUDA not available
+        if !backend.has_cuda() {
+            println!("Skipping CPU->GPU test: CUDA not available");
+            return;
+        }
+
+        // Synchronize CUDA context before test to ensure clean state
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize CUDA before test");
+        }
+
+        // Create test data on CPU
+        let test_data = Array1::from_vec(vec![1.0f32, 2.0, 3.0, 4.0, 5.0]);
+        let array_data = test_data.into_dyn();
+
+        // Create CPU storage first
+        let (cpu_device, cpu_storage) = backend
+            .create_storage_from_data(&array_data, Device::CPU)
+            .expect("Failed to create CPU storage");
+
+        assert!(matches!(cpu_device, Device::CPU));
+        assert!(!cpu_storage.is_gpu(), "CPU storage should not be on GPU");
+
+        // Move to GPU
+        let (gpu_device, gpu_storage) = backend
+            .move_storage(cpu_storage, Device::CUDA(0))
+            .expect("Failed to move storage from CPU to GPU");
+
+        assert!(matches!(gpu_device, Device::CUDA(_)), "Should be on GPU device");
+        assert!(gpu_storage.is_gpu(), "GPU storage should be on GPU");
+
+        // Synchronize after GPU operations to ensure completion
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize CUDA after GPU operations");
+        }
+
+        println!("Successfully moved data from CPU to GPU");
+        println!("Original shape: {:?}", array_data.shape());
+        println!("GPU storage shape: {:?}", gpu_storage.shape());
+        assert_eq!(array_data.shape(), gpu_storage.shape(), "Shapes should match after movement");
+    }
+
+    // Test GPU to CPU data movement with proper synchronization
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_gpu_to_cpu_movement() {
+        let backend = get_backend::<f32>();
+
+        // Skip test if CUDA not available
+        if !backend.has_cuda() {
+            println!("Skipping GPU->CPU test: CUDA not available");
+            return;
+        }
+
+        // Synchronize CUDA context before test
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize CUDA before test");
+        }
+
+        // Create test data and move to GPU first
+        let test_data = Array1::from_vec(vec![10.0f32, 20.0, 30.0, 40.0]);
+        let array_data = test_data.into_dyn();
+
+        let (_, gpu_storage) = backend
+            .create_storage_from_data(&array_data, Device::CUDA(0))
+            .expect("Failed to create GPU storage");
+
+        assert!(gpu_storage.is_gpu(), "Storage should be on GPU");
+
+        // Synchronize after GPU creation
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize after GPU creation");
+        }
+
+        // Move back to CPU
+        let (cpu_device, cpu_storage) = backend
+            .move_storage(gpu_storage, Device::CPU)
+            .expect("Failed to move storage from GPU to CPU");
+
+        assert!(matches!(cpu_device, Device::CPU));
+        assert!(!cpu_storage.is_gpu(), "CPU storage should not be on GPU");
+
+        // Synchronize after CPU transfer
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize after CPU transfer");
+        }
+
+        // Verify data integrity
+        let cpu_data = cpu_storage.cpu_data()
+            .expect("Failed to get CPU data");
+
+        assert_eq!(cpu_data.shape(), array_data.shape(), "Shapes should match");
+
+        // Check data values are preserved
+        for (original, retrieved) in array_data.iter().zip(cpu_data.iter()) {
+            assert!((original - retrieved).abs() < 1e-6,
+                "Data values should be preserved: {} != {}", original, retrieved);
+        }
+
+        println!("Successfully moved data from GPU back to CPU with data integrity");
+    }
+
+    // Test round-trip CPU -> GPU -> CPU movement with synchronization
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_roundtrip_cpu_gpu_cpu_movement() {
+        let backend = get_backend::<f32>();
+
+        if !backend.has_cuda() {
+            println!("Skipping round-trip test: CUDA not available");
+            return;
+        }
+
+        // Synchronize before starting
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize CUDA before test");
+        }
+
+        // Original test data
+        let original_data = Array1::from_vec(vec![1.5f32, -2.7, std::f32::consts::PI, 0.0, -100.25]);
+        let original_array = original_data.clone().into_dyn();
+        let original_shape = original_array.shape();
+        println!("Original shape {:?}", original_shape);
+        // CPU -> GPU -> CPU round trip
+        let (_, cpu_storage1) = backend
+            .create_storage_from_data(&original_array, Device::CPU)
+            .expect("Failed to create initial CPU storage");
+
+        let (_, gpu_storage) = backend
+            .move_storage(cpu_storage1, Device::CUDA(0))
+            .expect("Failed to move CPU->GPU");
+
+        // Synchronize after CPU->GPU transfer
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize after CPU->GPU");
+        }
+
+        let (_, cpu_storage2) = backend
+            .move_storage(gpu_storage, Device::CPU)
+            .expect("Failed to move GPU->CPU");
+
+        // Final synchronization
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize after GPU->CPU");
+        }
+
+        // Verify final data matches original
+        let final_data = cpu_storage2.cpu_data()
+            .expect("Failed to get final CPU data");
+
+        assert_eq!(final_data.shape(), original_array.shape(),
+            "Final shape should match original");
+
+        for (original, final_val) in original_array.iter().zip(final_data.iter()) {
+            assert!((original - final_val).abs() < 1e-6,
+                "Round-trip should preserve data: {} != {}", original, final_val);
+        }
+
+        println!("Round-trip CPU->GPU->CPU movement successful with data integrity");
+    }
+
+    // Test device validation
+    #[test]
+    fn test_device_validation() {
+        let backend = get_backend::<f32>();
+
+        // CPU should always be valid
+        let cpu_result = backend.validate_device(Device::CPU);
+        assert!(cpu_result.is_ok(), "CPU device should always be valid");
+
+        #[cfg(feature = "cuda")]
+        {
+            let cuda_result = backend.validate_device(Device::CUDA(0));
+            if backend.has_cuda() {
+                assert!(cuda_result.is_ok(), "CUDA device should be valid when available");
+            } else {
+                assert!(cuda_result.is_err(), "CUDA device should be invalid when not available");
+            }
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            // Without CUDA feature, CUDA devices should be rejected at compile time
+            // This test just ensures CPU works
+            assert!(matches!(backend.best_device(), Device::CPU));
+        }
+    }
+
+    // Test storage creation on different devices
+    #[test]
+    fn test_storage_creation_different_devices() {
+        let backend = get_backend::<f32>();
+        let test_shape = &[2, 3];
+
+        // CPU storage should always work
+        let cpu_result = backend.create_storage(test_shape, Device::CPU);
+        assert!(cpu_result.is_ok(), "CPU storage creation should work");
+
+        let (cpu_device, cpu_storage) = cpu_result.unwrap();
+        assert!(matches!(cpu_device, Device::CPU));
+        assert_eq!(cpu_storage.shape(), test_shape);
+
+        #[cfg(feature = "cuda")]
+        {
+            if backend.has_cuda() {
+                let gpu_result = backend.create_storage(test_shape, Device::CUDA(0));
+                assert!(gpu_result.is_ok(), "GPU storage creation should work when CUDA available");
+
+                let (gpu_device, gpu_storage) = gpu_result.unwrap();
+                assert!(matches!(gpu_device, Device::CUDA(_)));
+                assert_eq!(gpu_storage.shape(), test_shape);
+                assert!(gpu_storage.is_gpu(), "GPU storage should report as GPU");
+            }
+        }
+    }
+
+    // Test auto device selection
+    #[test]
+    fn test_auto_device_selection() {
+        let backend = get_backend::<f32>();
+        let test_shape = &[3, 3];
+
+        let auto_result = backend.create_storage_auto(test_shape);
+        assert!(auto_result.is_ok(), "Auto storage creation should work");
+
+        let (selected_device, storage) = auto_result.unwrap();
+
+        #[cfg(feature = "cuda")]
+        {
+            if backend.has_cuda() {
+                assert!(matches!(selected_device, Device::CUDA(_)),
+                    "Auto selection should prefer CUDA when available");
+                assert!(storage.is_gpu(), "Auto-selected storage should be on GPU when CUDA available");
+            } else {
+                assert!(matches!(selected_device, Device::CPU),
+                    "Auto selection should use CPU when CUDA unavailable");
+                assert!(!storage.is_gpu(), "Auto-selected storage should be on CPU when CUDA unavailable");
+            }
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            assert!(matches!(selected_device, Device::CPU),
+                "Auto selection should always use CPU without CUDA feature");
+            assert!(!storage.is_gpu(), "Storage should be on CPU without CUDA feature");
+        }
+
+        println!("Auto-selected device: {:?}", selected_device);
+        println!("Storage is on GPU: {}", storage.is_gpu());
+    }
+
+    // Test backend manager is consistent across calls
+    #[test]
+    fn test_backend_consistency() {
+        let backend1 = get_backend::<f32>();
+        let backend2 = get_backend::<f32>();
+
+        // Should be same instance (static singleton)
+        assert_eq!(backend1 as *const _, backend2 as *const _,
+            "Backend manager should be singleton");
+
+        // Should have consistent CUDA availability
+        assert_eq!(backend1.has_cuda(), backend2.has_cuda(),
+            "CUDA availability should be consistent");
+
+        assert_eq!(format!("{:?}", backend1.best_device()),
+                   format!("{:?}", backend2.best_device()),
+            "Best device should be consistent");
+    }
+
+    // Test large data movement to verify memory management with synchronization
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_large_data_movement() {
+        let backend = get_backend::<f32>();
+
+        if !backend.has_cuda() {
+            println!("Skipping large data test: CUDA not available");
+            return;
+        }
+
+        // Synchronize before test
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize before large data test");
+        }
+
+        // Create larger test data (1MB of f32s)
+        let large_size = 262144; // 1MB / 4 bytes
+        let large_data: Vec<f32> = (0..large_size).map(|i| i as f32 * 0.1).collect();
+        let large_array = ArrayD::from_shape_vec(vec![large_size], large_data.clone())
+            .expect("Failed to create large array");
+
+        // Test CPU -> GPU movement with large data
+        let (_, cpu_storage) = backend
+            .create_storage_from_data(&large_array, Device::CPU)
+            .expect("Failed to create large CPU storage");
+
+        let (_, gpu_storage) = backend
+            .move_storage(cpu_storage, Device::CUDA(0))
+            .expect("Failed to move large data to GPU");
+
+        // Synchronize after GPU transfer
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize after large GPU transfer");
+        }
+
+        let (_, final_cpu_storage) = backend
+            .move_storage(gpu_storage, Device::CPU)
+            .expect("Failed to move large data back to CPU");
+
+        // Final synchronization
+        if let Some(cuda_backend) = backend.cuda_backend() {
+            cuda_backend.synchronize().expect("Failed to synchronize after large CPU transfer");
+        }
+
+        // Verify data integrity on a sample of values
+        let final_data = final_cpu_storage.cpu_data()
+            .expect("Failed to get final large CPU data");
+
+        // Check first, middle, and last values
+        let indices = [0, large_size / 2, large_size - 1];
+        for &i in &indices {
+            let expected = large_data[i];
+            let actual = final_data[[i]];
+            assert!((expected - actual).abs() < 1e-5,
+                "Large data value mismatch at index {}: {} != {}", i, expected, actual);
+        }
+
+        println!("Successfully moved large data ({} elements) with integrity", large_size);
+    }
+
+    // Test multiple dtype support
+    #[test]
+    fn test_multiple_dtypes() {
+        let f32_backend = get_backend::<f32>();
+        let f64_backend = get_backend::<f64>();
+
+        // Both should work with their respective types
+        let f32_shape = &[2, 2];
+        let f64_shape = &[3, 3];
+
+        let f32_result = f32_backend.create_storage_auto(f32_shape);
+        let f64_result = f64_backend.create_storage_auto(f64_shape);
+
+        assert!(f32_result.is_ok(), "F32 backend should work");
+        assert!(f64_result.is_ok(), "F64 backend should work");
+
+        let (f32_device, f32_storage) = f32_result.unwrap();
+        let (f64_device, f64_storage) = f64_result.unwrap();
+
+        assert_eq!(f32_storage.shape(), f32_shape);
+        assert_eq!(f64_storage.shape(), f64_shape);
+
+        println!("F32 backend device: {:?}", f32_device);
+        println!("F64 backend device: {:?}", f64_device);
+
+        // Both should have same CUDA availability
+        assert_eq!(f32_backend.has_cuda(), f64_backend.has_cuda(),
+            "Both dtypes should have same CUDA availability");
+    }
 }
