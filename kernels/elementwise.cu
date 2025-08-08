@@ -59,6 +59,39 @@ extern "C" __global__ void elementwise_div(const float* a, const float* b, float
     }
 }
 
+
+extern "C" __global__ void elementwise_reciprocal(const float* a, float* c, int size) {
+    int idx = get_global_idx();
+
+    if (idx < size) {
+        // Check for division by zero
+        if (a[idx] != 0.0f) {
+            c[idx] = 1.0f / a[idx];
+        }
+        else {
+            // Handle division by zero - set to infinity
+            c[idx] = INFINITY;
+        }
+    }
+}
+
+
+
+extern "C" __global__ void elementwise_reciprocal_f64(const double* a, double* c, int size) {
+    int idx = get_global_idx();
+
+    if (idx < size) {
+        // Check for division by zero
+        if (a[idx] != 0.0) {
+            c[idx] = 1.0 / a[idx];
+        }
+        else {
+            // Handle division by zero - set to infinity
+            c[idx] = INFINITY;
+        }
+    }
+}
+
 // TESTED
 extern "C" __global__ void elementwise_exp(const float* input, float* output, int size) {
     int idx = get_global_idx();

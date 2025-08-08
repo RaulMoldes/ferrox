@@ -51,6 +51,18 @@ extern "C" __global__ void greater_equal(
 }
 
 
+extern "C" __global__ void greater_equal_scalar(
+    const float* a,
+    const float scalar,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] >= scalar) ? 1.0f : 0.0f;
+    }
+}
+
 extern "C" __global__ void greater(
     const float* a,
     const float* b,
@@ -60,6 +72,18 @@ extern "C" __global__ void greater(
     int idx = get_global_idx();
     if (idx < size) {
         result[idx] = (a[idx] > b[idx]) ? 1.0f : 0.0f;
+    }
+}
+
+extern "C" __global__ void greater_scalar(
+    const float* a,
+    const float scalar,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] > scalar) ? 1.0f : 0.0f;
     }
 }
 
@@ -88,27 +112,53 @@ extern "C" __global__ void greater_f64(
     }
 }
 
-extern "C" __global__ void less_equal(
-    const float* a,
-    const float* b,
-    float* result,
-    int size
-) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        result[idx] = (a[idx] <= b[idx]) ? 1.0f : 0.0f;
-    }
-}
 
-extern "C" __global__ void less_equal_f64(
+extern "C" __global__ void greater_equal_scalar_f64(
     const double* a,
-    const double* b,
+    const double scalar,
     double* result,
     int size
 ) {
     int idx = get_global_idx();
     if (idx < size) {
-        result[idx] = (a[idx] <= b[idx]) ? 1.0 : 0.0;
+        result[idx] = (a[idx] >= scalar) ? 1.0 : 0.0;
+    }
+}
+
+
+extern "C" __global__ void greater_scalar_f64(
+    const double* a,
+    const double scalar,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] > scalar) ? 1.0 : 0.0;
+    }
+}
+
+extern "C" __global__ void less_equal_scalar(
+    const float* a,
+    const float scalar,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] <= scalar) ? 1.0f : 0.0f;
+    }
+}
+
+extern "C" __global__ void less_equal_scalar_f64(
+    const double* a,
+    const double scalar,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] <= scalar) ? 1.0 : 0.0;
     }
 }
 
@@ -135,6 +185,31 @@ extern "C" __global__ void less_f64(
     int idx = get_global_idx();
     if (idx < size) {
         result[idx] = (a[idx] < b[idx]) ? 1.0 : 0.0;
+    }
+}
+
+
+extern "C" __global__ void less_scalar(
+    const float* a,
+    const float scalar,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] < scalar) ? 1.0f : 0.0f;
+    }
+}
+
+extern "C" __global__ void less_scalar_f64(
+    const double* a,
+    const double scalar,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] < scalar) ? 1.0 : 0.0;
     }
 }
 
