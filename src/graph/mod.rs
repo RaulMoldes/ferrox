@@ -1,9 +1,9 @@
 pub mod graphviz;
 
-#[allow(unused_imports)]
-use graphviz::EngineVisualization;
 use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
+#[allow(unused_imports)]
+pub use graphviz::EngineVisualization;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -117,13 +117,12 @@ where
     }
 
     pub fn get_op(&self) -> Option<&dyn Operator<T>> {
-    match &self.state {
-        NodeState::Leaf(_) => None,
-        NodeState::Pending { op, .. } => Some(op.as_ref()),
-        NodeState::Evaluated { op, .. } => op.as_ref().map(|operation| operation.as_ref()),
+        match &self.state {
+            NodeState::Leaf(_) => None,
+            NodeState::Pending { op, .. } => Some(op.as_ref()),
+            NodeState::Evaluated { op, .. } => op.as_ref().map(|operation| operation.as_ref()),
+        }
     }
-}
-
 
     pub fn get_inputs(&self) -> Option<&Vec<NodeId>> {
         match &self.state {
@@ -553,8 +552,6 @@ where
         self.gradients.clear();
     }
 }
-
-
 
 #[cfg(test)]
 mod graph_tests {

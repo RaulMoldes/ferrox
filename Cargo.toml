@@ -25,7 +25,9 @@ all = ["cpu", "cuda"]
 [dev-dependencies]
 approx = "0.5"
 
-
+[[example]]
+name = "graph_visualization"
+path = "examples/graph_visualization.rs"
 
 [lib]
 doctest = true

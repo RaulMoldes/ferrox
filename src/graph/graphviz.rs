@@ -57,15 +57,24 @@ impl GraphVisualizer {
         Self { config }
     }
 
+    fn escape_for_dot(input: &str) -> String {
+        input
+            .replace('(', "\\(")      // Fix the main issue - parentheses
+            .replace(')', "\\)")
+            .replace('[', "\\[")      // Fix brackets
+            .replace(']', "\\]")
+            .replace('{', "\\{")      // Fix braces
+            .replace('}', "\\}")
+            .replace('<', "\\<")      // Fix angle brackets (like Add<f32>)
+            .replace('>', "\\>")
+            .replace('"', "\\\"")     // Fix quotes
+            .replace('|', "\\|")      // Fix pipes
+    }
+
     /// Generate DOT format representation of the computational graph
-    pub fn to_dot<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> String
+   pub fn to_dot<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> String
     where
-        T: FerroxCudaF
-            + Clone
-            + std::fmt::Debug
-            + ndarray::LinalgScalar
-            + ndarray::ScalarOperand
-            + rand_distr::num_traits::FromPrimitive,
+        T: FerroxCudaF,
     {
         let mut dot = String::new();
         writeln!(dot, "digraph ComputationalGraph {{").unwrap();
@@ -76,26 +85,28 @@ impl GraphVisualizer {
         // Find all nodes in the subgraph
         let relevant_nodes = self.find_relevant_nodes(engine, output_nodes);
 
-        // Add nodes
+        // Add nodes with clean IDs and escaped labels
         for &node_id in &relevant_nodes {
             let node = engine.get_node(&node_id);
             let label = self.create_node_label(engine, node_id, node);
             let color = self.get_node_color(node);
 
+            // Use just the numeric ID, not NodeId(...)
             writeln!(
                 dot,
-                "    {node_id} [label=\"{label}\", fillcolor=\"{color}\"];"
+                "    {} [label=\"{}\", fillcolor=\"{}\"];",
+                node_id.0, label, color
             )
             .unwrap();
         }
 
-        // Add edges
+        // Add edges with clean IDs
         for &node_id in &relevant_nodes {
             let node = engine.get_node(&node_id);
 
             if let Some(inputs) = node.get_inputs() {
                 for &input_id in inputs {
-                    writeln!(dot, "    {input_id} -> {node_id};").unwrap();
+                    writeln!(dot, "    {} -> {};", input_id.0, node_id.0).unwrap();
                 }
             }
         }
@@ -163,36 +174,46 @@ impl GraphVisualizer {
 
         // Node ID and type
         if let Some(op) = node.get_op() {
-            write!(label, "{}\\n{}", node_id, self.get_op_name(op)).unwrap();
+            let op_name = self.get_op_name(op);
+            // Clean up operator names like "Add<f32>" -> "Add"
+            let clean_op_name = op_name.split('<').next().unwrap_or(&op_name);
+            write!(label, "{}\\n{}", node_id.0, clean_op_name).unwrap();
         } else {
-            write!(label, "{node_id}\\nTensor").unwrap();
+            write!(label, "{}\\nTensor", node_id.0).unwrap();
         }
 
-        // Shape information
+        // Shape information - clean format
         if self.config.show_shapes {
-            let shape = node.get_tensor().expect("No data found for tensor").shape();
-            write!(label, "\\nShape: {shape:?}").unwrap();
+            if let Some(tensor) = node.get_tensor() {
+                let shape_str = format!("{:?}", tensor.shape());
+                let clean_shape = Self::escape_for_dot(&shape_str);
+                write!(label, "\\nShape: {}", clean_shape).unwrap();
+            }
         }
 
         // Gradient information
         if self.config.show_gradients && node.requires_grad {
-            write!(label, "\\nRequires Grad: true").unwrap();
-            if let Some(_grad) = engine.get_gradient(node_id) {
-                write!(label, "\\nHas Gradient").unwrap();
+            write!(label, "\\nRequires Grad").unwrap();
+            if engine.get_gradient(node_id).is_some() {
+                write!(label, " ✓").unwrap();
             }
         }
 
-        // Value preview (if enabled and tensor is small)
+        // Value preview - clean up the Ok([...]) format
         if self.config.show_values {
-            let data = node.get_tensor().expect("Could not take data out of node");
-            if data.size() <= self.config.max_tensor_display {
-                write!(label, "\\nData: {:?}", data.as_slice()).unwrap();
+            if let Some(tensor) = node.get_tensor() {
+                if tensor.size() <= self.config.max_tensor_display {
+                    // Get the actual slice data, not the Ok([...]) wrapper
+                    let data_slice = tensor.as_slice().expect("Could not slice tensor data");
+                    let values_str = format!("{:.3?}", data_slice); // Limit decimal places
+                    let clean_values = Self::escape_for_dot(&values_str);
+                    write!(label, "\\nData: {}", clean_values).unwrap();
+                }
             }
         }
 
         label
     }
-
     /// Get appropriate color for a node based on its properties
     fn get_node_color<T>(&self, node: &Node<T>) -> &str
     where
