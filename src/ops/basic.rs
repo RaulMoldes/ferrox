@@ -60,17 +60,21 @@ pub struct Add<T: FerroxCudaF> {
 }
 
 impl<T> Default for Add<T>
-where T: FerroxCudaF {
+where
+    T: FerroxCudaF,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl<T> Add<T>
-where T: FerroxCudaF {
+where
+    T: FerroxCudaF,
+{
     pub fn new() -> Self {
-        Self{
-            _phantom: std::marker::PhantomData
+        Self {
+            _phantom: std::marker::PhantomData,
         }
     }
 }
@@ -83,7 +87,6 @@ where
         if inputs.len() != 2 {
             return Err("Add operation requires exactly 2 inputs".to_string());
         }
-
 
         // Use the tensor API to perform addition with broadcasting support
         inputs[0].add(inputs[1])

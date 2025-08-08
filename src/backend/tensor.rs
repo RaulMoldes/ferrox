@@ -147,26 +147,19 @@ where
 
     /// Move tensor to different device
     pub fn to_device(self, target_device: Device) -> Result<Self, String> {
-
         if self.device == target_device {
             // Do not do anything
-            return Ok(self)
+            return Ok(self);
         }
-
 
         let backend = get_backend::<T>();
-        if let Some(storage) = self.storage  {
+        if let Some(storage) = self.storage {
             let (new_device, new_storage) = backend.move_storage(storage, target_device)?;
             Self::from_storage_backend(new_storage, new_device)
-
-        }else {
+        } else {
             Err("Empty tensor cannot be moved".to_string())
         }
-
-
     }
-
-
 }
 
 // Main implementation block with basic operations
@@ -240,33 +233,37 @@ where
     }
 
     /// Creates a tensor from a Rust vector on specified device
-/// This function is device-agnostic and uses the backend manager to handle device placement
-pub fn from_vec_with_device(data: Vec<T>, shape: &[usize], device: Device) -> Result<Self, String> {
-    let total_elements: usize = shape.iter().product();
-    if data.len() != total_elements {
-        return Err(format!(
-            "Data length {} doesn't match shape {:?} (expected {})",
-            data.len(),
-            shape,
-            total_elements
-        ));
+    /// This function is device-agnostic and uses the backend manager to handle device placement
+    pub fn from_vec_with_device(
+        data: Vec<T>,
+        shape: &[usize],
+        device: Device,
+    ) -> Result<Self, String> {
+        let total_elements: usize = shape.iter().product();
+        if data.len() != total_elements {
+            return Err(format!(
+                "Data length {} doesn't match shape {:?} (expected {})",
+                data.len(),
+                shape,
+                total_elements
+            ));
+        }
+
+        // First create ndarray from vec and shape - this validates the shape
+        let array = match Array::from_shape_vec(IxDyn(shape), data) {
+            Ok(array) => array,
+            Err(e) => return Err(format!("Failed to create array from vec: {}", e)),
+        };
+
+        // Use backend manager to create storage on the specified device
+        let backend = get_backend::<T>();
+        let (validated_device, storage) = backend.create_storage_from_data(&array, device)?;
+
+        Ok(Self {
+            device: validated_device,
+            storage: Some(storage),
+        })
     }
-
-    // First create ndarray from vec and shape - this validates the shape
-    let array = match Array::from_shape_vec(IxDyn(shape), data) {
-        Ok(array) => array,
-        Err(e) => return Err(format!("Failed to create array from vec: {}", e)),
-    };
-
-    // Use backend manager to create storage on the specified device
-    let backend = get_backend::<T>();
-    let (validated_device, storage) = backend.create_storage_from_data(&array, device)?;
-
-    Ok(Self {
-        device: validated_device,
-        storage: Some(storage),
-    })
-}
 
     // Create tensor from existing storage backend (internal use)
     // This is the most direct way to create tensors and will become primary after migration
@@ -322,13 +319,10 @@ pub fn from_vec_with_device(data: Vec<T>, shape: &[usize], device: Device) -> Re
     // Get CPU data reference
     /// Note: This method currently panics if the data is on cpu. Prefer into_data() to convert any type of tensor to a ndarray ArrayD. It mimics PyTorch's to_numpy().
     pub fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
-
-
         self.storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?
             .cpu_data()
-
     }
 
     /// Get mutable CPU data. Note: This method currently panics if the data is on cpu.
@@ -337,7 +331,6 @@ pub fn from_vec_with_device(data: Vec<T>, shape: &[usize], device: Device) -> Re
             .as_mut()
             .ok_or("Tensor has no storage backend")?
             .cpu_data_mut()
-
     }
 
     /// Check if tensor owns its data
@@ -1456,7 +1449,7 @@ impl<T> Eq for Tensor<T> where T: FerroxCudaF + Clone + PartialEq {}
 #[cfg(test)]
 mod tensor_ops_tests {
     use super::*;
-    use crate::backend::{Device, best_device};
+    use crate::backend::{best_device, Device};
 
     #[test]
     fn test_tensor_creation() {
@@ -1474,7 +1467,7 @@ mod tensor_ops_tests {
     fn test_zeros_creation() {
         let tensor = Tensor::<f32>::zeros(&[2, 3]).unwrap();
         let data = tensor.into_data().unwrap();
-        
+
         assert!(data.iter().all(|&x| x == 0.0));
     }
 
@@ -1491,13 +1484,12 @@ mod tensor_ops_tests {
         let tensor = Tensor::full(&[2, 2], 5.0f32).unwrap();
         let data = tensor.into_data().unwrap();
 
-
         assert!(data.iter().all(|&x| x == 5.0));
     }
 
     #[test]
     fn test_add_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let a = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2], device).unwrap();
         let b = Tensor::from_vec_with_device(vec![3.0f32, 4.0], &[2], device).unwrap();
 
@@ -1523,8 +1515,8 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_mul_operation() {
-         let device = best_device::<f32>();
-        let a = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2],device).unwrap();
+        let device = best_device::<f32>();
+        let a = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2], device).unwrap();
         let b = Tensor::from_vec_with_device(vec![4.0f32, 5.0], &[2], device).unwrap();
 
         let result = a.mul(&b).unwrap();
@@ -1536,7 +1528,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_div_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let a = Tensor::from_vec_with_device(vec![8.0f32, 15.0], &[2], device).unwrap();
         let b = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2], device).unwrap();
 
@@ -1550,7 +1542,7 @@ mod tensor_ops_tests {
     #[test]
     fn test_add_scalar() {
         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2],device).unwrap();
+        let tensor = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2], device).unwrap();
 
         let result = tensor.add_scalar(3.0).unwrap();
         let data = result.into_data().unwrap();
@@ -1573,7 +1565,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_div_scalar() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let tensor = Tensor::from_vec_with_device(vec![8.0f32, 12.0], &[2], device).unwrap();
 
         let result = tensor.div_scalar(2.0).unwrap();
@@ -1585,7 +1577,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_power_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let base = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2], device).unwrap();
         let exp = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2], device).unwrap();
 
@@ -1598,7 +1590,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_power_scalar() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let tensor = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2], device).unwrap();
 
         let result = tensor.power_scalar(3.0).unwrap();
@@ -1610,7 +1602,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_matmul_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         // A: 2x2, B: 2x2 -> C: 2x2
         let a = Tensor::from_vec_with_device(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2], device).unwrap();
         let b = Tensor::from_vec_with_device(vec![2.0f32, 0.0, 1.0, 3.0], &[2, 2], device).unwrap();
@@ -1628,8 +1620,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_sigmoid_activation() {
-         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![0.0f32, 1000.0, -1000.0], &[3], device).unwrap();
+        let device = best_device::<f32>();
+        let tensor =
+            Tensor::from_vec_with_device(vec![0.0f32, 1000.0, -1000.0], &[3], device).unwrap();
 
         let result = tensor.sigmoid().unwrap();
         let data = result.into_data().unwrap();
@@ -1641,8 +1634,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_tanh_activation() {
-         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![0.0f32, 1000.0, -1000.0], &[3], device).unwrap();
+        let device = best_device::<f32>();
+        let tensor =
+            Tensor::from_vec_with_device(vec![0.0f32, 1000.0, -1000.0], &[3], device).unwrap();
 
         let result = tensor.tanh().unwrap();
         let data = result.into_data().unwrap();
@@ -1656,7 +1650,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_relu_activation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let tensor = Tensor::from_vec_with_device(vec![-2.0f32, 0.0, 3.0], &[3], device).unwrap();
 
         let result = tensor.relu().unwrap();
@@ -1669,7 +1663,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_exp_function() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let tensor = Tensor::from_vec_with_device(vec![0.0f32, 1.0, 2.0], &[3], device).unwrap();
 
         let result = tensor.exp().unwrap();
@@ -1682,8 +1676,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_sum_reduction() {
-         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2], device).unwrap();
+        let device = best_device::<f32>();
+        let tensor =
+            Tensor::from_vec_with_device(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2], device).unwrap();
 
         let result = tensor.sum(None).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
@@ -1693,8 +1688,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_mean_reduction() {
-         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![2.0f32, 4.0, 6.0, 8.0], &[2, 2], device).unwrap();
+        let device = best_device::<f32>();
+        let tensor =
+            Tensor::from_vec_with_device(vec![2.0f32, 4.0, 6.0, 8.0], &[2, 2], device).unwrap();
 
         let result = tensor.mean(None).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
@@ -1705,8 +1701,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_max_reduction() {
-         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2], device).unwrap();
+        let device = best_device::<f32>();
+        let tensor =
+            Tensor::from_vec_with_device(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2], device).unwrap();
 
         let result = tensor.max_reduce(None).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
@@ -1716,8 +1713,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_min_reduction() {
-         let device = best_device::<f32>();
-        let tensor = Tensor::from_vec_with_device(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2], device).unwrap();
+        let device = best_device::<f32>();
+        let tensor =
+            Tensor::from_vec_with_device(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2], device).unwrap();
 
         let result = tensor.min_reduce(None).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
@@ -1727,9 +1725,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_reshape_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let mut tensor = Tensor::from_vec_with_device(data, &[2, 3],device).unwrap();
+        let mut tensor = Tensor::from_vec_with_device(data, &[2, 3], device).unwrap();
 
         tensor.reshape(&[3, 2]).unwrap();
 
@@ -1739,7 +1737,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_transpose_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut tensor = Tensor::from_vec_with_device(data, &[2, 3], device).unwrap();
 
@@ -1750,7 +1748,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_unsqueeze_operation() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let mut tensor = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2], device).unwrap();
 
         tensor.unsqueeze(0).unwrap();
@@ -1760,8 +1758,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_squeeze_operation() {
-         let device = best_device::<f32>();
-        let mut tensor = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[1, 2, 1], device).unwrap();
+        let device = best_device::<f32>();
+        let mut tensor =
+            Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[1, 2, 1], device).unwrap();
 
         tensor.squeeze(None).unwrap();
 
@@ -1770,7 +1769,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_broadcast_to() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let mut tensor = Tensor::from_vec_with_device(vec![1.0f32, 2.0], &[2], device).unwrap();
 
         tensor.broadcast_to(&[3, 2]).unwrap();
@@ -1781,9 +1780,9 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_greater_comparison() {
-         let device = best_device::<f32>();
-        let a = Tensor::from_vec_with_device(vec![3.0f32, 1.0], &[2],device).unwrap();
-        let b = Tensor::from_vec_with_device(vec![2.0f32, 2.0], &[2],device).unwrap();
+        let device = best_device::<f32>();
+        let a = Tensor::from_vec_with_device(vec![3.0f32, 1.0], &[2], device).unwrap();
+        let b = Tensor::from_vec_with_device(vec![2.0f32, 2.0], &[2], device).unwrap();
 
         let result = a.greater(&b).unwrap();
         let data = result.into_data().unwrap();
@@ -1794,7 +1793,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_less_comparison() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let a = Tensor::from_vec_with_device(vec![1.0f32, 3.0], &[2], device).unwrap();
         let b = Tensor::from_vec_with_device(vec![2.0f32, 2.0], &[2], device).unwrap();
 
@@ -1807,7 +1806,7 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_equal_comparison() {
-         let device = best_device::<f32>();
+        let device = best_device::<f32>();
         let a = Tensor::from_vec_with_device(vec![2.0f32, 3.0], &[2], device).unwrap();
         let b = Tensor::from_vec_with_device(vec![2.0f32, 4.0], &[2], device).unwrap();
 
@@ -1834,7 +1833,6 @@ mod tensor_ops_tests {
 
     #[test]
     fn test_slice_access() {
-
         let tensor = Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], &[4]).unwrap();
 
         let slice = tensor.as_slice().unwrap();

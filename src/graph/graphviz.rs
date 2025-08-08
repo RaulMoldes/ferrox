@@ -4,10 +4,10 @@ use std::fs::File;
 use std::io::Write as IoWrite;
 use std::process::Command;
 
-use super::engine::AutoFerroxEngine;
-use crate::ops::Operator;
-use super::engine::{Node, NodeId};
+use super::AutoFerroxEngine;
+use super::{Node, NodeId};
 use crate::backend::number::FerroxCudaF;
+use crate::ops::Operator;
 
 /// Graph visualization module for the computational graph engine
 pub struct GraphVisualizer {
@@ -79,8 +79,8 @@ impl GraphVisualizer {
         // Add nodes
         for &node_id in &relevant_nodes {
             let node = engine.get_node(&node_id);
-            let label = self.create_node_label(engine, node_id, &node);
-            let color = self.get_node_color(&node);
+            let label = self.create_node_label(engine, node_id, node);
+            let color = self.get_node_color(node);
 
             writeln!(
                 dot,
@@ -92,8 +92,11 @@ impl GraphVisualizer {
         // Add edges
         for &node_id in &relevant_nodes {
             let node = engine.get_node(&node_id);
-            for &input_id in &node.inputs {
-                writeln!(dot, "    {input_id} -> {node_id};").unwrap();
+
+            if let Some(inputs) = node.get_inputs() {
+                for &input_id in inputs {
+                    writeln!(dot, "    {input_id} -> {node_id};").unwrap();
+                }
             }
         }
 
@@ -102,7 +105,11 @@ impl GraphVisualizer {
     }
 
     /// Find all nodes that are relevant to the given output nodes
-    fn find_relevant_nodes<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> Vec<NodeId>
+    fn find_relevant_nodes<T>(
+        &self,
+        engine: &AutoFerroxEngine<T>,
+        output_nodes: &[NodeId],
+    ) -> Vec<NodeId>
     where
         T: FerroxCudaF,
     {
@@ -135,28 +142,35 @@ impl GraphVisualizer {
         relevant.push(node_id);
 
         let node = engine.get_node(&node_id);
-        for &input_id in &node.inputs {
-            self.collect_nodes_dfs(engine, input_id, visited, relevant);
+        if let Some(inputs) = node.get_inputs() {
+            for &input_id in inputs {
+                self.collect_nodes_dfs(engine, input_id, visited, relevant);
+            }
         }
     }
 
     /// Create a descriptive label for a node
-    fn create_node_label<T>(&self, engine: &AutoFerroxEngine<T>, node_id: NodeId, node: &Node<T>) -> String
+    fn create_node_label<T>(
+        &self,
+        engine: &AutoFerroxEngine<T>,
+        node_id: NodeId,
+        node: &Node<T>,
+    ) -> String
     where
         T: FerroxCudaF,
     {
         let mut label = String::new();
 
         // Node ID and type
-        if let Some(ref op) = node {
-            write!(label, "{}\\n{}", node_id, self.get_op_name(op.as_ref())).unwrap();
+        if let Some(op) = node.get_op() {
+            write!(label, "{}\\n{}", node_id, self.get_op_name(op)).unwrap();
         } else {
             write!(label, "{node_id}\\nTensor").unwrap();
         }
 
         // Shape information
         if self.config.show_shapes {
-            let shape = node.cached_data.shape();
+            let shape = node.get_tensor().expect("No data found for tensor").shape();
             write!(label, "\\nShape: {shape:?}").unwrap();
         }
 
@@ -170,7 +184,7 @@ impl GraphVisualizer {
 
         // Value preview (if enabled and tensor is small)
         if self.config.show_values {
-            let data = &node.cached_data;
+            let data = node.get_tensor().expect("Could not take data out of node");
             if data.size() <= self.config.max_tensor_display {
                 write!(label, "\\nData: {:?}", data.as_slice()).unwrap();
             }
@@ -184,7 +198,7 @@ impl GraphVisualizer {
     where
         T: FerroxCudaF,
     {
-        if node.op.is_some() {
+        if node.get_op().is_some() {
             &self.config.op_color
         } else if node.requires_grad {
             &self.config.gradient_color
@@ -198,8 +212,7 @@ impl GraphVisualizer {
     where
         T: FerroxCudaF,
     {
-        // This is a very simplistic way to get the operation name.
-        format!("{op:?}")
+        op.name()
     }
 
     /// Save the graph as a DOT file
@@ -210,12 +223,7 @@ impl GraphVisualizer {
         filename: &str,
     ) -> Result<(), std::io::Error>
     where
-        T: FerroxCudaF
-            + Clone
-            + std::fmt::Debug
-            + ndarray::LinalgScalar
-            + ndarray::ScalarOperand
-            + rand_distr::num_traits::FromPrimitive,
+        T: FerroxCudaF,
     {
         let dot_content = self.to_dot(engine, output_nodes);
         let mut file = File::create(filename)?;
@@ -232,12 +240,7 @@ impl GraphVisualizer {
         format: &str,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
-        T: FerroxCudaF
-            + Clone
-            + std::fmt::Debug
-            + ndarray::LinalgScalar
-            + ndarray::ScalarOperand
-            + rand_distr::num_traits::FromPrimitive,
+        T: FerroxCudaF,
     {
         let dot_content = self.to_dot(engine, output_nodes);
 
@@ -272,41 +275,47 @@ impl GraphVisualizer {
     /// Print the graph to console (simple text representation)
     pub fn print_graph<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId])
     where
-        T: FerroxCudaF
-            + Clone
-            + std::fmt::Debug
-            + ndarray::LinalgScalar
-            + ndarray::ScalarOperand
-            + rand_distr::num_traits::FromPrimitive,
+        T: FerroxCudaF,
     {
         println!("Computational Graph:");
         println!("===================");
 
         let relevant_nodes = self.find_relevant_nodes(engine, output_nodes);
-        let topo_order = engine.find_topo_sort(output_nodes);
+
+        let mut visited = std::collections::HashSet::new();
+        let mut topo_order = Vec::new();
+        for &out_id in output_nodes {
+            engine
+                .topological_sort(out_id, &mut visited, &mut topo_order)
+                .unwrap();
+        }
 
         for &node_id in &topo_order {
             if relevant_nodes.contains(&node_id) {
-                let node = engine.nodes[&node_id].borrow();
+                let node = engine.get_node(&node_id);
 
                 print!("Node {node_id}: ");
 
-                if let Some(ref op) = node.op {
-                    print!("{} ", self.get_op_name(op.as_ref()));
+                if let Some(op) = node.get_op() {
+                    print!("{} ", self.get_op_name(op));
                 } else {
                     print!("Tensor ");
                 }
 
                 if self.config.show_shapes {
-                    print!("Shape: {:?} ", node.cached_data.shape());
+                    if let Some(tensor) = node.get_tensor() {
+                        print!("Shape: {:?} ", tensor.shape());
+                    }
                 }
 
                 if self.config.show_gradients && node.requires_grad {
                     print!("(requires_grad) ");
                 }
 
-                if !node.inputs.is_empty() {
-                    print!("← {:?}", node.inputs);
+                if let Some(inputs) = node.get_inputs() {
+                    if !inputs.is_empty() {
+                        print!("← {:?}", inputs);
+                    }
                 }
 
                 println!();
@@ -328,17 +337,12 @@ where
         filename: &str,
     ) -> Result<(), Box<dyn std::error::Error>>;
     fn save_graph_dot(&self, output_nodes: &[NodeId], filename: &str)
-    -> Result<(), std::io::Error>;
+        -> Result<(), std::io::Error>;
 }
 
 impl<T> EngineVisualization<T> for AutoFerroxEngine<T>
 where
-    T: FerroxCudaF
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF,
 {
     fn visualize(&self) -> GraphVisualizer {
         GraphVisualizer::new()

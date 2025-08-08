@@ -472,7 +472,8 @@ where
             } else if full_data.len() < expected_size {
                 return Err(format!(
                     "CudaSlice has {} elements but tensor expects {} - memory corruption!",
-                    full_data.len(), expected_size
+                    full_data.len(),
+                    expected_size
                 ));
             }
 
