@@ -35,7 +35,6 @@ where
         // For element-wise min: gradient flows to the element that was selected (the minimum)
         // Create masks indicating which input had the minimum value
 
-
         // mask1 = (input1 <= input2), mask2 = (input2 < input1)
         let mask1 = inputs[0].less_equal(inputs[1])?;
         let mask2 = inputs[1].less(inputs[0])?;
@@ -82,8 +81,6 @@ where
         if inputs.len() != 2 {
             return Err("MaxElementwise operation requires exactly 2 inputs".to_string());
         }
-
-
 
         // mask1 = (input1 >= input2), mask2 = (input2 > input1)
         let mask1 = inputs[0].greater_equal(inputs[1])?;

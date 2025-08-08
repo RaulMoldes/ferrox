@@ -3,8 +3,8 @@
 // deep learning systems course by the CMU (repo: https://github.com/dlsyscourse/hw1).
 // My implementation is not going to be exactly the same, but i followed a similar approach.
 // In rust we do not have the concept of inheritance as in Java or Python so I will handle the operators using a common trait.
+use crate::backend::FerroxCudaF;
 use crate::backend::Tensor;
-use crate::backend::{FerroxCudaF};
 use std::any::type_name;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
@@ -28,11 +28,49 @@ where
 
     fn name(&self) -> String {
         let full_name = type_name::<Self>();
-        full_name.rsplit("::").next().unwrap_or(full_name).to_string()
+        full_name
+            .rsplit("::")
+            .next()
+            .unwrap_or(full_name)
+            .to_string()
     }
 
     fn clone_op(&self) -> Box<dyn Operator<T>>;
+}
 
+impl<T> Operator<T> for Box<dyn Operator<T>>
+where
+    T: FerroxCudaF,
+{
+    fn compute(&self, inputs: &mut [&Tensor<T>]) -> Result<Tensor<T>, String> {
+        // Delegate to the boxed operator
+        self.as_ref().compute(inputs)
+    }
+
+    fn gradient(
+        &self,
+        grad_output: Tensor<T>,
+        inputs: &mut [&Tensor<T>],
+        outputs: &Tensor<T>,
+    ) -> Result<Vec<Tensor<T>>, String> {
+        // Delegate to the boxed operator
+        self.as_ref().gradient(grad_output, inputs, outputs)
+    }
+
+    fn num_inputs(&self) -> usize {
+        // Delegate to the boxed operator
+        self.as_ref().num_inputs()
+    }
+
+    fn name(&self) -> String {
+        // Delegate to the boxed operator
+        self.as_ref().name()
+    }
+
+    fn clone_op(&self) -> Box<dyn Operator<T>> {
+        // Delegate to the boxed operator
+        self.as_ref().clone_op()
+    }
 }
 
 pub mod basic;

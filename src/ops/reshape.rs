@@ -1,6 +1,6 @@
 use crate::backend::{FerroxCudaF, Tensor};
-use crate::ops::Operator;
 use crate::ops::basic::reduce_gradient_for_broadcasting;
+use crate::ops::Operator;
 /// Reshape operation: output = reshape(input, new_shape)
 /// Changes tensor shape while preserving total number of elements
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Reshape operation requires exactly 1 input".to_string());
@@ -84,7 +84,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("BroadcastTo operation requires exactly 1 input".to_string());
@@ -119,7 +119,6 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
-
 }
 
 /// Unsqueeze operation: output = unsqueeze(input, axis)
@@ -148,7 +147,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Unsqueeze operation requires exactly 1 input".to_string());
@@ -201,7 +200,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Squeeze operation requires exactly 1 input".to_string());
@@ -216,7 +215,7 @@ where
             Some(axis) => {
                 // Specific axis was squeezed - unsqueeze it back
                 grad_output.unsqueeze(axis)?;
-            },
+            }
             None => {
                 // All size-1 dimensions were squeezed - restore by reshaping
                 grad_output.reshape(input_shape)?;

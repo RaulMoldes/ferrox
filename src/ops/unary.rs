@@ -152,7 +152,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Abs operation requires exactly 1 input".to_string());
@@ -195,7 +195,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Neg operation requires exactly 1 input".to_string());
@@ -281,7 +281,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         outputs: &Tensor<T>,
+        outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Tanh operation requires exactly 1 input".to_string());
@@ -326,7 +326,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("ReLU operation requires exactly 1 input".to_string());
@@ -366,7 +366,7 @@ where
         inputs[0].powf(inputs[1])
     }
 
-     fn gradient(
+    fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
@@ -380,15 +380,15 @@ where
         // Gradient w.r.t. base: y * x^(y-1)
         // Optimized: x^(y-1) = x^y / x = outputs / x
         let grad_base = grad_output
-            .mul(inputs[1])?                    // * y
-            .mul(&outputs.div(inputs[0])?)?;    // * (outputs / x) = * x^(y-1)
+            .mul(inputs[1])? // * y
+            .mul(&outputs.div(inputs[0])?)?; // * (outputs / x) = * x^(y-1)
 
         // Gradient w.r.t. exponent: x^y * ln(x)
         // Optimized: x^y is already computed in outputs!
         let log_base = inputs[0].log()?;
         let grad_exponent = grad_output
-            .mul(outputs)?          // * x^y (reuse outputs)
-            .mul(&log_base)?;       // * ln(x)
+            .mul(outputs)? // * x^y (reuse outputs)
+            .mul(&log_base)?; // * ln(x)
 
         Ok(vec![grad_base, grad_exponent])
     }

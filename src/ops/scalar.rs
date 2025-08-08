@@ -1,7 +1,6 @@
 use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
 
-
 /// Scalar addition: output = input + scalar
 #[derive(Debug, Clone)]
 pub struct AddScalar<T> {
@@ -25,7 +24,7 @@ where
         &self,
         grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // For scalar addition: d/dx(x + c) = 1
         // Gradient w.r.t. input is just grad_output unchanged
@@ -71,7 +70,7 @@ where
         &self,
         grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // For scalar subtraction: d/dx(x - c) = 1
         // Gradient w.r.t. input is just grad_output unchanged
@@ -117,7 +116,7 @@ where
         &self,
         grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // For scalar multiplication: d/dx(x * c) = c
         // Gradient w.r.t. input is grad_output * scalar
@@ -164,7 +163,7 @@ where
         &self,
         grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // For scalar division: d/dx(x / c) = 1/c
         // Gradient w.r.t. input is grad_output / scalar
@@ -211,7 +210,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("PowerScalar operation requires exactly 1 input".to_string());

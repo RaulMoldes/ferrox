@@ -277,7 +277,6 @@ where
             return Err("Clamp operation requires exactly 1 input".to_string());
         }
 
-
         // mask = (input >= min_val) & (input <= max_val)
         let min_mask = inputs[0].greater_equal_scalar(self.min_val)?;
         let max_mask = inputs[0].less_equal_scalar(self.max_val)?;

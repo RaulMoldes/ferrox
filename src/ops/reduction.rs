@@ -53,7 +53,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Sum operation requires exactly 1 input".to_string());
@@ -62,7 +62,6 @@ where
         // For sum: gradient is broadcasted grad_output to input shape
         // Sum operation distributes gradient equally to all reduced elements
         let input_shape = inputs[0].shape();
-
 
         // Broadcast gradient back to input shape
         grad_output.broadcast_to(input_shape)?;
@@ -74,7 +73,6 @@ where
         1
     }
 }
-
 
 impl Default for Sum {
     fn default() -> Self {
@@ -98,8 +96,6 @@ impl Sum {
         }
     }
 }
-
-
 
 /// Mean reduction: output = mean(input, axes)
 /// Computes average along specified axes or all elements if None
@@ -143,7 +139,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Mean operation requires exactly 1 input".to_string());
@@ -151,7 +147,6 @@ where
 
         // For mean: gradient is grad_output / reduction_size, broadcasted to input shape
         let input_shape = inputs[0].shape();
-
 
         // Calculate reduction size (number of elements that were averaged)
         let reduction_size = if let Some(ref axes) = self.axes {
@@ -186,7 +181,6 @@ impl Default for Mean {
         Self::new()
     }
 }
-
 
 impl Mean {
     /// Create mean operation that reduces all elements to scalar
@@ -248,7 +242,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Max operation requires exactly 1 input".to_string());
@@ -287,7 +281,6 @@ impl Default for Max {
         Self::new()
     }
 }
-
 
 impl Max {
     /// Create max operation that reduces all elements to scalar
@@ -348,7 +341,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Min operation requires exactly 1 input".to_string());
@@ -381,13 +374,11 @@ where
     }
 }
 
-
 impl Default for Min {
     fn default() -> Self {
         Self::new()
     }
 }
-
 
 impl Min {
     /// Create min operation that reduces all elements to scalar

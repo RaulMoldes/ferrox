@@ -89,11 +89,10 @@ where
         &self,
         mut grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-         _outputs: &Tensor<T>,
+        _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // For transpose: gradient is just transpose of the grad_output
         // If we transposed with custom axes, we need to invert the permutation
-
 
         if let Some(ref axes) = self.axes {
             // Invert the permutation to get back to original order

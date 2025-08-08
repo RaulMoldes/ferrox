@@ -249,7 +249,6 @@ where
     }
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CudaTensor<T: FerroxCudaF> {

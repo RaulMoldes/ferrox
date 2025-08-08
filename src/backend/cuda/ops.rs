@@ -53,8 +53,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Best practices suggest starting with 128–256 threads per block and tuning later based on profiling.
     fn get_launch_config(&self, size: usize) -> LaunchConfig {
         let block_size: usize = BLOCK_SIZE as usize;
-        let grid_size = size.div_ceil(block_size
-        ) as u32;
+        let grid_size = size.div_ceil(block_size) as u32;
 
         LaunchConfig {
             grid_dim: (grid_size, 1, 1),
@@ -951,7 +950,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
         // Configure launch parameters
 
         let grid_x = out_width.div_ceil(TILE_SIZE as usize);
-        let grid_y =  out_height.div_ceil(TILE_SIZE as usize);
+        let grid_y = out_height.div_ceil(TILE_SIZE as usize);
         let grid_z = batch_size * out_channels;
 
         let cfg = LaunchConfig {

@@ -9,8 +9,6 @@ static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub usize);
 
-
-
 impl NodeId {
     pub fn new() -> Self {
         let id = NODE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -20,7 +18,7 @@ impl NodeId {
 
 impl std::fmt::Display for NodeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-         write!(f, "NodeId({})", self.0)
+        write!(f, "NodeId({})", self.0)
     }
 }
 
@@ -61,7 +59,6 @@ where
     },
 }
 
-
 impl<T> Clone for NodeState<T>
 where
     T: FerroxCudaF,
@@ -82,7 +79,6 @@ where
             },
         }
     }
-
 }
 
 /// Computational graph node. Supports dual mode.
@@ -222,7 +218,6 @@ where
         self.gradients.insert(node_id, grad);
     }
 
-
     // Creates a new leaf node in the computational graph
     pub fn create_variable(&mut self, tensor: Tensor<T>, requires_grad: bool) -> NodeId {
         let node = Node::new_leaf(tensor, requires_grad);
@@ -231,11 +226,22 @@ where
         id
     }
 
-    fn validate_inputs(
-        &self,
-        op: &Box<dyn Operator<T>>,
-        input_ids: &[NodeId],
-    ) -> Result<(), String> {
+    // Batch evaluation for lazy mode
+    pub fn evaluate_all(&mut self) -> Result<(), String> {
+        // Force evaluation of all pending nodes
+        let pending_ids: Vec<NodeId> = self
+            .nodes
+            .iter()
+            .filter_map(|(&id, node)| if !node.is_evaluated() { Some(id) } else { None })
+            .collect();
+
+        for id in pending_ids {
+            self.evaluate(id)?;
+        }
+        Ok(())
+    }
+
+    fn validate_inputs(&self, op: &dyn Operator<T>, input_ids: &[NodeId]) -> Result<(), String> {
         // Verificar que existen
         for &input_id in input_ids {
             if !self.nodes.contains_key(&input_id) {
@@ -256,14 +262,12 @@ where
         Ok(())
     }
 
-
     // Evaluates a single node and takes its computed tensor.
     pub fn evaluate(&mut self, node_id: NodeId) -> Result<&Tensor<T>, String> {
         self.evaluate_node(node_id)?;
         self.get_tensor(node_id)
             .ok_or_else(|| format!("Failed to evaluate node {}", node_id.0))
     }
-
 
     fn evaluate_node(&mut self, node_id: NodeId) -> Result<(), String> {
         // Si ya está evaluado, no hacer nada
@@ -273,13 +277,13 @@ where
 
         // Obtener información del nodo pending
         let (op, input_ids) = {
-            let node = self.nodes.get(&node_id)
+            let node = self
+                .nodes
+                .get(&node_id)
                 .ok_or_else(|| format!("Node {} not found", node_id.0))?;
 
             match &node.state {
-                NodeState::Pending { op, inputs } => {
-                    (op.clone_op(), inputs.clone())
-                }
+                NodeState::Pending { op, inputs } => (op.clone_op(), inputs.clone()),
                 _ => return Ok(()), // Ya evaluado
             }
         };
@@ -314,13 +318,15 @@ where
         Ok(())
     }
 
-      pub fn get_tensor(&self, node_id: NodeId) -> Option<&Tensor<T>> {
+    pub fn get_tensor(&self, node_id: NodeId) -> Option<&Tensor<T>> {
         self.nodes.get(&node_id)?.get_tensor()
     }
 
     /// Verificar si un nodo está evaluado
     pub fn is_evaluated(&self, node_id: NodeId) -> bool {
-        self.nodes.get(&node_id).is_some_and(|node| node.is_evaluated())
+        self.nodes
+            .get(&node_id)
+            .is_some_and(|node| node.is_evaluated())
     }
 
     pub fn apply_operation(
@@ -340,7 +346,6 @@ where
                 Ok(id)
             }
             EvaluationMode::Eager => {
-
                 for &input_id in &input_ids {
                     if !self.is_evaluated(input_id) {
                         self.evaluate_node(input_id)?;
@@ -375,7 +380,6 @@ where
         }
     }
 
-
     fn accumulate_gradient(&mut self, node_id: NodeId, grad: Tensor<T>) -> Result<(), String> {
         match self.gradients.remove(&node_id) {
             Some(existing_grad) => {
@@ -389,20 +393,20 @@ where
         Ok(())
     }
 
-
-      pub fn backward(&mut self, loss_id: NodeId) -> Result<(), String> {
+    pub fn backward(&mut self, loss_id: NodeId) -> Result<(), String> {
         if !self.training_mode {
             return Ok(());
         }
 
         // Verificar que el nodo de pérdida está evaluado
         if !self.is_evaluated(loss_id) {
-            return Err("Cannot run backward on unevaluated node. Call evaluate() first.".to_string());
+            return Err(
+                "Cannot run backward on unevaluated node. Call evaluate() first.".to_string(),
+            );
         }
 
         // Inicializar gradiente de pérdida
-        let loss_tensor = self.get_tensor(loss_id)
-            .ok_or("Loss node not found")?;
+        let loss_tensor = self.get_tensor(loss_id).ok_or("Loss node not found")?;
         let ones_grad = Tensor::ones(loss_tensor.shape())?;
         self.gradients.insert(loss_id, ones_grad);
 
@@ -430,7 +434,10 @@ where
         };
 
         // Obtain node information.
-        let node = self.nodes.get(&node_id).cloned()
+        let node = self
+            .nodes
+            .get(&node_id)
+            .cloned()
             .ok_or_else(|| format!("Node {} not found", node_id.0))?;
 
         match node.state {
@@ -449,11 +456,13 @@ where
 
                 // Compute input gradients.
                 let input_grads = match op {
-                    Some(o) => {
-                        o.gradient(grad_output, &mut input_tensors, &tensor)?
-                    },
-                    None => { panic!("Cannot compute gradient. Operation not defined for node: {}", node_id) }
-
+                    Some(o) => o.gradient(grad_output, &mut input_tensors, &tensor)?,
+                    None => {
+                        panic!(
+                            "Cannot compute gradient. Operation not defined for node: {}",
+                            node_id
+                        )
+                    }
                 };
 
                 // Acumulate gradients
@@ -495,21 +504,21 @@ where
         Ok(())
     }
 
-
-
     /// GRAPH STATISTICS
     pub fn num_nodes(&self) -> usize {
         self.nodes.len()
     }
 
     pub fn num_evaluated_nodes(&self) -> usize {
-        self.nodes.values()
+        self.nodes
+            .values()
             .filter(|node| node.is_evaluated())
             .count()
     }
 
     pub fn num_pending_nodes(&self) -> usize {
-        self.nodes.values()
+        self.nodes
+            .values()
             .filter(|node| !node.is_evaluated())
             .count()
     }
