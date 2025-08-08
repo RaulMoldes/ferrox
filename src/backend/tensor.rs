@@ -3,7 +3,8 @@ use crate::backend::manager::get_backend;
 use crate::backend::manager::with_cuda_context;
 use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
-use crate::backend::{Device, default_device};
+use crate::backend::{default_device, Device};
+use crate::ops::scalar;
 use ndarray::{Array, ArrayD, IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
@@ -35,7 +36,7 @@ where
                 if let Some(cpu_storage) = any_ref.downcast_ref::<CPUStorage<T>>() {
                     Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
                 } else {
-                     storage_ref.clone_storage().ok()
+                    storage_ref.clone_storage().ok()
                 }
             } else {
                 None
@@ -540,6 +541,17 @@ where
         let result_storage = storage.sqrt()?;
         Self::from_storage_backend(result_storage, self.device)
     }
+
+    pub fn reciprocal(&self) -> Result<Self, String> {
+        // Check for negative values first
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.reciprocal()?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
 }
 
 impl<T> Tensor<T>
@@ -561,6 +573,16 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
+    pub fn greater_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.greater_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
     /// Element-wise less than  comparison using storage trait
     pub fn less(&self, other: &Self) -> Result<Self, String> {
         let storage = self
@@ -575,6 +597,17 @@ where
         let result_storage = storage.less(other_storage.as_ref())?;
         Self::from_storage_backend(result_storage, self.device)
     }
+
+    pub fn less_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.less_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
     /// Element-wise greater than or equal comparison using storage trait
     pub fn greater_equal(&self, other: &Self) -> Result<Self, String> {
         let storage = self
@@ -590,6 +623,16 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
+    pub fn greater_equal_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.greater_equal_scalar(scalar)?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
     /// Element-wise less than or equal comparison using storage trait
     pub fn less_equal(&self, other: &Self) -> Result<Self, String> {
         let storage = self
@@ -602,6 +645,16 @@ where
             .ok_or("Other tensor has no storage backend")?;
 
         let result_storage = storage.less_equal(other_storage.as_ref())?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    pub fn less_equal_scalar(&self, scalar: T) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.less_equal_scalar(scalar)?;
         Self::from_storage_backend(result_storage, self.device)
     }
 
@@ -809,7 +862,7 @@ where
                 ) {
                     let result_storage =
                         CUDAStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
-                    return Self::from_storage_backend(result_storage, condition.device.clone());
+                    return Self::from_storage_backend(result_storage, condition.device);
                 }
             }
         }
@@ -1354,7 +1407,6 @@ where
 
 impl<T> Eq for Tensor<T> where T: FerroxCudaF + Clone + PartialEq {}
 
-
 #[cfg(test)]
 mod tensor_ops_tests {
     use super::*;
@@ -1426,7 +1478,7 @@ mod tensor_ops_tests {
         let result = a.mul(&b).unwrap();
         let data = result.cpu_data().unwrap();
 
-        assert_eq!(data[0], 8.0);  // 2 * 4
+        assert_eq!(data[0], 8.0); // 2 * 4
         assert_eq!(data[1], 15.0); // 3 * 5
     }
 
@@ -1460,7 +1512,7 @@ mod tensor_ops_tests {
         let result = tensor.mul_scalar(4.0).unwrap();
         let data = result.cpu_data().unwrap();
 
-        assert_eq!(data[0], 8.0);  // 2 * 4
+        assert_eq!(data[0], 8.0); // 2 * 4
         assert_eq!(data[1], 12.0); // 3 * 4
     }
 
@@ -1483,7 +1535,7 @@ mod tensor_ops_tests {
         let result = base.powf(&exp).unwrap();
         let data = result.cpu_data().unwrap();
 
-        assert_eq!(data[0], 4.0);  // 2^2
+        assert_eq!(data[0], 4.0); // 2^2
         assert_eq!(data[1], 27.0); // 3^3
     }
 
@@ -1494,7 +1546,7 @@ mod tensor_ops_tests {
         let result = tensor.power_scalar(3.0).unwrap();
         let data = result.cpu_data().unwrap();
 
-        assert_eq!(data[0], 8.0);  // 2^3
+        assert_eq!(data[0], 8.0); // 2^3
         assert_eq!(data[1], 27.0); // 3^3
     }
 
@@ -1509,8 +1561,8 @@ mod tensor_ops_tests {
         let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
 
         // [[1,2],[3,4]] * [[2,0],[1,3]] = [[4,6],[10,12]]
-        assert_eq!(data[0], 4.0);  // 1*2 + 2*1
-        assert_eq!(data[1], 6.0);  // 1*0 + 2*3
+        assert_eq!(data[0], 4.0); // 1*2 + 2*1
+        assert_eq!(data[1], 6.0); // 1*0 + 2*3
         assert_eq!(data[2], 10.0); // 3*2 + 4*1
         assert_eq!(data[3], 12.0); // 3*0 + 4*3
     }
@@ -1522,9 +1574,9 @@ mod tensor_ops_tests {
         let result = tensor.sigmoid().unwrap();
         let data = result.cpu_data().unwrap();
 
-        assert!((data[0] - 0.5).abs() < 1e-6);     // sigmoid(0) = 0.5
-        assert!(data[1] > 0.99);                   // sigmoid(large) ≈ 1
-        assert!(data[2] < 0.01);                   // sigmoid(-large) ≈ 0
+        assert!((data[0] - 0.5).abs() < 1e-6); // sigmoid(0) = 0.5
+        assert!(data[1] > 0.99); // sigmoid(large) ≈ 1
+        assert!(data[2] < 0.01); // sigmoid(-large) ≈ 0
     }
 
     #[test]
@@ -1536,9 +1588,9 @@ mod tensor_ops_tests {
 
         println!("Data: {}", data);
 
-        assert!(data[0].abs() < 1e-6);             // tanh(0) = 0
-        assert!(data[1] > 0.99);                   // tanh(large) ≈ 1
-        assert!(data[2] < -0.99);                  // tanh(-large) ≈ -1
+        assert!(data[0].abs() < 1e-6); // tanh(0) = 0
+        assert!(data[1] > 0.99); // tanh(large) ≈ 1
+        assert!(data[2] < -0.99); // tanh(-large) ≈ -1
     }
 
     #[test]
@@ -1560,12 +1612,10 @@ mod tensor_ops_tests {
         let result = tensor.exp().unwrap();
         let data = result.cpu_data().unwrap();
 
-        assert!((data[0] - 1.0).abs() < 1e-6);                    // e^0 = 1
-        assert!((data[1] - std::f32::consts::E).abs() < 1e-6);    // e^1 = e
+        assert!((data[0] - 1.0).abs() < 1e-6); // e^0 = 1
+        assert!((data[1] - std::f32::consts::E).abs() < 1e-6); // e^1 = e
         assert!((data[2] - std::f32::consts::E.powi(2)).abs() < 1e-5); // e^2
     }
-
-
 
     #[test]
     fn test_sum_reduction() {
@@ -1584,8 +1634,8 @@ mod tensor_ops_tests {
         let result = tensor.mean(None).unwrap();
         let data: Vec<f32> = result.cpu_data().unwrap().iter().cloned().collect();
 
-         // (2 + 4 + 6 + 8) / 4
-          assert_eq!(data[0], 5.0);
+        // (2 + 4 + 6 + 8) / 4
+        assert_eq!(data[0], 5.0);
     }
 
     #[test]
@@ -1699,7 +1749,7 @@ mod tensor_ops_tests {
         let b = Tensor::from_vec(vec![1.0f32, 2.0], &[2]).unwrap();
         let c = Tensor::from_vec(vec![1.0f32, 3.0], &[2]).unwrap();
 
-        assert!(a.all_equal(&b).unwrap());  // Same tensors
+        assert!(a.all_equal(&b).unwrap()); // Same tensors
         assert!(!a.all_equal(&c).unwrap()); // Different tensors
     }
 

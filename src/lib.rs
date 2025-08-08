@@ -24,4 +24,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 #[allow(unused_imports)]
 pub mod backend;
 // Re-export commonly used types for convenience
-pub use backend::{Device, FerroxCudaF, FerroxF, cpu, default_device};
+pub use backend::{cpu, default_device, Device, FerroxCudaF, FerroxF};
+
+pub mod graph;
+pub mod ops;

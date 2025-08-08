@@ -1,11 +1,11 @@
 use crate::backend::memory::MemoryPool;
 // src/backend/cuda/stream_manager.rs
 // Stream management helper - does NOT own the CUDA context
+use crate::backend::manager::with_cuda_pool;
 use crate::FerroxCudaF;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream, ValidAsZeroBits};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::backend::manager::with_cuda_pool;
 
 /// Helper for managing named CUDA streams - used by CudaContextManager
 pub struct StreamManager {
@@ -125,9 +125,8 @@ impl StreamManager {
             None => ctx.default_stream(),
         };
 
-
         // Allocate GPU memory first
-        let pool_alloc =  with_cuda_pool(|pool| pool.allocate(data.len()))?;
+        let pool_alloc = with_cuda_pool(|pool| pool.allocate(data.len()))?;
         let mut device_buffer = pool_alloc.data;
         // Copy data from host to device using the correct cudarc API
 

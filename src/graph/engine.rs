@@ -1,27 +1,164 @@
-
-use std::cell::RefCell;
+use crate::backend::{FerroxCudaF, Tensor};
+use crate::ops::Operator;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::node::{Node, NodeId};
-use crate::backend::number::{CPUNumber, FerroxCudaF};
-use crate::tensor::Tensor;
+/// ATOMIC auto incrementing id for all nodes.
+static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-// Computational graph engine that manages all nodes and their relationships
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeId(pub usize);
+
+
+
+impl NodeId {
+    pub fn new() -> Self {
+        let id = NODE_COUNTER.fetch_add(1, Ordering::SeqCst);
+        Self(id)
+    }
+}
+
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         write!(f, "NodeId({})", self.0)
+    }
+}
+
+impl Default for NodeId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+///  Evaluation mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvaluationMode {
+    /// Lazy evaluation
+    Lazy,
+    /// Eager evaluation evaulates inmediately after each operation
+    Eager,
+}
+
 #[derive(Debug)]
-pub struct Engine<T>
+pub enum NodeState<T>
 where
     T: FerroxCudaF,
 {
-    // T must implement Clone and Debug traits{
-    // Creating a graph is kind of boilerplate in Rust
-    // Thing is i do not want to hhave to grab the graph mutably the graph every time I want to read an item
-    // RefCell allows us to have interior mutability, which means we can mutate the node inside the Rc without having to grab a mutable reference to it.
-    pub nodes: HashMap<NodeId, Rc<RefCell<Node<T>>>>,
-    pub gradients: HashMap<NodeId, Tensor<T>>, // To store gradients for each node
+    /// Leaf node with materialized tensor.
+    Leaf(Tensor<T>),
+
+    /// Node computed but not evaluated yet (lazy mode).
+    Pending {
+        op: Box<dyn Operator<T>>,
+        inputs: Vec<NodeId>,
+    },
+
+    /// Node evaluated and cached
+    Evaluated {
+        tensor: Tensor<T>,
+        op: Option<Box<dyn Operator<T>>>, // Some para nodos computados, None para leaf
+        inputs: Vec<NodeId>,
+    },
 }
 
-impl<T> Default for Engine<T>
+
+impl<T> Clone for NodeState<T>
+where
+    T: FerroxCudaF,
+{
+    fn clone(&self) -> Self {
+        match self {
+            NodeState::Leaf(tensor) => NodeState::Leaf(tensor.clone()),
+
+            NodeState::Pending { op, inputs } => NodeState::Pending {
+                op: op.clone_op(),
+                inputs: inputs.clone(),
+            },
+
+            NodeState::Evaluated { tensor, op, inputs } => NodeState::Evaluated {
+                tensor: tensor.clone(),
+                op: op.as_ref().map(|o| o.clone_op()),
+                inputs: inputs.clone(),
+            },
+        }
+    }
+
+}
+
+/// Computational graph node. Supports dual mode.
+#[derive(Debug, Clone)]
+pub struct Node<T>
+where
+    T: FerroxCudaF,
+{
+    pub id: NodeId,
+    pub state: NodeState<T>,
+    pub requires_grad: bool,
+}
+
+impl<T> Node<T>
+where
+    T: FerroxCudaF,
+{
+    pub fn new_leaf(tensor: Tensor<T>, requires_grad: bool) -> Self {
+        Self {
+            id: NodeId::new(),
+            state: NodeState::Leaf(tensor),
+            requires_grad,
+        }
+    }
+
+    pub fn new_lazy(op: Box<dyn Operator<T>>, inputs: Vec<NodeId>, requires_grad: bool) -> Self {
+        Self {
+            id: NodeId::new(),
+            state: NodeState::Pending { op, inputs },
+            requires_grad,
+        }
+    }
+
+    pub fn new_evaluated(
+        tensor: Tensor<T>,
+        op: Option<Box<dyn Operator<T>>>,
+        inputs: Vec<NodeId>,
+        requires_grad: bool,
+    ) -> Self {
+        Self {
+            id: NodeId::new(),
+            state: NodeState::Evaluated { tensor, op, inputs },
+            requires_grad,
+        }
+    }
+
+    pub fn get_tensor(&self) -> Option<&Tensor<T>> {
+        match &self.state {
+            NodeState::Leaf(tensor) => Some(tensor),
+            NodeState::Evaluated { tensor, .. } => Some(tensor),
+            NodeState::Pending { .. } => None,
+        }
+    }
+
+    pub fn is_evaluated(&self) -> bool {
+        !matches!(self.state, NodeState::Pending { .. })
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        matches!(self.state, NodeState::Leaf(_))
+    }
+}
+
+/// Main computational graph engine.
+#[derive(Debug)]
+pub struct AutoFerroxEngine<T>
+where
+    T: FerroxCudaF,
+{
+    nodes: HashMap<NodeId, Node<T>>,
+    gradients: HashMap<NodeId, Tensor<T>>,
+    training_mode: bool,
+    evaluation_mode: EvaluationMode,
+}
+
+impl<T> Default for AutoFerroxEngine<T>
 where
     T: FerroxCudaF,
 {
@@ -30,7 +167,7 @@ where
     }
 }
 
-impl<T> Engine<T>
+impl<T> AutoFerroxEngine<T>
 where
     T: FerroxCudaF,
 {
@@ -38,723 +175,347 @@ where
         Self {
             nodes: HashMap::new(),
             gradients: HashMap::new(),
+            training_mode: true,
+            evaluation_mode: EvaluationMode::Eager, // Eager by default as PyTorch
         }
     }
 
-    // Add a Node to the graph
+    pub fn set_evaluation_mode(&mut self, mode: EvaluationMode) {
+        self.evaluation_mode = mode;
+    }
+
+    pub fn get_evaluation_mode(&self) -> EvaluationMode {
+        self.evaluation_mode
+    }
+
+    pub fn set_training(&mut self, training: bool) {
+        self.training_mode = training;
+    }
+
+    pub fn lazy_mode(&mut self) {
+        self.evaluation_mode = EvaluationMode::Lazy;
+    }
+
+    pub fn eager_mode(&mut self) {
+        self.evaluation_mode = EvaluationMode::Eager;
+    }
+
+    pub fn is_training(&self) -> bool {
+        self.training_mode
+    }
+
     pub fn add_node(&mut self, node: Node<T>) -> NodeId {
         let id = node.id;
-        self.nodes.insert(id, Rc::new(RefCell::new(node)));
+        self.nodes.insert(id, node);
         id
     }
 
-    // Create a leaf node
-    pub fn create_tensor(&mut self, data: Tensor<T>, requires_grad: bool) -> NodeId {
-        let node = Node::new(data, requires_grad);
-        self.add_node(node)
+    pub fn get_node(&self, node_id: NodeId) -> Option<&Node<T>> {
+        self.nodes.get(&node_id)
     }
 
-    // Create a tensor from data with default device
-    pub fn tensor_from_vec(
-        &mut self,
-        data: Vec<T>,
-        shape: &[usize],
-        requires_grad: bool,
-    ) -> Result<NodeId, String> {
-        let tensor = Tensor::from_vec(data, shape)?;
-        Ok(self.create_tensor(tensor, requires_grad))
+    pub fn get_gradient(&self, node_id: NodeId) -> Option<&Tensor<T>> {
+        self.gradients.get(&node_id)
     }
-}
 
-impl<T> Engine<T>
-where
-    T: FerroxCudaF, // T must implement Clone and Debug traits
-{
-    // Create zeros tensor
-    pub fn zeros(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
-        let tensor = Tensor::zeros(shape).expect("Failed to create zeroed tensor");
-        self.create_tensor(tensor, requires_grad)
+    pub fn set_gradient(&mut self, node_id: NodeId, grad: Tensor<T>) {
+        self.gradients.insert(node_id, grad);
     }
-}
 
-impl<T> Engine<T>
-where
-    T: FerroxCudaF, // T must implement Clone and Debug traits
-{
-    // Create ones tensor
 
-    pub fn ones(&mut self, shape: &[usize], requires_grad: bool) -> NodeId {
-        let tensor = Tensor::ones(shape).expect("Failed to create ones Tensor");
-        self.create_tensor(tensor, requires_grad)
+    // Creates a new leaf node in the computational graph
+    pub fn create_variable(&mut self, tensor: Tensor<T>, requires_grad: bool) -> NodeId {
+        let node = Node::new_leaf(tensor, requires_grad);
+        let id = node.id;
+        self.nodes.insert(id, node);
+        id
     }
-}
-impl<T> Engine<T>
-where
-    T: FerroxCudaF
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
-{
-    // Main gradient computation function. This can actually be called on any node.
-    // Note that my graph implementation is based on reverse-mode automatic differentiation.
-    // It is a Define-By-Run (dynamic) graph, meaning that the graph is built dynamically as operations are performed.
-    // Similarly to other frameworks like PyTorch, TensorFlow 2.X on eager mode, Chainer, etc.
-    // This function computes the gradient of the output node with respect to all input nodes that require gradients.
-    // The main difference between this approach and the Define-And-Run (static) approach (Tensorflow 1.X or Tensorflow graph mode)
-    // is quite well explained here: https://medium.com/@zzemb6/define-and-run-vs-define-by-run-b527d127e13a
-    // Mainly, in Define-By-Run, the graph is built dynamically as operations are performed,
-    // and the gradients are computed in reverse order, starting from the output node.
-    pub fn compute_gradient_of_variables(
-        &mut self,
-        output_tensor: NodeId,
-        out_grad: Option<Tensor<T>>,
+
+    fn validate_inputs(
+        &self,
+        op: &Box<dyn Operator<T>>,
+        input_ids: &[NodeId],
     ) -> Result<(), String> {
-        // Clear previous gradients
-        self.gradients.clear();
+        // Verificar que existen
+        for &input_id in input_ids {
+            if !self.nodes.contains_key(&input_id) {
+                return Err(format!("Input node {} not found", input_id.0));
+            }
+        }
 
-        // Initialize gradient of output
-        let output_grad = match out_grad {
-            Some(grad) => grad,
-            None => {
-                let output_data = self.nodes[&output_tensor].borrow().cached_data.clone();
-                Tensor::ones(output_data.shape())?
+        // Verificar número correcto
+        if input_ids.len() != op.num_inputs() {
+            return Err(format!(
+                "Operation {} expects {} inputs, got {}",
+                op.name(),
+                op.num_inputs(),
+                input_ids.len()
+            ));
+        }
+
+        Ok(())
+    }
+
+
+    // Evaluates a single node and takes its computed tensor.
+    pub fn evaluate(&mut self, node_id: NodeId) -> Result<&Tensor<T>, String> {
+        self.evaluate_node(node_id)?;
+        self.get_tensor(node_id)
+            .ok_or_else(|| format!("Failed to evaluate node {}", node_id.0))
+    }
+
+
+    fn evaluate_node(&mut self, node_id: NodeId) -> Result<(), String> {
+        // Si ya está evaluado, no hacer nada
+        if self.is_evaluated(node_id) {
+            return Ok(());
+        }
+
+        // Obtener información del nodo pending
+        let (op, input_ids) = {
+            let node = self.nodes.get(&node_id)
+                .ok_or_else(|| format!("Node {} not found", node_id.0))?;
+
+            match &node.state {
+                NodeState::Pending { op, inputs } => {
+                    (op.clone_op(), inputs.clone())
+                }
+                _ => return Ok(()), // Ya evaluado
             }
         };
 
-        // Map from node to list of gradient contributions
-        let mut node_to_output_grads_list: HashMap<NodeId, Vec<Tensor<T>>> = HashMap::new();
-        node_to_output_grads_list.insert(output_tensor, vec![output_grad]);
+        // Evaluar entradas recursivamente
+        for &input_id in &input_ids {
+            self.evaluate_node(input_id)?;
+        }
 
-        // Get reverse topological order
-        let reverse_topo_order: Vec<NodeId> = self
-            .find_topo_sort(&[output_tensor])
-            .into_iter()
-            .rev()
+        // Obtener tensores de entrada
+        let res: Result<Vec<_>, String> = input_ids
+            .iter()
+            .map(|&input_id| {
+                self.get_tensor(input_id)
+                    .ok_or_else(|| format!("Input node {} not evaluated", input_id.0))
+            })
             .collect();
+        let mut input_tensors = res?;
 
-        // Process nodes in reverse topological order
-        for &node_id in &reverse_topo_order {
-            if let Some(grad_list) = node_to_output_grads_list.get(&node_id) {
-                // Sum all gradient contributions for this node
-                let mut accumulated_grad = grad_list[0].clone();
-                for grad in grad_list.iter().skip(1) {
-                    accumulated_grad = accumulated_grad.add(grad)?;
-                }
+        // Computar resultado
+        let result_tensor = op.compute(&mut input_tensors)?;
 
-                // Store the accumulated gradient
-                self.gradients.insert(node_id, accumulated_grad.clone());
+        // Actualizar nodo a evaluado
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            node.state = NodeState::Evaluated {
+                tensor: result_tensor,
+                op: Some(op),
+                inputs: input_ids,
+            };
+        }
 
-                let node = self.nodes[&node_id].borrow();
+        Ok(())
+    }
 
-                // If this node has an operation, compute gradients for its inputs
-                if let Some(ref op) = node.op {
-                    // Collect input data for gradient computation
-                    let input_data: Vec<Tensor<T>> = node
-                        .inputs
-                        .iter()
-                        .map(|&input_id| self.nodes[&input_id].borrow().cached_data.clone())
-                        .collect();
+      pub fn get_tensor(&self, node_id: NodeId) -> Option<&Tensor<T>> {
+        self.nodes.get(&node_id)?.get_tensor()
+    }
 
-                    // Compute gradients for all inputs
-                    let input_grads: Vec<Tensor<T>> =
-                        op.gradient(&mut accumulated_grad, &input_data)?;
+    /// Verificar si un nodo está evaluado
+    pub fn is_evaluated(&self, node_id: NodeId) -> bool {
+        self.nodes.get(&node_id).is_some_and(|node| node.is_evaluated())
+    }
 
-                    // Accumulate gradients for input nodes
-                    for (i, &input_id) in node.inputs.iter().enumerate() {
-                        if self.nodes[&input_id].borrow().requires_grad {
-                            node_to_output_grads_list
-                                .entry(input_id)
-                                .or_default()
-                                .push(input_grads[i].clone());
-                        }
+    pub fn apply_operation(
+        &mut self,
+        op: Box<dyn Operator<T>>,
+        input_ids: Vec<NodeId>,
+    ) -> Result<NodeId, String> {
+        self.validate_inputs(&op, &input_ids)?;
+
+        match self.evaluation_mode {
+            EvaluationMode::Lazy => {
+                // Create pending node
+                let node = Node::new_lazy(op, input_ids, true);
+                let id = node.id;
+                self.nodes.insert(id, node);
+
+                Ok(id)
+            }
+            EvaluationMode::Eager => {
+
+                for &input_id in &input_ids {
+                    if !self.is_evaluated(input_id) {
+                        self.evaluate_node(input_id)?;
                     }
                 }
+
+                // Obtain input tensors.
+                let res: Result<Vec<_>, String> = input_ids
+                    .iter()
+                    .map(|&input_id| {
+                        self.get_tensor(input_id)
+                            .ok_or_else(|| format!("Input node {} not available", input_id.0))
+                    })
+                    .collect();
+
+                let mut input_tensors = res?;
+
+                // Evaluate inmediately
+                let result_tensor = op.compute(&mut input_tensors)?;
+                // Create evaluated node
+                let node = Node::new_evaluated(
+                    result_tensor,
+                    Some(op), // Save the op for the backward pass
+                    input_ids,
+                    true,
+                );
+                let id = node.id;
+                self.nodes.insert(id, node);
+
+                Ok(id)
+            }
+        }
+    }
+
+
+    fn accumulate_gradient(&mut self, node_id: NodeId, grad: Tensor<T>) -> Result<(), String> {
+        match self.gradients.remove(&node_id) {
+            Some(existing_grad) => {
+                let accumulated = existing_grad.add(&grad)?;
+                self.gradients.insert(node_id, accumulated);
+            }
+            None => {
+                self.gradients.insert(node_id, grad);
+            }
+        }
+        Ok(())
+    }
+
+
+      pub fn backward(&mut self, loss_id: NodeId) -> Result<(), String> {
+        if !self.training_mode {
+            return Ok(());
+        }
+
+        // Verificar que el nodo de pérdida está evaluado
+        if !self.is_evaluated(loss_id) {
+            return Err("Cannot run backward on unevaluated node. Call evaluate() first.".to_string());
+        }
+
+        // Inicializar gradiente de pérdida
+        let loss_tensor = self.get_tensor(loss_id)
+            .ok_or("Loss node not found")?;
+        let ones_grad = Tensor::ones(loss_tensor.shape())?;
+        self.gradients.insert(loss_id, ones_grad);
+
+        // Ordenamiento topológico y propagación
+        let mut visited = std::collections::HashSet::new();
+        let mut topo_order = Vec::new();
+        self.topological_sort(loss_id, &mut visited, &mut topo_order)?;
+
+        topo_order.reverse();
+
+        // Propagar gradientes
+        for &node_id in &topo_order {
+            self.backward_node(node_id)?;
+        }
+
+        Ok(())
+    }
+
+    /// Backward para un solo nodo
+    fn backward_node(&mut self, node_id: NodeId) -> Result<(), String> {
+        // Take ownership of the gradient data
+        let grad_output = match self.gradients.remove(&node_id) {
+            Some(grad) => grad,
+            None => return Ok(()),
+        };
+
+        // Obtain node information.
+        let node = self.nodes.get(&node_id).cloned()
+            .ok_or_else(|| format!("Node {} not found", node_id.0))?;
+
+        match node.state {
+            NodeState::Evaluated { op, inputs, tensor } => {
+                // Obtain inputs.
+                let res: Result<Vec<_>, String> = inputs
+                    .iter()
+                    .map(|&input_id| {
+                        self.nodes
+                            .get(&input_id)
+                            .and_then(|node| node.get_tensor())
+                            .ok_or_else(|| format!("Input node {} not evaluated", input_id.0))
+                    })
+                    .collect();
+                let mut input_tensors = res?;
+
+                // Compute input gradients.
+                let input_grads = match op {
+                    Some(o) => {
+                        o.gradient(grad_output, &mut input_tensors, &tensor)?
+                    },
+                    None => { panic!("Cannot compute gradient. Operation not defined for node: {}", node_id) }
+
+                };
+
+                // Acumulate gradients
+                for (input_id, input_grad) in inputs.iter().zip(input_grads) {
+                    self.accumulate_gradient(*input_id, input_grad)?;
+                }
+            }
+            _ => {
+                // Leaf nodes. The gradient stops here
+                self.gradients.insert(node_id, grad_output);
             }
         }
 
         Ok(())
     }
 
-    // Backward pass: compute gradients using reverse-mode automatic differentiation
-    // I am using reverse mode as it is more efficent for neural networks and other models where the number of outputs is much smaller than the number of inputs.
-    // In forward mode, we would compute the gradient of each output with respect to each input, which is not efficient for large models that can have thousands of inputs.
-    // I created this wrapper  over the private method compute_gradient_of_variables to make it easier to use.
-    // Additionally my idea is to implement more gradient computation methods in the future, such as finite differences, so I want to keep this method as the main entrypoint for the backward pass while the other methods will hold the complexity of the computation.
-    pub fn backward(&mut self, output_node: NodeId) -> Result<(), String> {
-        // the backard function calls the main gradient computation function. By passing None as the out_grad, we will use the default gradient of ones.
-        // I think this could be done better if we passed  the actual gradient of the output node, but for now we will use the default gradient of ones.
-        if let Some(grad) = self.get_gradient(output_node) {
-            return self.compute_gradient_of_variables(output_node, Some(grad));
-        }
-        // Fallback to default gradient of ones if no gradient is set
-        self.compute_gradient_of_variables(output_node, None)
-    }
-}
-
-impl<T> Engine<T>
-where
-    T: FerroxCudaF,
-{
-    /// GRAPH OPERATIONS:
-    ///
-    /// Currently, implemented graph operations include:
-    ///
-    /// - Addition (element-wise and scalar)
-    /// - Multiplication (element-wise and scalar)
-    /// - Division (element-wise and scalar)
-    /// - Power (element-wise and scalar)
-    /// - Matrix multiplication
-    /// - ReLU activation
-    /// - Exponential function
-    /// - Logarithm function
-    /// - Negation
-    /// - Sum operation (with axes support)
-    /// - Transpose
-    /// - Reshape
-    /// - Broadcast
-    ///
-    /// Operations in the TO-DO list include:
-    ///
-    /// - More activation functions (tanh, softmax, etc.)
-    /// - Convolution operations
-    /// - Pooling operations
-    /// - Batch normalization
-    /// - Dropout
-    ///
-    /// Any other activation functions or operations can be added as needed.
-    /// At the end of each operation, the resulting OPNode is added to the graph and its ID is returned.
-    /// This is critical so that tensor operations are recorded on the grph strcture.
-    ///
-    // Addition operation
-    pub fn add(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(AddOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Scalar addition
-    pub fn add_scalar(&mut self, a: NodeId, scalar: T) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(AddScalarOp::new(scalar));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Multiplication operation
-    pub fn mul(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(MulOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Scalar multiplication
-    pub fn mul_scalar(&mut self, a: NodeId, scalar: T) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(MulScalarOp::new(scalar));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Division operation
-    pub fn div(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(DivOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Matrix multiplication operation
-    pub fn matmul(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(MatMulOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Negation operation
-    pub fn negate(&mut self, a: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(NegateOp);
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Division by scalar
-    pub fn div_scalar(&mut self, a: NodeId, scalar: T) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        // Check for zero scalar before creating the operation
-        let zero = <T as CPUNumber>::zero();
-        if scalar == zero {
-            return Err("Cannot divide by zero scalar".to_string());
-        }
-
-        let op = Box::new(DivScalarOp::new(scalar));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Division operation with two nodes
-    pub fn divide(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-        let op = Box::new(DivOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-}
-
-impl<T> Engine<T>
-where
-    T: FerroxCudaF
-        + Clone
-        + std::fmt::Debug
-        + ndarray::LinalgScalar
-        + ndarray::ScalarOperand
-        + rand_distr::num_traits::FromPrimitive, // T must implement Clone and Debug traits
-{
-    /// Find maximum values along a specified dimension.
-    ///
-    /// This is essential for CPUNumberally stable softmax computation.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - Input tensor node
-    /// * `dim` - Dimension along which to find maximum
-    ///
-    /// # Returns
-    ///
-    /// Tensor with maximum values, with the specified dimension reduced
-    ///
-    /// # Examples
-    ///
-    /// For input shape [2, 3] and dim=1:
-    /// - Input: [[1, 5, 3], [2, 1, 4]]
-    /// - Output: [5, 4] (shape [2])
-    pub fn max_along_dim(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
-        let input_data = self.nodes[&input].borrow().cached_data.clone();
-        let input_shape = input_data.shape();
-
-        // Validate dimension
-        if dim >= input_shape.len() {
-            return Err(format!(
-                "Dimension {} out of bounds for tensor with {} dimensions",
-                dim,
-                input_shape.len()
-            ));
-        }
-
-        let result_tensor = input_data.max_reduce(Some(&[dim]))?;
-
-        // Create operation for gradient computation
-        let op = Box::new(MaxAlongDimOp::new(dim));
-        let node = Node::from_op(op, vec![input], result_tensor);
-        Ok(self.add_node(node))
-    }
-
-    /// Sum values along a specified dimension.
-    ///
-    /// Similar to the existing sum operation but specifically for one dimension.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - Input tensor node
-    /// * `dim` - Dimension along which to sum
-    ///
-    /// # Returns
-    ///
-    /// Tensor with summed values, with the specified dimension reduced
-    pub fn sum_along_dim(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
-        // This can reuse the existing summation operation
-        self.summation(input, Some(vec![dim]))
-    }
-
-    /// Expand dimensions by inserting a size-1 dimension at the specified position.
-    /// This is used to restore dimensions after reduction operations for broadcasting.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - Input tensor node
-    /// * `dim` - Position where to insert the new dimension
-    ///
-    /// # Returns
-    ///
-    /// Tensor with an additional dimension of size 1 at the specified position
-    ///
-    /// # Examples
-    ///
-    /// For input shape [2] and dim=1:
-    /// - Input shape: [2]
-    /// - Output shape: [2, 1]
-    ///
-    /// For input shape [2, 3] and dim=1:
-    /// - Input shape: [2, 3]
-    /// - Output shape: [2, 1, 3]
-    pub fn expand_dims_at(&mut self, input: NodeId, dim: usize) -> Result<NodeId, String> {
-        let input_data = self.nodes[&input].borrow().cached_data.clone();
-        let input_shape = input_data.shape();
-
-        // Validate dimension
-        if dim > input_shape.len() {
-            return Err(format!(
-                "Cannot expand at dimension {} for tensor with {} dimensions",
-                dim,
-                input_shape.len()
-            ));
-        }
-
-        // Create new shape with size-1 dimension inserted
-        let mut new_shape = input_shape.to_vec();
-        new_shape.insert(dim, 1);
-
-        // Use existing reshape operation
-        self.reshape(input, new_shape)
-    }
-
-    // Sum operation
-    pub fn sum(&mut self, a: NodeId, axis: Option<usize>) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(SumOp::new(axis));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Summation with multiple axes
-    pub fn summation(&mut self, a: NodeId, axes: Option<Vec<usize>>) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(SummationOp::new(axes));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Transpose operation
-    pub fn transpose(&mut self, a: NodeId, axes: Option<Vec<usize>>) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(TransposeOp::new(axes));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Reshape operation
-    pub fn reshape(&mut self, a: NodeId, new_shape: Vec<usize>) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(ReshapeOp::new(new_shape));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Broadcast operation
-    pub fn broadcast_to(&mut self, a: NodeId, target_shape: Vec<usize>) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(BroadcastToOp::new(target_shape));
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    /// Element-wise minimum operation between two tensors.
-    ///
-    /// Computes min(a, b) element-wise. Both tensors must have the same shape.
-    pub fn min(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(MinOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    /// Element-wise maximum operation between two tensors.
-    ///
-    /// Computes max(a, b) element-wise. Both tensors must have the same shape.
-    pub fn max(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(MaxOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    /// Clamp operation that constrains tensor values to a specified range.
-    ///
-    /// Clamps all elements in the input tensor to the range [min_val, max_val].
-    /// This is essential for numerical stability, especially in loss functions.
-    pub fn clamp(&mut self, input: NodeId, min_val: T, max_val: T) -> Result<NodeId, String> {
-        let data_input = self.nodes[&input].borrow().cached_data.clone();
-
-        let op = Box::new(ClampOp::new(min_val, max_val));
-        let result_data = op.compute(&[data_input])?;
-
-        let node = Node::from_op(op, vec![input], result_data);
-        Ok(self.add_node(node))
-    }
-
-    /// Element-wise absolute value operation.
-    ///
-    /// Computes the absolute value of each element in the input tensor.
-    pub fn abs(&mut self, input: NodeId) -> Result<NodeId, String> {
-        let data_input = self.nodes[&input].borrow().cached_data.clone();
-
-        let op = Box::new(AbsOp);
-        let result_data = op.compute(&[data_input])?;
-
-        let node = Node::from_op(op, vec![input], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Get data from a node
-    pub fn get_data(&self, node_id: NodeId) -> Tensor<T> {
-        self.nodes[&node_id].borrow().cached_data.clone()
-    }
-
-    // Get shape of a node
-    pub fn get_shape(&self, node_id: NodeId) -> Vec<usize> {
-        self.nodes[&node_id].borrow().cached_data.shape().to_vec()
-    }
-
-    // Check if node requires gradient
-    pub fn requires_grad(&self, node_id: NodeId) -> bool {
-        self.nodes[&node_id].borrow().requires_grad
-    }
-
-    // Detach a node from the computation graph
-    pub fn detach(&mut self, node_id: NodeId) -> NodeId {
-        let detached_node = self.nodes[&node_id].borrow().detach();
-        self.add_node(detached_node)
-    }
-
-    // Find topological sort - needed for backward pass
-    pub fn find_topo_sort(&self, output_nodes: &[NodeId]) -> Vec<NodeId> {
-        let mut visited = std::collections::HashSet::new();
-        let mut topo_order = Vec::new();
-
-        // Iterate over the output nodes and find the route towards the root.
-        for &node_id in output_nodes {
-            self.topo_sort_dfs(node_id, &mut visited, &mut topo_order);
-        }
-
-        topo_order
-    }
-
-    // DFS helper for topological sort.
-    // This is the inner function that performs the  recursive DFS traversal,
-    // Maintains a visited and a topo_order list.
-    // This way it is very easy to avoid recursive cycles.
-    pub fn topo_sort_dfs(
+    /// TOPOLOGICAL SORTING TO COMPUTE OPS IN ORDER
+    fn topological_sort(
         &self,
         node_id: NodeId,
         visited: &mut std::collections::HashSet<NodeId>,
         topo_order: &mut Vec<NodeId>,
-    ) {
+    ) -> Result<(), String> {
         if visited.contains(&node_id) {
-            return;
+            return Ok(());
         }
 
         visited.insert(node_id);
 
-        let node = self.nodes[&node_id].borrow();
-        for &input_id in &node.inputs {
-            self.topo_sort_dfs(input_id, visited, topo_order);
+        if let Some(node) = self.nodes.get(&node_id) {
+            if let NodeState::Evaluated { inputs, .. } = &node.state {
+                for &input_id in inputs {
+                    self.topological_sort(input_id, visited, topo_order)?;
+                }
+            }
         }
 
         topo_order.push(node_id);
+        Ok(())
     }
 
-    /// Set gradient for a node (needed for gradient clipping)
-    pub fn set_gradient(&mut self, node_id: NodeId, gradient: Tensor<T>) {
-        self.gradients.insert(node_id, gradient);
+
+
+    /// GRAPH STATISTICS
+    pub fn num_nodes(&self) -> usize {
+        self.nodes.len()
     }
 
-    // Get gradient for a node
-    pub fn get_gradient(&self, node_id: NodeId) -> Option<Tensor<T>> {
-        self.gradients.get(&node_id).cloned()
+    pub fn num_evaluated_nodes(&self) -> usize {
+        self.nodes.values()
+            .filter(|node| node.is_evaluated())
+            .count()
     }
 
-    /// Update the data of a node
-    pub fn set_node_data(&mut self, node_id: NodeId, new_data: Tensor<T>) {
-        if let Some(node_ref) = self.nodes.get(&node_id) {
-            node_ref.borrow_mut().cached_data = new_data;
-        }
+    pub fn num_pending_nodes(&self) -> usize {
+        self.nodes.values()
+            .filter(|node| !node.is_evaluated())
+            .count()
     }
 
-    /// Clear gradient for a node
-    pub fn clear_gradient(&mut self, node_id: NodeId) {
-        self.gradients.remove(&node_id);
-    }
-
-    // Helper function to sum a list of nodes (useful for loss functions)
-    pub fn sum_node_list(&mut self, node_list: Vec<NodeId>) -> Result<NodeId, String> {
-        if node_list.is_empty() {
-            return Err("Cannot sum empty node list".to_string());
-        }
-
-        let mut result = node_list[0];
-        for &node in node_list.iter().skip(1) {
-            result = self.add(result, node)?;
-        }
-
-        Ok(result)
-    }
-}
-
-// Put here the operations that require Float trait
-// This is a trait bound for operations that require floating point numbers.
-impl<T> Engine<T>
-where
-    T: FerroxCudaF,
-{
-    // Power operation
-    pub fn pow(&mut self, a: NodeId, b: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-        let data_b = self.nodes[&b].borrow().cached_data.clone();
-
-        let op = Box::new(PowOp);
-        let result_data = op.compute(&[data_a, data_b])?;
-
-        let node = Node::from_op(op, vec![a, b], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // ReLU activation
-    pub fn relu(&mut self, a: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(ReLUOp);
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Exponential operation
-    pub fn exp(&mut self, a: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(ExpOp);
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    // Logarithm operation
-    pub fn log(&mut self, a: NodeId) -> Result<NodeId, String> {
-        let data_a = self.nodes[&a].borrow().cached_data.clone();
-
-        let op = Box::new(LogOp);
-        let result_data = op.compute(&[data_a])?;
-
-        let node = Node::from_op(op, vec![a], result_data);
-        Ok(self.add_node(node))
-    }
-
-    /// Element-wise square root operation.
-    ///
-    /// Computes the square root of each element in the input tensor.
-    /// Input values must be non-negative.
-    pub fn sqrt(&mut self, input: NodeId) -> Result<NodeId, String> {
-        let data_input = self.nodes[&input].borrow().cached_data.clone();
-
-        let op = Box::new(SqrtOp);
-        let result_data = op.compute(&[data_input])?;
-
-        let node = Node::from_op(op, vec![input], result_data);
-        Ok(self.add_node(node))
-    }
-}
-
-impl<T> Engine<T>
-where
-    T: FerroxCudaF,
-{
-    /// Convenience method to clamp probabilities for numerical stability.
-    ///
-    /// This is a specialized version of clamp specifically designed for probability
-    /// values, clamping them to [eps, 1-eps] to prevent CPUNumberal issues in
-    /// logarithmic operations.
-    ///
-    /// # Arguments
-    ///
-    /// * `probabilities` - Input probability tensor
-    /// * `eps` - Small epsilon value (default: 1e-8)
-    pub fn clamp_probabilities(
-        &mut self,
-        probabilities: NodeId,
-        eps: f64,
-    ) -> Result<NodeId, String> {
-        let eps_val =
-            <T as CPUNumber>::from_f64(eps).ok_or("Failed to convert epsilon to tensor type")?;
-        let one_minus_eps = <T as CPUNumber>::from_f64(1.0 - eps)
-            .ok_or("Failed to convert 1-epsilon to tensor type")?;
-
-        self.clamp(probabilities, eps_val, one_minus_eps)
-    }
-
-    /// Convenience method for computing L2 norm of a tensor.
-    ///
-    /// Computes the L2 (Euclidean) norm: sqrt(sum(x^2))
-    pub fn l2_norm(&mut self, input: NodeId) -> Result<NodeId, String> {
-        let squared = self.mul(input, input)?;
-        let sum_squared = self.sum(squared, None)?;
-        self.sqrt(sum_squared)
-    }
-
-    /// Convenience method for computing L1 norm of a tensor.
-    ///
-    /// Computes the L1 (Manhattan) norm: sum(abs(x))
-    pub fn l1_norm(&mut self, input: NodeId) -> Result<NodeId, String> {
-        let abs_values = self.abs(input)?;
-        self.sum(abs_values, None)
+    /// Clean up gradients
+    pub fn zero_gradients(&mut self) {
+        self.gradients.clear();
     }
 }

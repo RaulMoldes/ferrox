@@ -64,6 +64,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "elementwise_exp",
             "elementwise_log",
             "elementwise_negate",
+            "elementwise_reciprocal",
             // f64 versions
             "elementwise_add_f64",
             "elementwise_sqrt_f64",
@@ -77,6 +78,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "elementwise_exp_f64",
             "elementwise_log_f64",
             "elementwise_negate_f64",
+            "elementwise_reciprocal_f64",
         ],
     },
     KernelConfig {
@@ -145,10 +147,18 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         functions: &[
             "greater_equal",
             "greater_equal_f64",
+            "greater_equal_scalar",
+            "greater_equal_scalar_f64",
             "less_equal",
             "less_equal_f64",
+            "less_equal_scalar",
+            "less_equal_scalar_f64",
+            "less_scalar",
+            "less_scalar_f64",
             "greater",
             "greater_f64",
+            "greater_scalar",
+            "greater_scalar_f64",
             "less",
             "less_f64",
             "equal",
@@ -222,12 +232,12 @@ impl KernelManager {
     /// Determines the correct CUDA kernel name based on the Rust type at compile time
     /// This is the core of my type-safe kernel dispatch system
     /// We use Rust's TypeId system to check the concrete type T at compile time
-    /// - For f64 types: appends "_f64" suffix to match our CUDA kernel naming convention
-    /// - For all other types (primarily f32): uses the base name directly
+    ///     - For f64 types: appends "_f64" suffix to match our CUDA kernel naming convention
+    ///     - For all other types (primarily f32): uses the base name directly
     /// This allows us to:
-    /// - Automatically select the correct precision kernel based on T with no runtime overhead (type checking is done at compile time)
-    /// - Type safety - impossible to accidentally call wrong precision kernel
-    /// - Consistent naming convention across all kernels allows for maintainability and readability.
+    ///     - Automatically select the correct precision kernel based on T with no runtime overhead (type checking is done at compile time)
+    ///     - Type safety - impossible to accidentally call wrong precision kernel
+    ///     - Consistent naming convention across all kernels allows for maintainability and readability.
     fn get_kernel_name<T>(&self, base_name: &str) -> String
     where
         T: 'static,
@@ -359,6 +369,23 @@ impl KernelManager {
         launch_kernel!(self, &kernel_name, cfg, input, result, &size)
     }
 
+    // Generic scalar comparison
+    fn launch_scalar_comparison<T>(
+        &self,
+        kernel_base: &str,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        scalar: T,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaF + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(kernel_base);
+        launch_kernel!(self, &kernel_name, cfg, input, &scalar, result, &size)
+    }
+
     // ===== PUBLIC API - FILL OPERATIONS =====
 
     /// Launch fill kernel with constant value
@@ -438,6 +465,19 @@ impl KernelManager {
         T: FerroxCudaF + 'static,
     {
         self.launch_binary_elementwise("elementwise_div", cfg, a, b, c, size)
+    }
+
+    pub fn launch_reciprocal<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        c: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaF + 'static,
+    {
+        self.launch_unary_elementwise("elementwise_reciprocal", cfg, a, c, size)
     }
 
     /// Element-wise tensor subtraction: result[i] = a[i] - b[i]
@@ -792,6 +832,62 @@ impl KernelManager {
         T: FerroxCudaF + 'static,
     {
         self.launch_binary_comparison("greater_equal", cfg, a, b, result, size)
+    }
+
+    pub fn launch_greater_equal_scalar<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        scalar: T,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaF + 'static,
+    {
+        self.launch_scalar_comparison("greater_equal_scalar", cfg, a, scalar, result, size)
+    }
+
+    pub fn launch_greater_scalar<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        scalar: T,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaF + 'static,
+    {
+        self.launch_scalar_comparison("greater_scalar", cfg, a, scalar, result, size)
+    }
+
+    pub fn launch_less_equal_scalar<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        scalar: T,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaF + 'static,
+    {
+        self.launch_scalar_comparison("less_equal_scalar", cfg, a, scalar, result, size)
+    }
+
+    pub fn launch_less_scalar<T>(
+        &self,
+        cfg: LaunchConfig,
+        a: &CudaSlice<T>,
+        scalar: T,
+        result: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaF + 'static,
+    {
+        self.launch_scalar_comparison("less_scalar", cfg, a, scalar, result, size)
     }
 
     /// Element-wise less-than-or-equal comparison: result[i] = (a[i] <= b[i]) ? 1.0 : 0.0

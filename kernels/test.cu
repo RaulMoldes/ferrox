@@ -25,6 +25,28 @@
       exit(EXIT_FAILURE); \
   }
 
+
+template <typename T>
+void run_and_time_kernel_scalar(const char* name, void (*kernel)(const T*, T, T*, int),
+    const T * d_in, T scalar, T * d_out, int size) {
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    CHECK_CUDA(cudaEventRecord(start));
+    // Kernel signature: (input_array, scalar_value, output_array, size)
+    kernel << <(size + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE >> > (d_in, scalar, d_out, size);
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+
+    float ms;
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
+    printf("%-25s took %.3f ms\n", name, ms);
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+}
+
 template <typename T>
 void run_and_time_kernel_binary(const char* name, void (*kernel)(const T*, const T*, T*, int),
     const T* d_a, const T* d_b, T* d_out, int size) {
@@ -244,8 +266,8 @@ void run_and_time_matmul(const char* name, void (*kernel)(const T*, const T*, T*
 // Template for convolution
 template <typename T>
 void run_and_time_conv2d(const char* name,
-    void (*kernel)(const T*, const T*, const T*, T*, int, int, int, int, int, int, int, int, int, int, int, int, int),
-    const T* d_input, const T* d_filter, const T* d_bias, T* d_output,
+    void (*kernel)(const T*, const T*,  T*, int, int, int, int, int, int, int, int, int, int, int, int, int),
+    const T* d_input, const T* d_filter,T* d_output,
     int batch_size, int in_channels, int in_height, int in_width,
     int out_channels, int out_height, int out_width,
     int kernel_height, int kernel_width, int stride_h, int stride_w, int pad_h, int pad_w) {
@@ -267,7 +289,7 @@ void run_and_time_conv2d(const char* name,
 
     CHECK_CUDA(cudaEventRecord(start));
     kernel << <grid, block, shared_mem_size >> > (
-        d_input, d_filter, d_bias, d_output,
+        d_input, d_filter, d_output,
         batch_size, in_channels, in_height, in_width,
         out_channels, out_height, out_width,
         kernel_height, kernel_width, stride_h, stride_w, pad_h, pad_w);
@@ -393,6 +415,10 @@ int main() {
     run_and_time_kernel_binary("less_equal", less_equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
     run_and_time_kernel_binary("less", less, d_a_f32, d_b_f32, d_out_f32, SIZE);
     run_and_time_kernel_binary("equal", equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
+    printf("\n=== FLOAT32 SCALAR COMPARISON OPERATIONS ===\n");
+    run_and_time_kernel_scalar("greater_scalar", greater_scalar, d_a_f32, 1.5f, d_out_f32, SIZE);
+    run_and_time_kernel_scalar("less_scalar", less_scalar, d_a_f32, 1.5f, d_out_f32, SIZE);
+
 
     printf("\n=== FLOAT32 UNARY OPERATIONS ===\n");
     run_and_time_kernel_unary("logical_not", logical_not, d_a_f32, d_out_f32, SIZE);
@@ -400,6 +426,8 @@ int main() {
     run_and_time_clamp("clamp", clamp, d_a_f32, d_out_f32, -2.0f, 2.0f, SIZE);
     run_and_time_in_range("in_range", in_range, d_a_f32, -1.0f, 1.0f, d_out_f32, SIZE);
     run_and_time_where("where_condition", where_condition, d_a_f32, d_b_f32, d_c_f32, d_out_f32, SIZE);
+    printf("\n=== FLOAT32 RECIPROCAL OPERATION ===\n");
+    run_and_time_kernel_unary("elementwise_reciprocal", elementwise_reciprocal, d_a_f32, d_out_f32, SIZE);
 
     printf("\n=== FLOAT32 ACTIVATION FUNCTIONS ===\n");
     run_and_time_kernel_unary("relu", relu, d_a_f32, d_out_f32, SIZE);
@@ -423,7 +451,7 @@ int main() {
 
     printf("\n=== FLOAT32 CONVOLUTION ===\n");
     run_and_time_conv2d("conv2d_forward", conv2d_forward,
-        d_conv_input_f32, d_conv_filter_f32, d_conv_bias_f32, d_conv_output_f32,
+        d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
     printf("\n=== FLOAT64 BINARY OPERATIONS ===\n");
@@ -441,6 +469,9 @@ int main() {
     run_and_time_kernel_binary("less_equal_f64", less_equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
     run_and_time_kernel_binary("less_f64", less_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
     run_and_time_kernel_binary("equal_f64", equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+    printf("\n=== FLOAT64 SCALAR COMPARISON OPERATIONS ===\n");
+    run_and_time_kernel_scalar("greater_scalar_f64", greater_scalar_f64, d_a_f64, 1.5, d_out_f64, SIZE);
+    run_and_time_kernel_scalar("less_scalar_f64", less_scalar_f64, d_a_f64, 1.5, d_out_f64, SIZE);
 
     printf("\n=== FLOAT64 UNARY OPERATIONS ===\n");
     run_and_time_kernel_unary("logical_not_f64", logical_not_f64, d_a_f64, d_out_f64, SIZE);
@@ -448,6 +479,8 @@ int main() {
     run_and_time_clamp("clamp_f64", clamp_f64, d_a_f64, d_out_f64, -2.0, 2.0, SIZE);
     run_and_time_in_range("in_range_f64", in_range_f64, d_a_f64, -1.0, 1.0, d_out_f64, SIZE);
     run_and_time_where("where_condition_f64", where_condition_f64, d_a_f64, d_b_f64, d_c_f64, d_out_f64, SIZE);
+    printf("\n=== FLOAT64 RECIPROCAL OPERATION ===\n");
+    run_and_time_kernel_unary("elementwise_reciprocal_f64", elementwise_reciprocal_f64, d_a_f64, d_out_f64, SIZE);
 
     printf("\n=== FLOAT64 ACTIVATION FUNCTIONS ===\n");
     run_and_time_kernel_unary("relu_f64", relu_f64, d_a_f64, d_out_f64, SIZE);
@@ -471,8 +504,11 @@ int main() {
 
     printf("\n=== FLOAT64 CONVOLUTION ===\n");
     run_and_time_conv2d("conv2d_forward_f64", conv2d_forward_f64,
-        d_conv_input_f64, d_conv_filter_f64, d_conv_bias_f64, d_conv_output_f64,
+        d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+
+
+
 
     // Cleanup all allocated memory
     printf("\n=== CLEANUP ===\n");

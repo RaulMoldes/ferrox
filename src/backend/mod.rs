@@ -14,10 +14,10 @@ pub use cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
 pub use device::cuda;
 
-pub use device::Device;
 pub use device::cpu;
 pub use device::default_device;
-pub use manager::{BackendManager, best_device, get_backend, has_cuda};
+pub use device::Device;
+pub use manager::{best_device, get_backend, has_cuda, BackendManager};
 
 #[cfg(feature = "cuda")]
 pub use manager::{with_cuda_context, with_cuda_ops};

@@ -53,11 +53,12 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Best practices suggest starting with 128–256 threads per block and tuning later based on profiling.
     fn get_launch_config(&self, size: usize) -> LaunchConfig {
         let block_size: usize = BLOCK_SIZE as usize;
-        let grid_size = ((size + block_size - 1) / block_size) as u32;
+        let grid_size = size.div_ceil(block_size
+        ) as u32;
 
         LaunchConfig {
             grid_dim: (grid_size, 1, 1),
-            block_dim: (BLOCK_SIZE as u32, 1, 1),
+            block_dim: (BLOCK_SIZE, 1, 1),
             shared_mem_bytes: 0,
         }
     }
@@ -73,8 +74,8 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Specifically, during matrix multiplication, each 16×16 tile of the output matrix C can be computed by loading corresponding tiles from A and B.
     fn get_2d_launch_config(&self, rows: usize, cols: usize) -> LaunchConfig {
         let block_size = TILE_SIZE as usize; // 16x16 = 256 threads per block.
-        let grid_x = (cols + block_size - 1) / block_size;
-        let grid_y = (rows + block_size - 1) / block_size;
+        let grid_x = cols.div_ceil(block_size);
+        let grid_y = rows.div_ceil(block_size);
 
         LaunchConfig {
             grid_dim: (grid_x as u32, grid_y as u32, 1),
@@ -127,7 +128,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             CudaTensor {
                 data: Some(result),
                 shape: shape.to_vec(),
-                strides: strides,
+                strides,
             },
             id,
         ))
@@ -140,7 +141,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Create ones tensor - useful for creating bias vectors and normalization
     pub fn ones(&self, shape: &[usize]) -> Result<(CudaTensor<T>, u64), String> {
-        let one = <T as FerroxF>::from_f64(1.0).unwrap();
+        let one = FerroxF::from_f64(1.0).unwrap();
         self.full(shape, one)
     }
 
@@ -158,7 +159,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
             CudaTensor {
                 data: Some(result),
                 shape: shape.to_vec(),
-                strides: strides,
+                strides,
             },
             id,
         ))
@@ -352,6 +353,16 @@ impl<T: FerroxCudaF> CudaOps<T> {
         Ok(result)
     }
 
+    pub fn reciprocal(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
+        let size = input.size();
+        let (mut result, id) = self.create_tensor_from_pool(input.shape())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels
+            .launch_reciprocal(cfg, input.data(), result.data_mut(), size as i32)?;
+        Ok((result, id))
+    }
+
     /// Element-wise absolute value: result = |input|
     pub fn abs(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
@@ -500,7 +511,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Max reduction along all elements
     pub fn max_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
+        let num_blocks = size.div_ceil(BLOCK_SIZE as usize);
         let (mut result, id) = self.create_tensor_from_pool(&[num_blocks])?;
         let cfg = self.get_launch_config(size);
 
@@ -536,7 +547,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Min reduction along all elements
     pub fn min_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let size = input.size();
-        let num_blocks = (size + BLOCK_SIZE as usize - 1) / BLOCK_SIZE as usize;
+        let num_blocks = size.div_ceil(BLOCK_SIZE as usize);
         let (mut result, id) = self.create_tensor_from_pool(&[num_blocks])?;
         let cfg = self.get_launch_config(size);
 
@@ -572,7 +583,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// Mean operation (uses sum + division)
     pub fn mean_all(&self, input: &CudaTensor<T>) -> Result<(CudaTensor<T>, u64), String> {
         let (sum_result, id) = self.sum_all(input)?;
-        let size_scalar = <T as FerroxF>::from_f64(1.0 / input.size() as f64)
+        let size_scalar = FerroxF::from_f64(1.0 / input.size() as f64)
             .ok_or("Failed to convert size to tensor type")?;
         let result = self.mul_scalar(&sum_result, size_scalar)?;
         self.return_tensor_to_pool(id, sum_result)?;
@@ -656,8 +667,13 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
 
-        self.kernels
-            .launch_greater_equal(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
+        self.kernels.launch_greater_equal(
+            cfg,
+            a.data(),
+            b.data(),
+            result.data_mut(),
+            size as i32,
+        )?;
         Ok((result, id))
     }
 
@@ -715,6 +731,80 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         self.kernels
             .launch_less(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
+        Ok((result, id))
+    }
+
+    pub fn greater_equal_scalar(
+        &self,
+        a: &CudaTensor<T>,
+        scalar: T,
+    ) -> Result<(CudaTensor<T>, u64), String> {
+        let size = a.size();
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_greater_equal_scalar(
+            cfg,
+            a.data(),
+            scalar,
+            result.data_mut(),
+            size as i32,
+        )?;
+        Ok((result, id))
+    }
+
+    /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
+    pub fn less_equal_scalar(
+        &self,
+        a: &CudaTensor<T>,
+        scalar: T,
+    ) -> Result<(CudaTensor<T>, u64), String> {
+        let size = a.size();
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_less_equal_scalar(
+            cfg,
+            a.data(),
+            scalar,
+            result.data_mut(),
+            size as i32,
+        )?;
+        Ok((result, id))
+    }
+
+    /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
+    pub fn greater_scalar(
+        &self,
+        a: &CudaTensor<T>,
+        scalar: T,
+    ) -> Result<(CudaTensor<T>, u64), String> {
+        let size = a.size();
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels.launch_greater_scalar(
+            cfg,
+            a.data(),
+            scalar,
+            result.data_mut(),
+            size as i32,
+        )?;
+        Ok((result, id))
+    }
+
+    /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
+    pub fn less_scalar(
+        &self,
+        a: &CudaTensor<T>,
+        scalar: T,
+    ) -> Result<(CudaTensor<T>, u64), String> {
+        let size = a.size();
+        let (mut result, id) = self.create_tensor_from_pool(a.shape())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels
+            .launch_less_scalar(cfg, a.data(), scalar, result.data_mut(), size as i32)?;
         Ok((result, id))
     }
 
@@ -859,9 +949,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         let (mut result, id) = self.create_tensor_from_pool(&output_shape)?;
 
         // Configure launch parameters
-        let tile_size = TILE_SIZE as usize;
-        let grid_x = (out_width + tile_size - 1) / tile_size;
-        let grid_y = (out_height + tile_size - 1) / tile_size;
+
+        let grid_x = out_width.div_ceil(TILE_SIZE as usize);
+        let grid_y =  out_height.div_ceil(TILE_SIZE as usize);
         let grid_z = batch_size * out_channels;
 
         let cfg = LaunchConfig {
@@ -869,8 +959,8 @@ impl<T: FerroxCudaF> CudaOps<T> {
             block_dim: (TILE_SIZE, TILE_SIZE, 1),
             shared_mem_bytes: {
                 // Calculate shared memory size
-                let input_tile_h = tile_size + kernel_height - 1;
-                let input_tile_w = tile_size + kernel_width - 1;
+                let input_tile_h = TILE_SIZE as usize + kernel_height - 1;
+                let input_tile_w = TILE_SIZE as usize + kernel_width - 1;
                 let filter_size = kernel_height * kernel_width;
                 ((input_tile_h * input_tile_w + filter_size) * std::mem::size_of::<T>())
                     .try_into()
@@ -1019,8 +1109,6 @@ impl<T: FerroxCudaF> CudaOps<T> {
             };
 
             if step_idx == sorted_axes.len() - 1 {
-
-
                 // Final step - write directly to result
                 kernel_launcher(
                     cfg,
@@ -1054,7 +1142,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         temp_tensors
             .iter()
-            .map(|(t, i)| self.return_tensor_to_pool(*i, t.clone()));
+            .try_for_each(|(t, i)| self.return_tensor_to_pool(*i, t.clone()))?;
 
         Ok((result, id))
     }

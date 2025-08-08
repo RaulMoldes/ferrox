@@ -99,12 +99,16 @@ where
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+
     /// Element-wise greater than or equal comparison: self >= other
     /// Returns new storage with 1.0 for true, 0.0 for false
     fn greater_equal(
         &self,
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Element-wise less than or equal comparison: self <= other
     /// Returns new storage with 1.0 for true, 0.0 for false
@@ -113,13 +117,19 @@ where
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
     /// Element-wise greater than comparison: self > other
     /// Returns new storage with 1.0 for true, 0.0 for false
     fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
     /// Element-wise less than  comparison: self < other
     /// Returns new storage with 1.0 for true, 0.0 for false
     fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Element-wise equality comparison: self == other
     /// Returns new storage with 1.0 for true, 0.0 for false

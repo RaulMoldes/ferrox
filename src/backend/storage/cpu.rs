@@ -77,7 +77,7 @@ where
         let col_height = channels * kernel_h * kernel_w;
         let col_width = batch * out_h * out_w;
 
-        let mut col_data = vec![<T as FerroxF>::zero(); col_height * col_width];
+        let mut col_data = vec![FerroxF::zero(); col_height * col_width];
 
         // Use effective data access for logical views
         let input_data = if let Some(data) = self.data.as_slice() {
@@ -182,7 +182,7 @@ where
         } else {
             return Err("Failed to get contiguous output data".to_string());
         };
-        let mut final_output = vec![<T as FerroxF>::zero(); batch * out_channels * out_h * out_w];
+        let mut final_output = vec![FerroxF::zero(); batch * out_channels * out_h * out_w];
 
         for out_c in 0..out_channels {
             for b in 0..batch {
@@ -318,8 +318,8 @@ where
     {
         let mut rng = rand::rng();
         let total_elements: usize = shape.iter().product();
-        let two = <T as FerroxF>::from_f64(2.0).expect("Cannot cast from f64");
-        let one = <T as FerroxF>::one();
+        let two = FerroxF::from_f64(2.0).expect("Cannot cast from f64");
+        let one = FerroxF::one();
         let data: Vec<T> = (0..total_elements)
             .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
             .collect();
@@ -355,7 +355,7 @@ where
             .zip(true_data.iter())
             .zip(false_data.iter())
             .map(|((&cond, &true_val), &false_val)| {
-                if cond > <T as FerroxF>::zero() {
+                if cond > FerroxF::zero() {
                     true_val
                 } else {
                     false_val
@@ -721,6 +721,19 @@ where
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
+    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_data: Vec<T> = self
+            .data
+            .iter()
+            .map(|&x| <T as FerroxF>::one() / x)
+            .collect();
+
+        let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
+            .map_err(|e| format!("Failed to create result tensor: {e}"))?;
+
+        Ok(Box::new(CPUStorage::new(result_array)))
+    }
+
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Element-wise clamping using mapv - efficient vectorized operation
         let result_data = self.data.mapv(|x| {
@@ -747,12 +760,23 @@ where
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a >= b {
-                <T as FerroxF>::one()
+                FerroxF::one()
             } else {
-                <T as FerroxF>::zero()
+                FerroxF::zero()
             }
         })?;
         Ok(Box::new(storage))
+    }
+
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_array = self.data.mapv(|x| {
+            if x >= scalar {
+                FerroxF::one()
+            } else {
+                FerroxF::zero()
+            }
+        });
+        Ok(Box::new(CPUStorage::new(result_array)))
     }
 
     fn less_equal(
@@ -761,42 +785,75 @@ where
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a <= b {
-                <T as FerroxF>::one()
+                FerroxF::one()
             } else {
-                <T as FerroxF>::zero()
+                FerroxF::zero()
             }
         })?;
         Ok(Box::new(storage))
+    }
+
+    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_array = self.data.mapv(|x| {
+            if x <= scalar {
+                FerroxF::one()
+            } else {
+                FerroxF::zero()
+            }
+        });
+        Ok(Box::new(CPUStorage::new(result_array)))
     }
 
     fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a > b {
-                <T as FerroxF>::one()
+                FerroxF::one()
             } else {
-                <T as FerroxF>::zero()
+                FerroxF::zero()
             }
         })?;
         Ok(Box::new(storage))
+    }
+
+    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_array = self.data.mapv(|x| {
+            if x > scalar {
+                FerroxF::one()
+            } else {
+                FerroxF::zero()
+            }
+        });
+        Ok(Box::new(CPUStorage::new(result_array)))
     }
 
     fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a < b {
-                <T as FerroxF>::one()
+                FerroxF::one()
             } else {
-                <T as FerroxF>::zero()
+                FerroxF::zero()
             }
         })?;
         Ok(Box::new(storage))
     }
 
+    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_array = self.data.mapv(|x| {
+            if x < scalar {
+                FerroxF::one()
+            } else {
+                FerroxF::zero()
+            }
+        });
+        Ok(Box::new(CPUStorage::new(result_array)))
+    }
+
     fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a == b {
-                <T as FerroxF>::one()
+                FerroxF::one()
             } else {
-                <T as FerroxF>::zero()
+                FerroxF::zero()
             }
         })?;
         Ok(Box::new(storage))
@@ -876,7 +933,7 @@ where
 
         // Perform matrix multiplication using ndarray's dot product
         let result = a.dot(&b);
-        println!("{}", format!("Result = {result}"));
+        println!("Result = {result}");
         Ok(Box::new(CPUStorage::new(result.into_dyn())))
     }
 
@@ -895,7 +952,11 @@ where
         // ReLU activation: max(0, x)
         let result_data = self.data.mapv(|x| {
             let zero = <T as crate::backend::number::FerroxF>::zero();
-            if x > zero { x } else { zero }
+            if x > zero {
+                x
+            } else {
+                zero
+            }
         });
 
         Ok(Box::new(CPUStorage::new(result_data)))
@@ -914,51 +975,51 @@ where
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-    // Numerically stable hyperbolic tangent implementation
-    // Avoids overflow for large positive/negative values
-    let result_data = self.data.mapv(|x| {
-        // For numerical stability, we use different formulas based on the sign of x
-        // This prevents overflow when x is very large or very small
+        // Numerically stable hyperbolic tangent implementation
+        // Avoids overflow for large positive/negative values
+        let result_data = self.data.mapv(|x| {
+            // For numerical stability, we use different formulas based on the sign of x
+            // This prevents overflow when x is very large or very small
 
-        if x > <T as FerroxF>::from_f64(20.0).unwrap() {
-            // For large positive x, tanh(x) ≈ 1
-            // Avoids computing exp(x) which would overflow
-            <T as FerroxF>::one()
-        } else if x < <T as FerroxF>::from_f64(-20.0).unwrap() {
-            // For large negative x, tanh(x) ≈ -1
-            // Avoids computing exp(-x) which would overflow
-            <T as FerroxF>::from_f64(-1.0).unwrap()
-        } else if x >= <T as FerroxF>::zero() {
-            // For non-negative x, use: tanh(x) = (1 - exp(-2x)) / (1 + exp(-2x))
-            // This formulation is stable for positive x
-            let exp_neg_2x = (-x * <T as FerroxF>::from_f64(2.0).unwrap()).exp();
-            let numerator = <T as FerroxF>::one() - exp_neg_2x;
-            let denominator = <T as FerroxF>::one() + exp_neg_2x;
+            if x > FerroxF::from_f64(20.0).unwrap() {
+                // For large positive x, tanh(x) ≈ 1
+                // Avoids computing exp(x) which would overflow
+                FerroxF::one()
+            } else if x < FerroxF::from_f64(-20.0).unwrap() {
+                // For large negative x, tanh(x) ≈ -1
+                // Avoids computing exp(-x) which would overflow
+                FerroxF::from_f64(-1.0).unwrap()
+            } else if x >= FerroxF::zero() {
+                // For non-negative x, use: tanh(x) = (1 - exp(-2x)) / (1 + exp(-2x))
+                // This formulation is stable for positive x
+                let exp_neg_2x = (-x * FerroxF::from_f64(2.0).unwrap()).exp();
+                let numerator = <T as FerroxF>::one() - exp_neg_2x;
+                let denominator = <T as FerroxF>::one() + exp_neg_2x;
 
-            // Check for potential division by zero (shouldn't happen with this formulation)
-            if denominator == <T as FerroxF>::zero() {
-                <T as FerroxF>::one() // Return 1 as limit
+                // Check for potential division by zero (shouldn't happen with this formulation)
+                if denominator == FerroxF::zero() {
+                    FerroxF::one() // Return 1 as limit
+                } else {
+                    numerator / denominator
+                }
             } else {
-                numerator / denominator
-            }
-        } else {
-            // For negative x, use: tanh(x) = (exp(2x) - 1) / (exp(2x) + 1)
-            // This formulation is stable for negative x
-            let exp_2x = (x * <T as FerroxF>::from_f64(2.0).unwrap()).exp();
-            let numerator = exp_2x - <T as FerroxF>::one();
-            let denominator = exp_2x + <T as FerroxF>::one();
+                // For negative x, use: tanh(x) = (exp(2x) - 1) / (exp(2x) + 1)
+                // This formulation is stable for negative x
+                let exp_2x = (x * FerroxF::from_f64(2.0).unwrap()).exp();
+                let numerator = exp_2x - FerroxF::one();
+                let denominator = exp_2x + FerroxF::one();
 
-            // Check for potential division by zero (shouldn't happen with this formulation)
-            if denominator == <T as FerroxF>::zero() {
-                <T as FerroxF>::from_f64(-1.0).unwrap() // Return -1 as limit
-            } else {
-                numerator / denominator
+                // Check for potential division by zero (shouldn't happen with this formulation)
+                if denominator == FerroxF::zero() {
+                    FerroxF::from_f64(-1.0).unwrap() // Return -1 as limit
+                } else {
+                    numerator / denominator
+                }
             }
-        }
-    });
+        });
 
-    Ok(Box::new(CPUStorage::new(result_data)))
-}
+        Ok(Box::new(CPUStorage::new(result_data)))
+    }
 
     fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let other_data = other.cpu_data()?;
@@ -1011,8 +1072,8 @@ where
         };
 
         // Convert divisor to tensor type and divide
-        let divisor_scalar = <T as FerroxF>::from_f64(1.0 / divisor)
-            .ok_or("Failed to convert divisor to tensor type")?;
+        let divisor_scalar =
+            FerroxF::from_f64(1.0 / divisor).ok_or("Failed to convert divisor to tensor type")?;
 
         sum_result.mul_scalar(divisor_scalar)
     }

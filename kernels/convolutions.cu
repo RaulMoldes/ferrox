@@ -139,7 +139,6 @@ extern "C" __global__ void conv2d_forward(
 extern "C" __global__ void conv2d_forward_f64(
     const double* input,
     const double* filter,
-    const double* bias,
     double* output,
     int batch_size,
     int in_channels,
@@ -255,9 +254,7 @@ extern "C" __global__ void conv2d_forward_f64(
     // Add bias if provided
     // Bias is added only if the output is valid
     if (valid_output) {
-        if (bias != nullptr) {
-            result += bias[out_c];
-        }
+       
 
         int output_idx = batch_idx * (out_channels * out_height * out_width) +
             out_c * (out_height * out_width) +

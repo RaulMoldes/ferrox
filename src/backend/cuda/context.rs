@@ -1,5 +1,5 @@
 // src/backend/cuda/context.rs
-use super::kernels::{KernelManager, load_all_kernels};
+use super::kernels::{load_all_kernels, KernelManager};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
 use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
@@ -64,7 +64,7 @@ where
     // ============= GPU MEMORY MANAGEMENT =============
 
     /// Allocates zeroed memory on the GPU
-    pub fn alloc_zeros(&self, size: usize) -> Result<(CudaSlice<T>,u64), String>
+    pub fn alloc_zeros(&self, size: usize) -> Result<(CudaSlice<T>, u64), String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
@@ -72,14 +72,12 @@ where
         Ok((alloc_result.data, alloc_result.allocation_id))
     }
 
-
-
     pub fn stream_manager(&self) -> &StreamManager {
         &self.stream_manager
     }
 
     /// Synchronous host to device transfer
-    pub fn host_to_device(&self, data: &[T]) -> Result<(CudaSlice<T>,u64), String> {
+    pub fn host_to_device(&self, data: &[T]) -> Result<(CudaSlice<T>, u64), String> {
         let (mut device_buffer, id) = self.alloc_zeros(data.len())?;
 
         let stream = match self.stream_manager.get_stream("copy_h2d") {
@@ -118,7 +116,6 @@ where
         Ok(host_buffer)
     }
 
-
     // ============= BACKEND INTERFACE METHODS =============
 
     /// Get device ID (compatibility method for tests)
@@ -153,7 +150,7 @@ where
         &self,
         data: &[T],
         shape: Vec<usize>,
-    ) -> Result<(CudaTensor<T>,u64), String>
+    ) -> Result<(CudaTensor<T>, u64), String>
     where
         T: FerroxCudaF,
     {
@@ -170,8 +167,6 @@ where
         let (cuda_data, id) = self.host_to_device(data)?; // Pass slice reference
         Ok((CudaTensor::new(cuda_data, shape), id))
     }
-
-
 
     // ============= STREAM MANAGEMENT (DELEGATED TO STREAMMANAGER) =============
 
@@ -254,7 +249,7 @@ where
     }
 }
 
-///
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CudaTensor<T: FerroxCudaF> {
@@ -271,7 +266,7 @@ where
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
         let strides = compute_strides(&shape);
         Self {
-           data:  Some(data),
+            data: Some(data),
             shape,
             strides,
         }
@@ -282,7 +277,7 @@ where
     pub fn into_data(self) -> CudaSlice<T> {
         if let Some(data) = self.data {
             data
-        } else{
+        } else {
             panic!("Cannot call into_data() on empty cuda tensor");
         }
     }
@@ -290,22 +285,24 @@ where
     pub fn data(&self) -> &CudaSlice<T> {
         if let Some(data) = &self.data {
             data
-        }else{
+        } else {
             panic!("Cannot call into_data() on empty cuda tensor");
         }
     }
 
     pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
         if let Some(ref mut data) = self.data {
-                data
-        }else{
+            data
+        } else {
             panic!("Cannot call into_data() on empty cuda tensor");
         }
     }
 
     // Alternative: take ownership of the data, leaving empty slice
     pub fn take_data(&mut self) -> CudaSlice<T> {
-        self.data.take().expect("Cannot take out of an empty tensor")
+        self.data
+            .take()
+            .expect("Cannot take out of an empty tensor")
     }
 
     /// Create tensor from CPU ndarray without taking ownership
@@ -313,7 +310,7 @@ where
     pub fn from_cpu_array(
         context_manager: &CudaContextManager<T>,
         array: &ArrayD<T>,
-    ) -> Result<(Self,u64), String> {
+    ) -> Result<(Self, u64), String> {
         let shape = array.shape().to_vec();
         let expected_size = shape.iter().product::<usize>();
 
@@ -403,7 +400,7 @@ where
         context_manager: &CudaContextManager<T>,
         data: Vec<T>,
         shape: Vec<usize>,
-    ) -> Result<(Self,u64), String> {
+    ) -> Result<(Self, u64), String> {
         let expected_size = shape.iter().product::<usize>();
         if data.len() != expected_size {
             return Err(format!(
@@ -442,15 +439,14 @@ where
     /// Transfer tensor data back to CPU
     pub fn to_cpu(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String>
     where
-    T: cudarc::driver::DeviceRepr + Clone,
+        T: cudarc::driver::DeviceRepr + Clone,
     {
-    if let Some(ref data) = self.data {
-        context_manager.device_to_host(data)
-    } else {
-        Err("Cannot move from an empty CUDA tensor".to_string())
+        if let Some(ref data) = self.data {
+            context_manager.device_to_host(data)
+        } else {
+            Err("Cannot move from an empty CUDA tensor".to_string())
+        }
     }
-}
-
 
     /// Transfer tensor data back to CPU asynchronously
     pub fn to_cpu_async(
@@ -459,9 +455,8 @@ where
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
         if let Some(ref data) = self.data {
-        context_manager.device_to_host_async(&data, stream_name)
-         }
-        else{
+            context_manager.device_to_host_async(data, stream_name)
+        } else {
             Err("Cannot move from out of an empty cuda tensor".to_string())
         }
     }
@@ -469,9 +464,8 @@ where
     /// Get tensor data as vector (alias for to_cpu)
     pub fn to_vec(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
         if let Some(ref data) = self.data {
-        context_manager.device_to_host(&data)
-        }
-        else{
+            context_manager.device_to_host(data)
+        } else {
             Err("Cannot move from out of an empty cuda tensor".to_string())
         }
     }
@@ -503,8 +497,6 @@ where
     pub fn strides(&self) -> &[usize] {
         &self.strides
     }
-
-
 
     /// Check if tensor is contiguous
     pub fn is_contiguous(&self) -> bool {

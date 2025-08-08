@@ -321,7 +321,7 @@ where
         T: FerroxCudaF,
     {
         Self {
-            alpha: <T as FerroxF>::from_f64(1.0).unwrap(),
+            alpha: FerroxF::from_f64(1.0).unwrap(),
             training: true,
         }
     }

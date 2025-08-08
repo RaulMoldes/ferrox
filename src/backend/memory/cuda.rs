@@ -59,8 +59,7 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaF> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
     fn allocate(&mut self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String> {
-
-         if size == 0 {
+        if size == 0 {
             return Err("Cannot allocate zero-sized CUDA memory".to_string());
         }
 
@@ -130,7 +129,6 @@ impl<T: FerroxCudaF> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
     }
 }
 
-
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaF> CudaMemoryPool<T> {
     // Common allocation logic
@@ -199,7 +197,7 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
     pub fn allocate_async(
         &mut self,
         size: usize,
-        stream: Arc<CudaStream>
+        stream: Arc<CudaStream>,
     ) -> Result<PoolAllocation<CudaSlice<T>>, String> {
         self.allocate_with_stream(size, &stream)
     }
@@ -231,7 +229,6 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
     }
 }
 
-
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaF> CudaMemoryPool<T> {
     pub fn return_to_pool(
@@ -243,7 +240,6 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
         self.deallocate_and_return(allocation_id, Some(slice))
     }
 }
-
 
 // Non-CUDA stub implementation
 #[cfg(not(feature = "cuda"))]

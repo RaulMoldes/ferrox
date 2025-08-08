@@ -138,6 +138,31 @@ extern "C" __global__ void greater_scalar_f64(
     }
 }
 
+
+extern "C" __global__ void less_equal(
+    const float* a,
+    const float* b,
+    float* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] <= b[idx]) ? 1.0f : 0.0f;
+    }
+}
+
+extern "C" __global__ void less_equal_f64(
+    const double* a,
+    const double* b,
+    double* result,
+    int size
+) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        result[idx] = (a[idx] <= b[idx]) ? 1.0 : 0.0;
+    }
+}
+
 extern "C" __global__ void less_equal_scalar(
     const float* a,
     const float scalar,

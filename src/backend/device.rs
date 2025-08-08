@@ -33,9 +33,6 @@ impl Device {
     }
 }
 
-
-
-
 impl std::fmt::Display for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

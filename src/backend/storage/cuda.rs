@@ -2,7 +2,9 @@
 use super::StorageBackend;
 use crate::backend::cuda::ops::CudaOps;
 use crate::backend::cuda::{CudaContextManager, CudaTensor};
-use crate::backend::manager::{with_cuda_context, with_cuda_ops, with_cuda_pool, return_cuda_slice};
+use crate::backend::manager::{
+    return_cuda_slice, with_cuda_context, with_cuda_ops, with_cuda_pool,
+};
 use crate::backend::{FerroxCudaF, FerroxF};
 use cudarc::driver::DeviceRepr;
 use ndarray::ArrayD;
@@ -362,6 +364,11 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
+    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.reciprocal(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+    }
+
     fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
             // Both tensors are on GPU - use CUDA kernels
@@ -385,6 +392,30 @@ where
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
         }
+    }
+
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let (result_cuda, id) =
+            with_cuda_ops(|ops: &CudaOps<T>| ops.greater_equal_scalar(&self.cuda_data, scalar))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+    }
+
+    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let (result_cuda, id) =
+            with_cuda_ops(|ops: &CudaOps<T>| ops.less_equal_scalar(&self.cuda_data, scalar))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+    }
+
+    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let (result_cuda, id) =
+            with_cuda_ops(|ops: &CudaOps<T>| ops.greater_scalar(&self.cuda_data, scalar))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+    }
+
+    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let (result_cuda, id) =
+            with_cuda_ops(|ops: &CudaOps<T>| ops.less_scalar(&self.cuda_data, scalar))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
     fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -535,27 +566,32 @@ where
     }
 
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.sigmoid(&self.cuda_data))?;
+        let (result_cuda, id) =
+            with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.sigmoid(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.relu(&self.cuda_data))?;
+        let (result_cuda, id) =
+            with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.relu(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
     fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.exp(&self.cuda_data))?;
+        let (result_cuda, id) =
+            with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.exp(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
     fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.log(&self.cuda_data))?;
+        let (result_cuda, id) =
+            with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.log(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.tanh(&self.cuda_data))?;
+        let (result_cuda, id) =
+            with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.tanh(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
     }
 
@@ -615,7 +651,8 @@ where
             }
             None => {
                 // Sum all elements to scalar using CUDA ops
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.sum_all(&self.cuda_data))?;
+                let (result_cuda, id) =
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.sum_all(&self.cuda_data))?;
                 Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
             }
         }
@@ -650,7 +687,7 @@ where
                     .map(|&ax| self.shape()[ax])
                     .product::<usize>() as f64;
 
-                let divisor_scalar = <T as FerroxF>::from_f64(1.0 / divisor)
+                let divisor_scalar = FerroxF::from_f64(1.0 / divisor)
                     .ok_or("Failed to convert divisor to tensor type")?;
 
                 // Create scalar tensor and divide
@@ -664,7 +701,8 @@ where
             }
             None => {
                 // Mean of all elements using CUDA ops
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.mean_all(&self.cuda_data))?;
+                let (result_cuda, id) =
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.mean_all(&self.cuda_data))?;
                 Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
             }
         }
@@ -696,7 +734,8 @@ where
             }
             None => {
                 // Max of all elements to scalar
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.max_all(&self.cuda_data))?;
+                let (result_cuda, id) =
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.max_all(&self.cuda_data))?;
                 Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
             }
         }
@@ -728,7 +767,8 @@ where
             }
             None => {
                 // Min of all elements to scalar
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.min_all(&self.cuda_data))?;
+                let (result_cuda, id) =
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.min_all(&self.cuda_data))?;
                 Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
             }
         }
@@ -931,7 +971,7 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
     where
         Self: Sized,
     {
-        let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.randn(shape, 1000 as u64))?;
+        let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.randn(shape, 1000))?;
         Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
     }
 
@@ -949,7 +989,7 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
                 )
             })?;
 
-            Ok(Box::new(CUDAStorage::new(cuda_tensor,Some(id))))
+            Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
         } else {
             Err("Not all provided tensors are on GPU storage".to_string())
         }

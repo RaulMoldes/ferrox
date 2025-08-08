@@ -45,7 +45,6 @@ pub struct PoolStats {
     pub peak_memory_bytes: usize,
 }
 
-
 // Pool bucket system - groups allocations by size ranges for efficiency
 // This prevents fragmentation by keeping similar-sized allocations together
 #[derive(Debug)]

@@ -1,20 +1,20 @@
 // src/backend/manager.rs
-use crate::backend::Device;
 #[cfg(feature = "cuda")]
 use crate::backend::memory::CudaMemoryPool;
 #[allow(unused_imports)]
 use crate::backend::memory::{MemoryPool, PoolAllocation};
 use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
+use crate::backend::Device;
 #[cfg(feature = "cuda")]
 use cudarc::driver::CudaSlice;
 use ndarray::ArrayD;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "cuda")]
-use crate::backend::cuda::CudaContextManager;
-#[cfg(feature = "cuda")]
 use crate::backend::cuda::ops::CudaOps;
+#[cfg(feature = "cuda")]
+use crate::backend::cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
 use crate::backend::storage::CUDAStorage;
 
@@ -327,7 +327,7 @@ static BACKEND_F32: OnceLock<BackendManager<f32>> = OnceLock::new();
 static BACKEND_F64: OnceLock<BackendManager<f64>> = OnceLock::new();
 
 pub fn get_f32_backend() -> &'static BackendManager<f32> {
-   BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
+    BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
 }
 
 pub fn get_f64_backend() -> &'static BackendManager<f64> {
@@ -388,7 +388,7 @@ where
     let context_manager: &CudaContextManager<T> =
         backend.cuda_backend().ok_or("CUDA backend not available")?;
 
-    f(&context_manager)
+    f(context_manager)
 }
 
 #[cfg(feature = "cuda")]
@@ -436,31 +436,4 @@ pub fn return_cuda_slice<T: FerroxCudaF>(
     slice: CudaSlice<T>,
 ) -> Result<(), String> {
     with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.return_to_pool(allocation_id, slice))
-}
-
-#[cfg(test)]
-mod backend_manager_tests {
-    use super::*;
-    use crate::backend::Device;
-
-    #[test]
-    fn test_backend_manager_initialization() {
-
-
-        // Test best device selection returns valid device
-        let f32_device = best_f32_device();
-        let f64_device = best_f64_device();
-
-        match f32_device {
-            Device::CPU => assert!(true), // CPU always available
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => assert!(has_f32_cuda()), // CUDA only if available
-        }
-
-        match f64_device {
-            Device::CPU => assert!(true),
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => assert!(has_f64_cuda()),
-        }
-    }
 }

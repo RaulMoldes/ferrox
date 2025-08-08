@@ -13,7 +13,7 @@ pub mod stream_manager;
 pub use context::{CudaContextManager, CudaTensor};
 
 #[cfg(feature = "cuda")]
-pub use kernels::{KernelManager, load_all_kernels};
+pub use kernels::{load_all_kernels, KernelManager};
 
 // ALIAS para compatibilidad - CudaContextManager es ahora el "backend principal"
 #[cfg(feature = "cuda")]
