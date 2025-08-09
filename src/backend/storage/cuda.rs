@@ -933,6 +933,11 @@ where
 
         self.get_flat(flat_index)
     }
+
+    fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
+        // Executes custom operation through CUDA ops interface
+        with_cuda_ops(|cuda_ops: &CudaOps<T>| op.execute_cuda(cuda_ops, &self.cuda_data))
+    }
 }
 
 #[cfg(feature = "cuda")]

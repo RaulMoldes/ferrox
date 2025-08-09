@@ -59,20 +59,20 @@ impl GraphVisualizer {
 
     fn escape_for_dot(input: &str) -> String {
         input
-            .replace('(', "\\(")      // Fix the main issue - parentheses
+            .replace('(', "\\(") // Fix the main issue - parentheses
             .replace(')', "\\)")
-            .replace('[', "\\[")      // Fix brackets
+            .replace('[', "\\[") // Fix brackets
             .replace(']', "\\]")
-            .replace('{', "\\{")      // Fix braces
+            .replace('{', "\\{") // Fix braces
             .replace('}', "\\}")
-            .replace('<', "\\<")      // Fix angle brackets (like Add<f32>)
+            .replace('<', "\\<") // Fix angle brackets (like Add<f32>)
             .replace('>', "\\>")
-            .replace('"', "\\\"")     // Fix quotes
-            .replace('|', "\\|")      // Fix pipes
+            .replace('"', "\\\"") // Fix quotes
+            .replace('|', "\\|") // Fix pipes
     }
 
     /// Generate DOT format representation of the computational graph
-   pub fn to_dot<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> String
+    pub fn to_dot<T>(&self, engine: &AutoFerroxEngine<T>, output_nodes: &[NodeId]) -> String
     where
         T: FerroxCudaF,
     {

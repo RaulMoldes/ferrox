@@ -388,6 +388,19 @@ where
             Err(e) => Err(format!("Failed to extract data: {e}")),
         }
     }
+
+    // Execute a custom operation on this tensor
+    /// Provides unified interface for custom operations across CPU and CUDA backends
+    pub fn execute_custom<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        // Execute custom operation using storage backend trait
+        // Creates new results consistent with other tensor operations
+        storage.execute_custom_op(op)
+    }
 }
 
 impl<T> Tensor<T>
