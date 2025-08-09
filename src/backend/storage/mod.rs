@@ -3,9 +3,9 @@ mod cpu;
 mod cuda;
 
 #[cfg(feature = "cuda")]
-use crate::backend::cuda::ops::CudaOps;
-#[cfg(feature = "cuda")]
 use crate::backend::cuda::context::CudaTensor;
+#[cfg(feature = "cuda")]
+use crate::backend::cuda::ops::CudaOps;
 
 pub use cpu::CPUStorage;
 #[cfg(feature = "cuda")]
@@ -246,7 +246,6 @@ where
     /// Get multi-dimensional index access to elements (if supported)
     /// Returns None if storage doesn't support multi-dim indexing
     fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
-
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;*/
 }

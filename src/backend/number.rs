@@ -6,6 +6,7 @@ use std::cmp::{PartialEq, PartialOrd};
 use std::default::Default;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
+use serde::{Deserialize, Serialize};
 
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
@@ -37,7 +38,7 @@ pub trait CPUNumber:
     Sized
     + Zero
     + One
-    + FromPrimitive
+    + FromPrimitive + Serialize + for<'a> Deserialize<'a>
     + LinalgScalar + ScalarOperand + 'static
 {
     /// Neutral element for addition (zero)
@@ -481,6 +482,9 @@ impl FerroxCudaF for f32 {}
 
 #[cfg(feature = "cuda")]
 impl FerroxCudaF for f64 {}
+
+
+
 
 // ============= NON-CUDA IMPLEMENTATIONS =============
 

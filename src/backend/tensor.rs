@@ -10,7 +10,6 @@ use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
 
-
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
@@ -53,33 +52,6 @@ where
     }
 }
 
-// Accessors
-impl<T> Tensor<T>
-where
-    T: FerroxCudaF + Clone,
-{
-    /// Get first element value safely. Useful for reduced tensors like mean
-    pub fn first(&self) -> Result<T, String> {
-        let data = self.cpu_data()?;
-
-        // Handle 0-dimensional arrays (scalars from reductions)
-        if data.ndim() == 0 {
-            // For 0-dimensional arrays, use iter().next() instead of indexing
-            data.iter()
-                .next()
-                .copied()
-                .ok_or_else(|| "Empty 0-dimensional array".to_string())
-        } else if !data.is_empty() {
-            // For regular arrays, get first element
-            data.iter()
-                .next()
-                .copied()
-                .ok_or_else(|| "Empty array".to_string())
-        } else {
-            Err("Cannot get first element from empty tensor".to_string())
-        }
-    }
-}
 
 impl<T> Tensor<T>
 where
@@ -390,8 +362,7 @@ where
         }
     }
 
-
-  /* pub fn execute_custom<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
+    /* pub fn execute_custom<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         let storage = self
             .storage
             .as_ref()
@@ -1019,6 +990,29 @@ where
             true
         }
     }
+    // Consumes self and obtains the scalar at the first position.
+    pub fn first(self) -> Result<T, String> {
+        if let Ok(data) = self.into_data() {
+            // Handle 0-dimensional arrays (scalars from reductions)
+            let item = if data.ndim() == 0 {
+            // For 0-dimensional arrays, use iter().next() instead of indexing
+                data.iter()
+                .next()
+                .copied()
+                .ok_or_else(|| "Empty 0-dimensional array".to_string())?
+
+            } else  {
+            // For regular arrays, get first element
+            data.iter()
+                .next()
+                .copied()
+                .ok_or_else(|| "Empty array".to_string())?
+
+            };
+            return Ok(item);
+        }
+        Err("Cannot take out of an empty tensor!".to_string())
+    }
 }
 
 // Implementation for floating-point operations
@@ -1027,10 +1021,7 @@ where
     T: FerroxCudaF,
 {
     /// Matrix multiplication using storage trait
-    pub fn matmul(&self, other: &Self) -> Result<Self, String>
-    where
-        T: Clone + ndarray::LinalgScalar,
-    {
+    pub fn matmul(&self, other: &Self) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
@@ -1129,7 +1120,7 @@ where
 // Implementation for reduction operations and tensor manipulations
 impl<T> Tensor<T>
 where
-    T: FerroxCudaF + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF,
 {
     // Reduction operations.
     // Sum reduction along multiple axes using storage backend
@@ -1180,7 +1171,7 @@ where
 
 impl<T> Tensor<T>
 where
-    T: FerroxCudaF + Clone + rand_distr::num_traits::Zero + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF,
 {
     /// Broadcasting for gradient computation and tensor operations
     /// Uses storage backend for consistent behavior across CPU/GPU
@@ -1253,7 +1244,7 @@ where
 //-----------------------------------------------------------------------
 impl<T> Tensor<T>
 where
-    T: FerroxCudaF + Clone,
+    T: FerroxCudaF,
 {
     /// 2D Convolution using storage backend - replaces old direct implementation
     pub fn conv2d(

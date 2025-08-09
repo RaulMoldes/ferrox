@@ -1,6 +1,6 @@
 use crate::backend::number::FerroxCudaF;
-use crate::backend::Tensor;
 use crate::backend::Device;
+use crate::backend::Tensor;
 use rand::Rng;
 
 /// A Parameter wraps a tensor that requires gradients for optimization.
@@ -97,7 +97,6 @@ where
     where
         T: From<f64>,
     {
-
         let mut rng = rand::rng();
 
         // Xavier initialization: U(-sqrt(6/(fan_in + fan_out)), sqrt(6/(fan_in + fan_out)))
@@ -127,7 +126,6 @@ where
     where
         T: From<f64>,
     {
-
         let mut rng = rand::rng();
 
         // Kaiming initialization: U(-sqrt(6/fan_in), sqrt(6/fan_in))

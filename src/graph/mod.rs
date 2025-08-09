@@ -6,11 +6,11 @@ use crate::ops::Operator;
 pub use graphviz::EngineVisualization;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
+use serde::{Deserialize, Serialize};
 /// ATOMIC auto incrementing id for all nodes.
 static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub usize);
 
 impl NodeId {
@@ -158,25 +158,22 @@ where
             NodeState::Leaf(_) => {
                 self.state = NodeState::Leaf(new_tensor);
                 Ok(())
-            },
+            }
             NodeState::Evaluated { op, inputs, .. } => {
                 let operation = op.take().unwrap();
 
-                self.state =  NodeState::Evaluated {
+                self.state = NodeState::Evaluated {
                     op: Some(operation),
                     tensor: new_tensor,
-                    inputs: inputs.to_vec()
+                    inputs: inputs.to_vec(),
                 };
 
-
-
                 Ok(())
-            },
+            }
             NodeState::Pending { .. } => {
                 Err("Cannot set the tensor of a Pending Node!".to_string())
-            },
+            }
         }
-
     }
 
     pub fn is_evaluated(&self) -> bool {
@@ -608,6 +605,14 @@ where
     /// Get tensor data from a node (for reading current parameter values)
     pub fn get_tensor_data(&self, node_id: NodeId) -> Option<&Tensor<T>> {
         self.nodes.get(&node_id)?.get_tensor()
+    }
+
+    pub fn clip_gradient(&mut self, node_id: NodeId, clip_coef: T) -> Result<(), String> {
+        if let Some(grad) = self.get_gradient(node_id) {
+            let clipped_grad = grad.mul_scalar(clip_coef)?;
+            self.set_gradient(node_id, clipped_grad);
+        }
+        Ok(())
     }
 }
 
