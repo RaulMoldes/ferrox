@@ -361,7 +361,7 @@ where
             self.param_groups.push(group);
         }
 
-        
+
 
         // Restore momentum buffers for parameters that had them
         for buffer in state_dict.parameter_buffers.values() {
@@ -375,5 +375,93 @@ where
         }
 
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod sgd_tests {
+
+    use crate::backend::manager::best_f32_device;
+    use crate::backend::Tensor;
+    use crate::graph::AutoFerroxEngine;
+    use crate::nn::optim::{Optimizer, sgd::SGD};
+
+    #[test]
+    fn test_sgd_basic_step() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+        let param = Tensor::from_vec_with_device(vec![2.0f32], &[1], device).unwrap();
+        let node = engine.create_variable(param, true);
+
+        let mut optimizer = SGD::with_defaults(0.1f32);
+        optimizer.add_param(0, node);
+
+        let grad = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        engine.set_gradient(node, grad);
+
+        let _before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        optimizer.step(&mut engine).unwrap();
+        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+
+        // Expected: param - lr * grad = 2.0 - 0.1 * 1.0 = 1.9
+        assert!((after - 1.9).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_sgd_momentum() {
+
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        let node = engine.create_variable(param, true);
+
+        let mut optimizer = SGD::with_momentum(0.1f32, 0.9f32);
+        optimizer.add_param(0, node);
+
+        // First step - no momentum yet
+        let grad = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        engine.set_gradient(node, grad.clone());
+
+        optimizer.step(&mut engine).unwrap();
+        optimizer.reset_grad(&mut engine);
+
+        // Second step - momentum kicks in
+        engine.set_gradient(node, grad);
+
+        let before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        optimizer.step(&mut engine).unwrap();
+        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+
+        let step_size = (before - after).abs();
+
+        // Second step should be larger than lr due to momentum
+        assert!(step_size > 0.1);
+    }
+
+    #[test]
+    fn test_sgd_gradient_clipping() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        let node = engine.create_variable(param, true);
+
+        let mut optimizer = SGD::with_defaults(0.1f32);
+        optimizer.add_param(0, node);
+
+        // Large gradient
+        let grad = Tensor::from_vec_with_device(vec![10.0f32], &[1], device).unwrap();
+        engine.set_gradient(node, grad);
+
+        let norm = optimizer.clip_grad_norm(&mut engine, 1.0f32).unwrap();
+
+        // Original norm should be 10.0
+        assert!((norm - 10.0).abs() < 1e-6);
+
+        // Clipped gradient should have norm 1.0
+        let clipped_grad = engine.get_gradient(node).unwrap().clone();
+        let clipped_val = clipped_grad.first().unwrap();
+        assert!((clipped_val - 1.0).abs() < 1e-6);
     }
 }

@@ -394,3 +394,110 @@ where
         self.load_state_dict(&state_dict)
     }
 }
+
+
+
+
+#[cfg(test)]
+mod serialization_tests {
+    
+    use crate::backend::Tensor;
+    use crate::graph::AutoFerroxEngine;
+    use crate::backend::manager::best_f32_device;
+    use crate::nn::optim::{Optimizer, adam::Adam, sgd::SGD};
+
+    #[test]
+    fn test_adam_save_load() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        let node = engine.create_variable(param, true);
+
+        let mut optimizer = Adam::with_defaults(0.01f32);
+        optimizer.add_param(0, node);
+
+        // Take a few steps to build state
+        for _ in 0..3 {
+            let grad = Tensor::from_vec_with_device(vec![0.5f32], &[1], device).unwrap();
+            engine.set_gradient(node, grad);
+            optimizer.step(&mut engine).unwrap();
+            optimizer.reset_grad(&mut engine);
+        }
+
+        let original_step_count = optimizer.get_step_count();
+
+        // Save state
+        let state_dict = optimizer.state_dict();
+        assert_eq!(state_dict.optimizer_type, "Adam");
+        assert_eq!(state_dict.step_count, original_step_count);
+
+        // Create new optimizer and load state
+        let mut new_optimizer = Adam::with_defaults(0.1f32); // Different initial LR
+        new_optimizer.add_param(0, node);
+
+        new_optimizer.load_state_dict(&state_dict).unwrap();
+
+        // Verify state was restored
+        assert_eq!(new_optimizer.get_step_count(), original_step_count);
+        assert_eq!(new_optimizer.get_lr(), 0.01f32); // Should be restored LR
+    }
+
+    #[test]
+    fn test_sgd_save_load() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        let node = engine.create_variable(param, true);
+
+        let mut optimizer = SGD::with_momentum(0.1f32, 0.9f32);
+        optimizer.add_param(0, node);
+
+        // Build momentum
+        let grad = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        engine.set_gradient(node, grad);
+        optimizer.step(&mut engine).unwrap();
+
+        // Save and load
+        let state_dict = optimizer.state_dict();
+        assert_eq!(state_dict.optimizer_type, "SGD");
+
+        let mut new_optimizer = SGD::with_defaults(0.01f32);
+        new_optimizer.add_param(0, node);
+
+        new_optimizer.load_state_dict(&state_dict).unwrap();
+
+        // Verify hyperparameters restored
+        assert_eq!(new_optimizer.get_lr(), 0.1f32);
+    }
+
+    #[test]
+    fn test_save_load_to_file() {
+        let optimizer = Adam::with_defaults(0.05f32);
+
+        let filepath = "test_checkpoint.bin";
+
+        // Save to file
+        optimizer.save_checkpoint(filepath).unwrap();
+
+        // Load from file
+        let mut new_optimizer = Adam::with_defaults(0.01f32);
+        new_optimizer.load_checkpoint(filepath).unwrap();
+
+        assert_eq!(new_optimizer.get_lr(), 0.05f32);
+
+        // Cleanup
+        std::fs::remove_file(filepath).ok();
+    }
+
+    #[test]
+    fn test_type_mismatch_error() {
+        let sgd = SGD::with_defaults(0.1f32);
+        let sgd_state = sgd.state_dict();
+
+        let mut adam = Adam::with_defaults(0.1f32);
+
+        // Should fail with type mismatch
+        let result = adam.load_state_dict(&sgd_state);
+        assert!(result.is_err());
+    }
+}

@@ -34,7 +34,7 @@ enum MomentBuffer {
 
 impl<T> Adam<T>
 where
-    T: FerroxCudaF + From<f64>,
+    T: FerroxCudaF,
 {
     pub fn new(lr: T, beta1: T, beta2: T, eps: T, weight_decay: T, amsgrad: bool) -> Self {
         let mut default_group = ParameterGroup::new("default".to_string());
@@ -59,10 +59,10 @@ where
     pub fn with_defaults(lr: T) -> Self {
         Self::new(
             lr,
-            T::from(0.9),
-            T::from(0.999),
-            T::from(1e-8),
-            T::from(0.0),
+            <T as FerroxF>::from_f64(0.9).unwrap(),
+            <T as FerroxF>::from_f64(0.999).unwrap(),
+            <T as FerroxF>::from_f64(1e-8).unwrap(),
+            <T as FerroxF>::zero(),
             false,
         )
     }
@@ -71,9 +71,9 @@ where
     pub fn adamw(lr: T, weight_decay: T) -> Self {
         Self::new(
             lr,
-            T::from(0.9),
-            T::from(0.999),
-            T::from(1e-8),
+            <T as FerroxF>::from_f64(0.9).unwrap(),
+            <T as FerroxF>::from_f64(0.999).unwrap(),
+            <T as FerroxF>::from_f64(1e-8).unwrap(),
             weight_decay,
             false,
         )
@@ -82,10 +82,10 @@ where
     pub fn amsgrad(lr: T) -> Self {
         Self::new(
             lr,
-            T::from(0.9),
-            T::from(0.999),
-            T::from(1e-8),
-            T::from(0.0),
+            <T as FerroxF>::from_f64(0.9).unwrap(),
+            <T as FerroxF>::from_f64(0.999).unwrap(),
+            <T as FerroxF>::from_f64(1e-8).unwrap(),
+            <T as FerroxF>::zero(),
             true,
         )
     }
@@ -104,11 +104,11 @@ where
 
     /// Compute bias correction factors for current step
     fn compute_bias_corrections(&self) -> (T, T) {
-        let step_f64 = self.step_count as f64;
-        let beta1_power = FerroxF::to_f64(self.beta1).powf(step_f64);
-        let beta2_power = FerroxF::to_f64(self.beta2).powf(step_f64);
+        let step_f64 = <T as FerroxF>::from_f64(self.step_count as f64).expect("Failed to cast step count to float");
+        let beta1_power = self.beta1.powf(step_f64);
+        let beta2_power = self.beta2.powf(step_f64);
 
-        (T::from(1.0 - beta1_power), T::from(1.0 - beta2_power))
+        (<T as FerroxF>::one()  - beta1_power, <T as FerroxF>::one() - beta2_power)
     }
 
     fn get_group_lr(&self, group: &ParameterGroup<T>) -> T {
@@ -259,7 +259,7 @@ where
 }
 impl<T> Optimizer<T> for Adam<T>
 where
-    T: FerroxCudaF + From<f64>,
+    T: FerroxCudaF,
 {
     fn step(&mut self, engine: &mut AutoFerroxEngine<T>) -> Result<(), OptimizerError> {
         self.step_count += 1;
@@ -486,7 +486,7 @@ where
             self.param_groups.push(group);
         }
 
-      
+
 
         // Restore first moment buffers
         for buffer in state_dict.parameter_buffers.values() {
@@ -524,5 +524,73 @@ where
         }
 
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod adam_tests {
+    use crate::backend::Tensor;
+    use crate::backend::manager::best_f32_device;
+    use crate::graph::AutoFerroxEngine;
+    use crate::nn::optim::{Optimizer, adam::Adam};
+
+    #[test]
+    fn test_adam_basic_step() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+        // Single parameter optimization
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
+        let node = engine.create_variable(param, true);
+
+        let mut optimizer = Adam::with_defaults(0.1f32);
+        optimizer.add_param(0, node);
+
+        // Set gradient and step
+        let grad = Tensor::from_vec_with_device(vec![0.5f32], &[1], device).unwrap();
+        engine.set_gradient(node, grad);
+
+        let before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        optimizer.step(&mut engine).unwrap();
+        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+
+        // Parameter should decrease with positive gradient
+        assert!(after < before);
+        assert_eq!(optimizer.get_step_count(), 1);
+    }
+
+    #[test]
+    fn test_adam_weight_decay() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1],device ).unwrap();
+        let node = engine.create_variable(param, true);
+
+        // AdamW with weight decay
+        let mut optimizer = Adam::adamw(0.1f32, 0.01f32);
+        optimizer.add_param(0, node);
+
+        // Zero gradient - only weight decay acts
+        let grad = Tensor::zeros(&[1]).unwrap();
+        engine.set_gradient(node, grad);
+
+        let before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        optimizer.step(&mut engine).unwrap();
+        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+
+        // Weight decay should reduce parameter
+        assert!(after < before);
+    }
+
+    #[test]
+    fn test_adam_state_reset() {
+        let mut optimizer = Adam::with_defaults(0.1f32);
+
+        // Simulate some steps
+        optimizer.step_count = 10;
+
+        optimizer.reset_state();
+
+        assert_eq!(optimizer.get_step_count(), 0);
     }
 }
