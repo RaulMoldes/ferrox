@@ -4,15 +4,11 @@
 
 pub mod activations;
 pub mod initializers;
-pub mod layers;
-pub mod loss;
 pub mod module;
-pub mod normalization;
 pub mod optim;
 pub mod parameter;
-mod tests;
 
-pub use activations::{ELU, LeakyReLU, ReLU, Sigmoid, Softmax, Tanh};
+pub use activations::ReLU;
 pub use initializers::{
     init_tensor_kaiming_uniform, init_tensor_xavier_uniform, kaiming_uniform, xavier_uniform,
 };

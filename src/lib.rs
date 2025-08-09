@@ -28,3 +28,4 @@ pub use backend::{cpu, default_device, Device, FerroxCudaF, FerroxF};
 
 pub mod graph;
 pub mod ops;
+pub mod nn;
