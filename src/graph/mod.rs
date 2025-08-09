@@ -153,6 +153,32 @@ where
         }
     }
 
+    pub fn set_tensor(&mut self, new_tensor: Tensor<T>) -> Result<(), String> {
+        match &mut self.state {
+            NodeState::Leaf(_) => {
+                self.state = NodeState::Leaf(new_tensor);
+                Ok(())
+            },
+            NodeState::Evaluated { op, inputs, .. } => {
+                let operation = op.take().unwrap();
+
+                self.state =  NodeState::Evaluated {
+                    op: Some(operation),
+                    tensor: new_tensor,
+                    inputs: inputs.to_vec()
+                };
+
+
+
+                Ok(())
+            },
+            NodeState::Pending { .. } => {
+                Err("Cannot set the tensor of a Pending Node!".to_string())
+            },
+        }
+
+    }
+
     pub fn is_evaluated(&self) -> bool {
         !matches!(self.state, NodeState::Pending { .. })
     }
@@ -550,6 +576,38 @@ where
     /// Clean up gradients
     pub fn zero_gradients(&mut self) {
         self.gradients.clear();
+    }
+
+    /// METHODS REQUIRED FOR LEARNING (OPTIMIZER COMPATIBILITY)
+    /// Update a parameter node's tensor data
+    /// This is needed for optimizers to modify parameters
+    pub fn update_parameter(
+        &mut self,
+        node_id: NodeId,
+        new_tensor: Tensor<T>,
+    ) -> Result<(), String> {
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            // Check if this is a parameter node (leaf node with requires_grad)
+            if node.get_op().is_none() && node.requires_grad {
+                // Update the tensor data in the node
+                node.set_tensor(new_tensor)?;
+                Ok(())
+            } else {
+                Err("Can only update parameter nodes (leaf nodes with requires_grad)".to_string())
+            }
+        } else {
+            Err(format!("Node {} not found", node_id.0))
+        }
+    }
+
+    /// Clear gradient for a specific parameter
+    pub fn clear_gradient(&mut self, node_id: NodeId) {
+        self.gradients.remove(&node_id);
+    }
+
+    /// Get tensor data from a node (for reading current parameter values)
+    pub fn get_tensor_data(&self, node_id: NodeId) -> Option<&Tensor<T>> {
+        self.nodes.get(&node_id)?.get_tensor()
     }
 }
 

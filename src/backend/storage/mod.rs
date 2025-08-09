@@ -2,6 +2,11 @@ mod cpu;
 #[cfg(feature = "cuda")]
 mod cuda;
 
+#[cfg(feature = "cuda")]
+use crate::backend::cuda::ops::CudaOps;
+#[cfg(feature = "cuda")]
+use crate::backend::cuda::context::CudaTensor;
+
 pub use cpu::CPUStorage;
 #[cfg(feature = "cuda")]
 pub use cuda::CUDAStorage;
@@ -242,15 +247,14 @@ where
     /// Returns None if storage doesn't support multi-dim indexing
     fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
 
-    /// Execute a custom operation on the storage backend
-    /// For CPU: provides access to ArrayD<T> for custom ndarray operations
-    /// For CUDA: provides access to CudaOps<T> for custom CUDA kernel execution
-    fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;
+
+    /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;*/
 }
 
 /// Trait defining custom operations that can be executed on storage backends
 /// Operations receive different contexts based on storage type (CPU vs CUDA)
 /// All operations create new results, consistent with existing storage operations
+#[allow(unused_variables)]
 pub trait CustomOperation<T: FerroxCudaF, R> {
     /// Execute on CPU storage. Receives immutable access to underlying ArrayD
     /// Should create new storage/results rather than mutating input
@@ -259,6 +263,7 @@ pub trait CustomOperation<T: FerroxCudaF, R> {
     }
 
     /// Execute on CUDA storage. Receives access to cuda ops for kernel execution.
+    #[cfg(feature = "cuda")]
     fn execute_cuda(&self, ops: &CudaOps<T>, data: &CudaTensor<T>) -> Result<R, String> {
         Err("CUDA execution not implemented for this operation".to_string())
     }

@@ -1,6 +1,6 @@
 use crate::backend::number::{CPUNumber, FerroxCudaF, FerroxF};
-use crate::graph::Engine;
 use crate::graph::node::NodeId;
+use crate::graph::Engine;
 use crate::nn::Module;
 
 // ReLU (Rectified Linear Unit) activation function.

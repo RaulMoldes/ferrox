@@ -1166,9 +1166,9 @@ where
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
 
-    fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
+  /*  fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Execute custom operation with immutable access to ArrayD data
         // Operation creates new results following existing storage pattern
         op.execute_cpu(&self.data)
-    }
+    }*/
 }
