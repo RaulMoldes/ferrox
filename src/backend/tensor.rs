@@ -52,7 +52,6 @@ where
     }
 }
 
-
 impl<T> Tensor<T>
 where
     T: FerroxCudaF,
@@ -995,19 +994,17 @@ where
         if let Ok(data) = self.into_data() {
             // Handle 0-dimensional arrays (scalars from reductions)
             let item = if data.ndim() == 0 {
-            // For 0-dimensional arrays, use iter().next() instead of indexing
+                // For 0-dimensional arrays, use iter().next() instead of indexing
                 data.iter()
-                .next()
-                .copied()
-                .ok_or_else(|| "Empty 0-dimensional array".to_string())?
-
-            } else  {
-            // For regular arrays, get first element
-            data.iter()
-                .next()
-                .copied()
-                .ok_or_else(|| "Empty array".to_string())?
-
+                    .next()
+                    .copied()
+                    .ok_or_else(|| "Empty 0-dimensional array".to_string())?
+            } else {
+                // For regular arrays, get first element
+                data.iter()
+                    .next()
+                    .copied()
+                    .ok_or_else(|| "Empty array".to_string())?
             };
             return Ok(item);
         }

@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 // src/backend/device.rs
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, Encode, Decode)]
 pub enum Device {
     #[default]
     CPU,

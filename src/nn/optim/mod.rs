@@ -4,8 +4,8 @@ use crate::backend::{FerroxCudaF, FerroxF};
 use crate::graph::AutoFerroxEngine;
 use crate::graph::NodeId;
 use crate::nn::Module;
+use bincode::{config, decode_from_slice, encode_to_vec, Decode, Encode};
 use serde::{Deserialize, Serialize};
-use bincode::{encode_to_vec, decode_from_slice, config, Encode, Decode};
 use std::collections::{HashMap, HashSet};
 use std::fs::{read, write};
 
@@ -56,7 +56,7 @@ impl TensorData {
     pub fn from_f32_tensor(tensor: &Tensor<f32>) -> Result<Self, OptimizerError> {
         let data = tensor
             .as_slice()
-            .map_err(|e| OptimizerError::TensorOperation(e))?
+            .map_err(OptimizerError::TensorOperation)?
             .to_vec();
         Ok(TensorData::F32(data))
     }
@@ -65,30 +65,38 @@ impl TensorData {
     pub fn from_f64_tensor(tensor: &Tensor<f64>) -> Result<Self, OptimizerError> {
         let data = tensor
             .as_slice()
-            .map_err(|e| OptimizerError::TensorOperation(e))?
+            .map_err(OptimizerError::TensorOperation)?
             .to_vec();
         Ok(TensorData::F64(data))
     }
 
     /// Convert to f32 tensor
-    pub fn to_f32_tensor(&self, shape: &[usize], device: Device) -> Result<Tensor<f32>, OptimizerError> {
+    pub fn to_f32_tensor(
+        &self,
+        shape: &[usize],
+        device: Device,
+    ) -> Result<Tensor<f32>, OptimizerError> {
         match self {
-            TensorData::F32(data) => {
-                Tensor::from_vec_with_device(data.clone(), shape, device)
-                    .map_err(|e| OptimizerError::TensorOperation(e))
-            }
-            _ => Err(OptimizerError::TypeMismatch("Expected f32 data".to_string())),
+            TensorData::F32(data) => Tensor::from_vec_with_device(data.clone(), shape, device)
+                .map_err(OptimizerError::TensorOperation),
+            _ => Err(OptimizerError::TypeMismatch(
+                "Expected f32 data".to_string(),
+            )),
         }
     }
 
     /// Convert to f64 tensor
-    pub fn to_f64_tensor(&self, shape: &[usize], device: Device) -> Result<Tensor<f64>, OptimizerError> {
+    pub fn to_f64_tensor(
+        &self,
+        shape: &[usize],
+        device: Device,
+    ) -> Result<Tensor<f64>, OptimizerError> {
         match self {
-            TensorData::F64(data) => {
-                Tensor::from_vec_with_device(data.clone(), shape, device)
-                    .map_err(|e| OptimizerError::TensorOperation(e))
-            }
-            _ => Err(OptimizerError::TypeMismatch("Expected f64 data".to_string())),
+            TensorData::F64(data) => Tensor::from_vec_with_device(data.clone(), shape, device)
+                .map_err(OptimizerError::TensorOperation),
+            _ => Err(OptimizerError::TypeMismatch(
+                "Expected f64 data".to_string(),
+            )),
         }
     }
 }
@@ -98,6 +106,7 @@ impl TensorData {
 pub struct TensorBuffer {
     pub data: TensorData,
     pub shape: Vec<usize>,
+    pub device: Device,
     pub buffer_type: String, // "momentum", "first_moment", "second_moment", etc.
     pub node_id: usize,
 }
@@ -121,11 +130,14 @@ impl TensorBuffer {
             let f64_tensor = unsafe { &*(tensor as *const Tensor<T> as *const Tensor<f64>) };
             TensorData::from_f64_tensor(f64_tensor)?
         } else {
-            return Err(OptimizerError::TypeMismatch("Unsupported tensor type".to_string()));
+            return Err(OptimizerError::TypeMismatch(
+                "Unsupported tensor type".to_string(),
+            ));
         };
 
         Ok(Self {
             data,
+            device: tensor.device(),
             shape: tensor.shape().to_vec(),
             buffer_type,
             node_id: node_id.0,
@@ -133,24 +145,28 @@ impl TensorBuffer {
     }
 
     /// Convert back to tensor with type detection
-    pub fn to_tensor<T>(&self, device: Device) -> Result<Tensor<T>, OptimizerError>
+    pub fn to_tensor<T>(&self) -> Result<Tensor<T>, OptimizerError>
     where
         T: FerroxCudaF + 'static,
     {
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
-            let f32_tensor = self.data.to_f32_tensor(&self.shape, device)?;
+            let f32_tensor = self.data.to_f32_tensor(&self.shape, self.device)?;
             // Safe cast since we verified the type
-            let tensor = unsafe { std::ptr::read(&f32_tensor as *const Tensor<f32> as *const Tensor<T>) };
+            let tensor =
+                unsafe { std::ptr::read(&f32_tensor as *const Tensor<f32> as *const Tensor<T>) };
             std::mem::forget(f32_tensor);
             Ok(tensor)
         } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-            let f64_tensor = self.data.to_f64_tensor(&self.shape, device)?;
+            let f64_tensor = self.data.to_f64_tensor(&self.shape, self.device)?;
             // Safe cast since we verified the type
-            let tensor = unsafe { std::ptr::read(&f64_tensor as *const Tensor<f64> as *const Tensor<T>) };
+            let tensor =
+                unsafe { std::ptr::read(&f64_tensor as *const Tensor<f64> as *const Tensor<T>) };
             std::mem::forget(f64_tensor);
             Ok(tensor)
         } else {
-            Err(OptimizerError::TypeMismatch("Unsupported tensor type".to_string()))
+            Err(OptimizerError::TypeMismatch(
+                "Unsupported tensor type".to_string(),
+            ))
         }
     }
 }
@@ -222,7 +238,9 @@ where
     }
 
     /// Convert from serializable format
-    pub fn from_serializable(serializable: &SerializableParameterGroup) -> Result<Self, OptimizerError>
+    pub fn from_serializable(
+        serializable: &SerializableParameterGroup,
+    ) -> Result<Self, OptimizerError>
     where
         T: crate::backend::number::CPUNumber,
     {
@@ -284,18 +302,21 @@ impl OptimizerStateDict {
     where
         T: FerroxCudaF,
     {
-        self.parameter_groups.push(SerializableParameterGroup::from(group));
+        self.parameter_groups
+            .push(SerializableParameterGroup::from(group));
     }
 
     /// Save to bytes using bincode
     pub fn save_to_bytes(&self) -> Result<Vec<u8>, OptimizerError> {
-        encode_to_vec(self, config::standard()).map_err(|e| OptimizerError::TensorOperation(e.to_string()))
+        encode_to_vec(self, config::standard())
+            .map_err(|e| OptimizerError::TensorOperation(e.to_string()))
     }
 
     /// Load from bytes using bincode
     pub fn load_from_bytes(data: &[u8]) -> Result<Self, OptimizerError> {
         decode_from_slice(data, config::standard())
-    .map(|(val, _)| val).map_err(|e| OptimizerError::TensorOperation(e.to_string()))
+            .map(|(val, _)| val)
+            .map_err(|e| OptimizerError::TensorOperation(e.to_string()))
     }
 }
 

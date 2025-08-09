@@ -2,11 +2,11 @@
 
 use ndarray::{LinalgScalar, ScalarOperand};
 use rand_distr::num_traits::{FromPrimitive, One, Zero};
+use serde::{Deserialize, Serialize};
 use std::cmp::{PartialEq, PartialOrd};
 use std::default::Default;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
-use serde::{Deserialize, Serialize};
 
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
@@ -482,9 +482,6 @@ impl FerroxCudaF for f32 {}
 
 #[cfg(feature = "cuda")]
 impl FerroxCudaF for f64 {}
-
-
-
 
 // ============= NON-CUDA IMPLEMENTATIONS =============
 

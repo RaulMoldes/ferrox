@@ -4,9 +4,9 @@ use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
 #[allow(unused_imports)]
 pub use graphviz::EngineVisualization;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use serde::{Deserialize, Serialize};
 /// ATOMIC auto incrementing id for all nodes.
 static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
