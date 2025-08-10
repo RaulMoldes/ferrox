@@ -150,7 +150,7 @@ where
         &self,
         data: &[T],
         shape: Vec<usize>,
-    ) -> Result<(CudaTensor<T>, u64), String>
+    ) -> Result<CudaTensor<T>, String>
     where
         T: FerroxCudaF,
     {
@@ -165,7 +165,7 @@ where
         }
 
         let (cuda_data, id) = self.host_to_device(data)?; // Pass slice reference
-        Ok((CudaTensor::new(cuda_data, shape), id))
+        Ok(CudaTensor::new(cuda_data, shape, id))
     }
 
     // ============= STREAM MANAGEMENT (DELEGATED TO STREAMMANAGER) =============
@@ -252,7 +252,8 @@ where
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CudaTensor<T: FerroxCudaF> {
-    pub data: Option<CudaSlice<T>>,
+    pub data: CudaSlice<T>,
+    pub allocation_id: u64,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
 }
@@ -262,55 +263,33 @@ where
     T: FerroxCudaF,
 {
     /// Creates a new CUDA tensor with computed strides
-    pub fn new(data: CudaSlice<T>, shape: Vec<usize>) -> Self {
+    pub fn new(data: CudaSlice<T>, shape: Vec<usize>, allocation_id: u64) -> Self {
         let strides = compute_strides(&shape);
 
         Self {
-            data: Some(data),
+            data,
+            allocation_id,
             shape,
             strides,
         }
     }
 
-    // Extract the underlying CudaSlice, consuming the tensor
-    // This is needed for memory pool cleanup in Drop implementations
-    pub fn into_data(self) -> CudaSlice<T> {
-        if let Some(data) = self.data {
-            data
-        } else {
-            panic!("Cannot call into_data() on empty cuda tensor");
-        }
-    }
 
     pub fn data(&self) -> &CudaSlice<T> {
-        if let Some(data) = &self.data {
-            data
-        } else {
-            panic!("Cannot call into_data() on empty cuda tensor");
-        }
+        &self.data
     }
 
     pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
-        if let Some(ref mut data) = self.data {
-            data
-        } else {
-            panic!("Cannot call into_data() on empty cuda tensor");
-        }
+        &mut self.data
     }
 
-    // Alternative: take ownership of the data, leaving empty slice
-    pub fn take_data(&mut self) -> CudaSlice<T> {
-        self.data
-            .take()
-            .expect("Cannot take out of an empty tensor")
-    }
 
     /// Create tensor from CPU ndarray without taking ownership
     /// This allows borrowing external ndarray data for GPU transfer
     pub fn from_cpu_array(
         context_manager: &CudaContextManager<T>,
         array: &ArrayD<T>,
-    ) -> Result<(Self, u64), String> {
+    ) -> Result<Self, String> {
         let shape = array.shape().to_vec();
         let expected_size = shape.iter().product::<usize>();
 
@@ -336,71 +315,17 @@ where
 
         // Transfer ndarray data to GPU - this copies the data to GPU
         let (cuda_data, id) = context_manager.host_to_device(data_slice)?;
-        Ok((Self::new(cuda_data, shape), id))
+        Ok(Self::new(cuda_data, shape, id))
     }
 
-    /// Create tensor from CPU ndarray asynchronously without taking ownership
-    /// Useful for overlapping transfers with computation
-    pub fn from_cpu_array_async(
-        context_manager: &CudaContextManager<T>,
-        array: &ArrayD<T>,
-        stream_name: Option<&str>,
-    ) -> Result<Self, String> {
-        let shape = array.shape().to_vec();
-        let expected_size = shape.iter().product::<usize>();
 
-        // Get contiguous slice from ndarray
-        let data_slice = if array.is_standard_layout() {
-            array
-                .as_slice()
-                .ok_or("Failed to get contiguous slice from ndarray")?
-        } else {
-            return Err("Non-contiguous arrays not supported. Use .to_owned() first.".to_string());
-        };
-
-        if data_slice.len() != expected_size {
-            return Err(format!(
-                "Array size {} doesn't match shape {:?} (expected {})",
-                data_slice.len(),
-                shape,
-                expected_size
-            ));
-        }
-
-        // Async transfer ndarray data to GPU
-        let cuda_data = context_manager.host_to_device_async(data_slice, stream_name)?;
-        Ok(Self::new(cuda_data, shape))
-    }
-
-    /// Create tensor from CPU slice asynchronously without taking ownership
-    /// Useful for overlapping transfers with computation
-    pub fn from_cpu_slice_async(
-        context_manager: &CudaContextManager<T>,
-        data: &[T],
-        shape: Vec<usize>,
-        stream_name: Option<&str>,
-    ) -> Result<Self, String> {
-        let expected_size = shape.iter().product::<usize>();
-        if data.len() != expected_size {
-            return Err(format!(
-                "Data length {} doesn't match shape {:?} (expected {})",
-                data.len(),
-                shape,
-                expected_size
-            ));
-        }
-
-        // Async transfer slice data to GPU
-        let cuda_data = context_manager.host_to_device_async(data, stream_name)?;
-        Ok(Self::new(cuda_data, shape))
-    }
 
     /// Create tensor from host data using context manager
     pub fn from_vec(
         context_manager: &CudaContextManager<T>,
         data: Vec<T>,
         shape: Vec<usize>,
-    ) -> Result<(Self, u64), String> {
+    ) -> Result<Self, String> {
         let expected_size = shape.iter().product::<usize>();
         if data.len() != expected_size {
             return Err(format!(
@@ -412,61 +337,37 @@ where
         }
 
         let (cuda_data, id) = context_manager.host_to_device(&data)?; // Pass slice reference
-        Ok((Self::new(cuda_data, shape), id))
+        Ok(Self::new(cuda_data, shape, id))
     }
 
-    /// Create async tensor from host data
-    pub fn from_vec_async(
-        context_manager: &CudaContextManager<T>,
-        data: Vec<T>,
-        shape: Vec<usize>,
-        stream_name: Option<&str>,
-    ) -> Result<Self, String> {
-        let expected_size = shape.iter().product::<usize>();
-        if data.len() != expected_size {
-            return Err(format!(
-                "Data length {} doesn't match shape {:?} (expected {})",
-                data.len(),
-                shape,
-                expected_size
-            ));
-        }
-
-        let cuda_data = context_manager.host_to_device_async(&data, stream_name)?; // Pass slice reference
-        Ok(Self::new(cuda_data, shape))
-    }
 
     /// Transfer tensor data back to CPU
-    pub fn to_cpu(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String>
+    pub fn to_cpu(self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
-        if let Some(ref data) = self.data {
-            context_manager.device_to_host(data)
-        } else {
-            Err("Cannot move from an empty CUDA tensor".to_string())
-        }
+
+        context_manager.device_to_host(&self.data)
+
     }
 
     /// Transfer tensor data back to CPU asynchronously
     pub fn to_cpu_async(
-        &self,
+        self,
         context_manager: &CudaContextManager<T>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
-        if let Some(ref data) = self.data {
-            context_manager.device_to_host_async(data, stream_name)
-        } else {
-            Err("Cannot move from out of an empty cuda tensor".to_string())
-        }
+
+        context_manager.device_to_host_async(&self.data, stream_name)
+
     }
 
-    /// Get tensor data as vector (alias for to_cpu)
-    pub fn to_vec(&self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
-        if let Some(ref data) = self.data {
-            let mut full_data = context_manager.device_to_host(data)?;
-            let expected_size = self.size(); // This is shape.iter().product()
-            if full_data.len() > expected_size {
+    /// Get tensor data as vector
+    pub fn to_vec(self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
+
+        let mut full_data = context_manager.device_to_host(&self.data)?;
+        let expected_size = self.size(); // This is shape.iter().product()
+        if full_data.len() > expected_size {
                 // Memory pool returned larger slice - truncate to logical size
                 full_data.truncate(expected_size);
             } else if full_data.len() < expected_size {
@@ -478,19 +379,16 @@ where
             }
 
             Ok(full_data)
-        } else {
-            Err("Cannot move from out of an empty cuda tensor".to_string())
-        }
     }
 
     /// Create zeroed CUDA tensor
     pub fn alloc_init(
         context_manager: &CudaContextManager<T>,
         shape: Vec<usize>,
-    ) -> Result<(Self, u64), String> {
+    ) -> Result<Self, String> {
         let size = shape.iter().product();
         let (data, id) = context_manager.alloc_zeros(size)?;
-        Ok((Self::new(data, shape), id))
+        Ok(Self::new(data, shape, id))
     }
 
     // ============= TENSOR METADATA =============
@@ -761,4 +659,23 @@ pub fn can_broadcast_to(from_shape: &[usize], to_shape: &[usize]) -> bool {
         }
     }
     true
+}
+
+
+impl<T> Drop for CudaTensor<T>
+where T: FerroxCudaF
+{
+
+    fn drop(&mut self) {
+        // Return GPU memory to pool when storage is dropped
+        // This prevents memory leaks by ensuring cleanup happens automatically
+            // Return to pool using the centralized function from manager
+            if let Err(e) = return_cuda_slice::<T>(self.allocation_id, self.data.clone()) {
+                eprintln!("Warning: Failed to return CUDA memory to pool: {}", e);
+                // If return_to_pool fails, CudaSlice will be dropped normally
+                // This still frees GPU memory but doesn't reuse it
+
+    }
+}
+
 }

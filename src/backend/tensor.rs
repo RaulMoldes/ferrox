@@ -30,25 +30,7 @@ where
     T: FerroxCudaF + Clone,
 {
     fn clone(&self) -> Self {
-        let storage = if let Some(storage_ref) = &self.storage {
-            // Try to downcast to CPUStorage if possible
-            if let Some(any_ref) = storage_ref.as_any() {
-                if let Some(cpu_storage) = any_ref.downcast_ref::<CPUStorage<T>>() {
-                    Some(Box::new(cpu_storage.clone()) as Box<dyn StorageBackend<T>>)
-                } else {
-                    storage_ref.clone_storage().ok()
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        Self {
-            device: self.device,
-            storage,
-        }
+       todo!("Implement this")
     }
 }
 
@@ -342,9 +324,9 @@ where
                 {
                     if let Some(gpu_storage) = storage
                         .as_any()
-                        .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                        .downcast_ref::<CUDAStorage<T>>()
                     {
-                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                        let host_data = with_cuda_context(move |ctx: &CudaContextManager<T>| {
                             gpu_storage.cuda_data.to_vec(ctx)
                         })?;
 

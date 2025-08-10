@@ -15,10 +15,11 @@ use crate::backend::FerroxCudaF;
 
 use ndarray::ArrayD;
 use std::fmt::Debug;
+use std::any::Any;
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
-pub trait StorageBackend<T>: Debug
+pub trait StorageBackend<T>: Debug + Any
 where
     T: FerroxCudaF,
 {
@@ -26,9 +27,9 @@ where
     fn shape(&self) -> &[usize];
 
     // Add this method for downcasting
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        None // Default implementation returns None for borrowed storage
-    }
+    fn as_any(&self) -> &dyn Any;
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
 
     /// Get number of dimensions
     fn ndim(&self) -> usize;
@@ -249,6 +250,7 @@ where
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;*/
 }
+
 
 /// Trait defining custom operations that can be executed on storage backends
 /// Operations receive different contexts based on storage type (CPU vs CUDA)

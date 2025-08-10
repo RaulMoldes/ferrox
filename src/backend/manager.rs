@@ -234,10 +234,10 @@ impl<T: FerroxCudaF> BackendManager<T> {
             Device::CPU => Box::new(CPUStorage::<T>::new(data.clone())),
             #[cfg(feature = "cuda")]
             Device::CUDA(_) => {
-                let (cuda_tensor, id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
                     crate::backend::cuda::CudaTensor::from_cpu_array(ctx, data)
                 })?;
-                Box::new(CUDAStorage::<T>::new(cuda_tensor, Some(id)))
+                Box::new(CUDAStorage::<T>::new(cuda_tensor))
             }
         };
 
@@ -256,70 +256,86 @@ impl<T: FerroxCudaF> BackendManager<T> {
         self.create_storage_from_data(data, device)
     }
 
-    /// Transfer storage to different device - manager handles the complexity
     pub fn move_storage(
-        &self,
-        storage: Box<dyn StorageBackend<T>>,
-        target_device: Device,
-    ) -> Result<(Device, Box<dyn StorageBackend<T>>), String>
-    where
-        T: Clone,
-    {
-        let validated_target = self.validate_device(target_device)?;
+    &self,
+    storage: Box<dyn StorageBackend<T>>,
+    target_device: Device,
+) -> Result<(Device, Box<dyn StorageBackend<T>>), String>
+where
+    T: Clone,
+{
+    let validated_target = self.validate_device(target_device)?;
 
-        // Check if already on correct device type
-        let needs_transfer = match validated_target {
-            Device::CPU => storage.is_gpu(),
+    let needs_transfer = match validated_target {
+        Device::CPU => storage.is_gpu(),
+        #[cfg(feature = "cuda")]
+        Device::CUDA(_) => !storage.is_gpu(),
+    };
+
+    if !needs_transfer {
+        return Ok((validated_target, storage));
+    }
+
+    match validated_target {
+        Device::CPU => {
+            // GPU -> CPU
             #[cfg(feature = "cuda")]
-            Device::CUDA(_) => !storage.is_gpu(),
-        };
-
-        if !needs_transfer {
-            return Ok((validated_target, storage));
-        }
-
-        // Need to transfer between device types
-        match validated_target {
-            Device::CPU => {
-                // GPU -> CPU: get GPU data and create CPU storage
-                #[cfg(feature = "cuda")]
-                {
-                    if let Some(gpu_storage) = storage
-                        .as_any()
-                        .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
-                    {
-                        let host_data = with_cuda_context(|ctx: &CudaContextManager<T>| {
-                            gpu_storage.cuda_data.to_vec(ctx)
-                        })?;
-
-                        let cpu_array = ArrayD::from_shape_vec(
-                            ndarray::IxDyn(gpu_storage.cuda_data.shape()),
-                            host_data,
+            {
+                // downcast by value: consumes storage and returns Box<CUDAStorage<T>>
+                let gpu_storage_box = match storage.into_any().downcast::<CUDAStorage<T>>() {
+                    Ok(b) => b,
+                    Err(_) => {
+                        return Err(
+                            "The storage is not CUDAstorage, cannot be transferred from GPU->CPU"
+                                .to_string(),
                         )
-                        .map_err(|e| format!("Failed to create CPU array: {}", e))?;
-
-                        let cpu_storage: Box<dyn StorageBackend<T>> =
-                            Box::new(CPUStorage::<T>::new(cpu_array));
-                        return Ok((validated_target, cpu_storage));
                     }
-                }
-                Err("Cannot transfer GPU storage to CPU without CUDA feature".to_string())
-            }
-            #[cfg(feature = "cuda")]
-            Device::CUDA(_) => {
-                // CPU -> GPU: get CPU data and create GPU storage from it
-                let cpu_data = storage.cpu_data()?;
+                };
 
-                let (cuda_tensor, id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
-                    crate::backend::cuda::CudaTensor::from_cpu_array(ctx, cpu_data)
+                // Move the content inside the box
+                let gpu_storage: CUDAStorage<T> = *gpu_storage_box;
+
+                // IMPORTANT: take ownership of the shape before moving out of cuda_data
+                let shape_vec: Vec<usize> = gpu_storage.cuda_data.shape().to_vec();
+
+                // Move `cuda_data`inside the closure
+                let host_data = with_cuda_context(move |ctx: &CudaContextManager<T>| {
+                    // `to_vec` consumes the tensor using move.
+                    gpu_storage.cuda_data.to_vec(ctx)
                 })?;
 
-                let cuda_storage: Box<dyn StorageBackend<T>> =
-                    Box::new(CUDAStorage::<T>::new(cuda_tensor, Some(id)));
-                Ok((validated_target, cuda_storage))
+                // Build  ArrayD
+                let cpu_array = ArrayD::from_shape_vec(ndarray::IxDyn(&shape_vec), host_data)
+                    .map_err(|e| format!("Failed to create CPU array: {}", e))?;
+
+                let cpu_storage: Box<dyn StorageBackend<T>> =
+                    Box::new(CPUStorage::<T>::new(cpu_array));
+                return Ok((validated_target, cpu_storage));
+            }
+
+            #[cfg(not(feature = "cuda"))]
+            {
+                return Err("CUDA feature no habilitada; no es posible transferir desde GPU".to_string());
             }
         }
+
+        #[cfg(feature = "cuda")]
+        Device::CUDA(_device_idx) => {
+            // CPU -> GPU
+            let cpu_data = storage.cpu_data()?;
+
+            let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                crate::backend::cuda::CudaTensor::from_cpu_array(ctx, cpu_data)
+            })?;
+
+            let cuda_storage: Box<dyn StorageBackend<T>> =
+                Box::new(CUDAStorage::<T>::new(cuda_tensor));
+            Ok((validated_target, cuda_storage))
+        }
     }
+}
+
+
 }
 
 // Global instances

@@ -12,16 +12,14 @@ use ndarray::ArrayD;
 /// GPU storage
 #[derive(Debug, Clone)]
 pub struct CUDAStorage<T: FerroxCudaF> {
-    pub cuda_data: CudaTensor<T>,
-    allocation_id: Option<u64>,
+    pub cuda_data: CudaTensor<T>
 }
 
 #[cfg(feature = "cuda")]
 impl<T: DeviceRepr + FerroxCudaF> CUDAStorage<T> {
-    pub fn new(cuda_data: CudaTensor<T>, allocation_id: Option<u64>) -> Self {
+    pub fn new(cuda_data: CudaTensor<T>) -> Self {
         Self {
-            cuda_data,
-            allocation_id,
+            cuda_data
         }
     }
 }
@@ -35,8 +33,12 @@ where
         self.cuda_data.shape()
     }
 
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any + 'static> {
+        Box::new(self)
     }
 
     fn ndim(&self) -> usize {
@@ -74,7 +76,7 @@ where
             // Both tensors are on GPU - use CUDA kernels directly
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -85,10 +87,10 @@ where
                 ));
             }
 
-            let (result_cuda, id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.add(&self.cuda_data, &other_gpu.cuda_data))?;
 
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             // Mixed GPU-CPU operation: convert CPU to GPU first
             let other_data = other.cpu_data()?;
@@ -102,15 +104,15 @@ where
             }
 
             // Convert CPU ArrayD to CudaTensor and perform operation
-            let (mut other_cuda, other_id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| {
                 CudaTensor::from_cpu_array(ctx, other_data)
             })?;
 
-            let (result_cuda, res_id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.add(&self.cuda_data, &other_cuda))?;
 
-            return_cuda_slice(other_id, other_cuda.take_data())?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(res_id))))
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         }
     }
 
@@ -118,7 +120,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -129,10 +131,10 @@ where
                 ));
             }
 
-            let (result_cuda, id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.sub(&self.cuda_data, &other_gpu.cuda_data))?;
 
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
 
@@ -144,13 +146,13 @@ where
                 ));
             }
 
-            let (mut other_cuda, other_id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| {
                 CudaTensor::from_cpu_array(ctx, other_data)
             })?;
-            let (result_cuda, res_id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.sub(&self.cuda_data, &other_cuda))?;
-            return_cuda_slice(other_id, other_cuda.take_data())?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(res_id))))
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         }
     }
 
@@ -158,7 +160,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -169,9 +171,9 @@ where
                 ));
             }
 
-            let (result_cuda, id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.mul(&self.cuda_data, &other_gpu.cuda_data))?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
 
@@ -183,13 +185,13 @@ where
                 ));
             }
 
-            let (mut other_cuda, other_id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| {
                 CudaTensor::from_cpu_array(ctx, other_data)
             })?;
-            let (result_cuda, res_id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.mul(&self.cuda_data, &other_cuda))?;
-            return_cuda_slice(other_id, other_cuda.take_data())?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(res_id))))
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         }
     }
 
@@ -197,7 +199,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -208,9 +210,9 @@ where
                 ));
             }
 
-            let (result_cuda, id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.div(&self.cuda_data, &other_gpu.cuda_data))?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
 
@@ -222,13 +224,13 @@ where
                 ));
             }
 
-            let (mut other_cuda, other_id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| {
                 CudaTensor::from_cpu_array(ctx, other_data)
             })?;
-            let (result_cuda, res_id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.div(&self.cuda_data, &other_cuda))?;
-            return_cuda_slice(other_id, other_cuda.take_data())?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(res_id))))
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         }
     }
 
@@ -236,7 +238,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -247,10 +249,10 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.min_elementwise(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
 
@@ -262,14 +264,14 @@ where
                 ));
             }
 
-            let (mut other_cuda, other_id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| {
                 CudaTensor::from_cpu_array(ctx, other_data)
             })?;
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.min_elementwise(&self.cuda_data, &other_cuda)
             })?;
-            return_cuda_slice(other_id, other_cuda.take_data())?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         }
     }
 
@@ -277,7 +279,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -288,10 +290,10 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.max_elementwise(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             let other_data = other.cpu_data()?;
 
@@ -303,70 +305,70 @@ where
                 ));
             }
 
-            let (mut other_cuda, other_id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            let other_cuda = with_cuda_context(|ctx: &CudaContextManager<T>| {
                 CudaTensor::from_cpu_array(ctx, other_data)
             })?;
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.max_elementwise(&self.cuda_data, &other_cuda)
             })?;
-            return_cuda_slice(other_id, other_cuda.take_data())?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         }
     }
 
     // SCALAR OPERATIONS
 
     fn add_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.add_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn sub_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.sub_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.mul_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn div_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.div_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     // UNARY OPERATIONS
 
     fn neg(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.negate(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.negate(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn abs(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.abs(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.abs(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.sqrt(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sqrt(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.clamp(&self.cuda_data, min_val, max_val))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.reciprocal(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.reciprocal(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -374,7 +376,7 @@ where
             // Both tensors are on GPU - use CUDA kernels
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -385,44 +387,44 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.greater(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
         }
     }
 
     fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.greater_equal_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.less_equal_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.greater_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.less_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -433,9 +435,9 @@ where
                 ));
             }
 
-            let (result_cuda, id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.less(&self.cuda_data, &other_gpu.cuda_data))?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
         }
@@ -449,7 +451,7 @@ where
             // Both tensors are on GPU - use CUDA kernels
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -460,10 +462,10 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.greater_equal(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
         }
@@ -476,7 +478,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -487,10 +489,10 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.less_equal(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
         }
@@ -500,7 +502,7 @@ where
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -511,35 +513,35 @@ where
                 ));
             }
 
-            let (result_cuda, id) =
+            let result_cuda =
                 with_cuda_ops(|ops: &CudaOps<T>| ops.equal(&self.cuda_data, &other_gpu.cuda_data))?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for comparison operations".to_string())
         }
     }
 
     fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.logical_not(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.logical_not(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|ops: &CudaOps<T>| ops.in_range(&self.cuda_data, min_val, max_val))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.sign(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| ops.sign(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn matmul(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.ndim() != 2 || other_gpu.ndim() != 2 {
@@ -556,50 +558,50 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.matmul(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for matrix multiplication".to_string())
         }
     }
 
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.sigmoid(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.relu(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.exp(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.log(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.tanh(&self.cuda_data))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         if other.is_gpu() {
             let other_gpu = other
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast to GPU storage")?;
 
             if self.shape() != other_gpu.shape() {
@@ -610,19 +612,19 @@ where
                 ));
             }
 
-            let (result_cuda, id) = with_cuda_ops(|cuda_ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| {
                 cuda_ops.power(&self.cuda_data, &other_gpu.cuda_data)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             Err("GPU-CPU mixed operations not supported for power operations".to_string())
         }
     }
 
     fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let (result_cuda, id) =
+        let result_cuda =
             with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.power_scalar(&self.cuda_data, scalar))?;
-        Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     fn sum(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -644,16 +646,16 @@ where
                 }
 
                 // Use CUDA ops sum_axes method for multiple axes
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.sum_axes(&self.cuda_data, axes_list, false)
                 })?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
             None => {
                 // Sum all elements to scalar using CUDA ops
-                let (result_cuda, id) =
+                let result_cuda =
                     with_cuda_ops(|ops: &CudaOps<T>| ops.sum_all(&self.cuda_data))?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
         }
     }
@@ -677,7 +679,7 @@ where
                 }
 
                 // For multiple axes, we compute sum then divide by product of axis sizes
-                let (mut sum_result, sum_id) = with_cuda_ops(|ops: &CudaOps<T>| {
+                let sum_result = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.sum_axes(&self.cuda_data, axes_list, false)
                 })?;
 
@@ -691,19 +693,18 @@ where
                     .ok_or("Failed to convert divisor to tensor type")?;
 
                 // Create scalar tensor and divide
-                let (mut divisor_tensor, other_id) =
+                let divisor_tensor =
                     with_cuda_ops(|ops: &CudaOps<T>| ops.full(&[], divisor_scalar))?;
-                let (result_cuda, id) =
+                let result_cuda =
                     with_cuda_ops(|ops: &CudaOps<T>| ops.div(&sum_result, &divisor_tensor))?;
-                return_cuda_slice(other_id, divisor_tensor.take_data())?;
-                return_cuda_slice(sum_id, sum_result.take_data())?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
             None => {
                 // Mean of all elements using CUDA ops
-                let (result_cuda, id) =
+                let result_cuda =
                     with_cuda_ops(|ops: &CudaOps<T>| ops.mean_all(&self.cuda_data))?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
         }
     }
@@ -727,16 +728,16 @@ where
                 }
 
                 // Use CUDA ops max_axes method for multiple axes reduction
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.max_axes(&self.cuda_data, axes_list, false)
                 })?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
             None => {
                 // Max of all elements to scalar
-                let (result_cuda, id) =
+                let result_cuda =
                     with_cuda_ops(|ops: &CudaOps<T>| ops.max_all(&self.cuda_data))?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
         }
     }
@@ -760,16 +761,16 @@ where
                 }
 
                 // Use CUDA ops min_axes method for multiple axes reduction
-                let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+                let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.min_axes(&self.cuda_data, axes_list, false)
                 })?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
             None => {
                 // Min of all elements to scalar
-                let (result_cuda, id) =
+                let result_cuda =
                     with_cuda_ops(|ops: &CudaOps<T>| ops.min_all(&self.cuda_data))?;
-                Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+                Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
         }
     }
@@ -879,13 +880,13 @@ where
             // Both tensors on GPU - use CUDA kernels
             let filter_gpu = filter
                 .as_any()
-                .and_then(|any| any.downcast_ref::<CUDAStorage<T>>())
+                .downcast_ref::<CUDAStorage<T>>()
                 .ok_or("Failed to cast filter to GPU storage")?;
 
-            let (result_cuda, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.conv2d_forward(&self.cuda_data, &filter_gpu.cuda_data, stride, padding)
             })?;
-            Ok(Box::new(CUDAStorage::new(result_cuda, Some(id))))
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
         } else {
             // Mixed GPU/CPU - fall back to CPU computation
             Err(
@@ -897,41 +898,15 @@ where
 
     // Note that this ops require moving the data to the CPU
     fn iter_values(&self) -> Result<Vec<T>, String> {
-        with_cuda_context(|ctx: &CudaContextManager<T>| self.cuda_data.to_vec(ctx))
+        Err("Cannot iterate over a tensor in cuda. Move to cpu first.".to_string())
     }
 
-    fn get_flat(&self, index: usize) -> Result<Option<T>, String> {
-        // GPU flat access requires CPU sync - expensive operation
-        if index >= self.size() {
-            return Ok(None);
-        }
-
-        let values = self.iter_values()?;
-        Ok(Some(values[index]))
+    fn get_flat(&self, _index: usize) -> Result<Option<T>, String> {
+        Err("Cannot index over a tensor in cuda. Move to cpu first.".to_string())
     }
 
-    fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String> {
-        // GPU multi-dimensional access
-        if indices.len() != self.shape().len() {
-            return Ok(None);
-        }
-
-        // Check bounds
-        for (i, &idx) in indices.iter().enumerate() {
-            if idx >= self.shape()[i] {
-                return Ok(None);
-            }
-        }
-
-        // Convert multi-dim indices to flat index
-        let mut flat_index = 0;
-        let mut stride = 1;
-        for i in (0..indices.len()).rev() {
-            flat_index += indices[i] * stride;
-            stride *= self.shape()[i];
-        }
-
-        self.get_flat(flat_index)
+    fn get_multi(&self, _indices: &[usize]) -> Result<Option<T>, String> {
+       Err("Cannot index over a tensor in cuda. Move to cpu first.".to_string())
     }
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
@@ -950,8 +925,8 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
         // Get default CUDA backend from manager
 
         // Create GPU tensor with zeros directly
-        let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.zeros(shape))?;
-        Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.zeros(shape))?;
+        Ok(Box::new(CUDAStorage::new(cuda_tensor)))
     }
 
     pub fn ones(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
@@ -959,8 +934,8 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
         Self: Sized,
     {
         // Create GPU tensor with ones directly
-        let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.ones(shape))?;
-        Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.ones(shape))?;
+        Ok(Box::new(CUDAStorage::new(cuda_tensor)))
     }
 
     pub fn full(shape: &[usize], value: T) -> Result<Box<dyn StorageBackend<T>>, String>
@@ -968,16 +943,16 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
         Self: Sized,
     {
         // Create GPU tensor filled with value
-        let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.full(shape, value))?;
-        Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.full(shape, value))?;
+        Ok(Box::new(CUDAStorage::new(cuda_tensor)))
     }
 
     pub fn randn(shape: &[usize]) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         Self: Sized,
     {
-        let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| ops.randn(shape, 1000))?;
-        Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
+        let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| ops.randn(shape, 1000))?;
+        Ok(Box::new(CUDAStorage::new(cuda_tensor)))
     }
 
     pub fn where_condition(
@@ -986,7 +961,7 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
         false_vals: &CUDAStorage<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
         if condition.is_gpu() && true_vals.is_gpu() && false_vals.is_gpu() {
-            let (cuda_tensor, id) = with_cuda_ops(|ops: &CudaOps<T>| {
+            let cuda_tensor = with_cuda_ops(|ops: &CudaOps<T>| {
                 ops.where_condition(
                     &condition.cuda_data,
                     &true_vals.cuda_data,
@@ -994,27 +969,9 @@ impl<T: cudarc::driver::DeviceRepr + FerroxCudaF> CUDAStorage<T> {
                 )
             })?;
 
-            Ok(Box::new(CUDAStorage::new(cuda_tensor, Some(id))))
+            Ok(Box::new(CUDAStorage::new(cuda_tensor)))
         } else {
             Err("Not all provided tensors are on GPU storage".to_string())
         }
-    }
-}
-impl<T: FerroxCudaF> Drop for CUDAStorage<T> {
-    fn drop(&mut self) {
-        // Return GPU memory to pool when storage is dropped
-        // This prevents memory leaks by ensuring cleanup happens automatically
-        if let Some(allocation_id) = self.allocation_id {
-            // Extract the CudaSlice from the tensor safely
-            let cuda_slice = self.cuda_data.take_data();
-
-            // Return to pool using the centralized function from manager
-            if let Err(e) = return_cuda_slice::<T>(allocation_id, cuda_slice) {
-                eprintln!("Warning: Failed to return CUDA memory to pool: {}", e);
-                // If return_to_pool fails, CudaSlice will be dropped normally
-                // This still frees GPU memory but doesn't reuse it
-            }
-        }
-        // If no allocation_id, the memory wasn't from pool so just let it drop normally
     }
 }

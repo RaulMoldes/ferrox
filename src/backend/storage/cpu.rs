@@ -4,7 +4,7 @@ use crate::backend::{FerroxCudaF, FerroxF};
 use ndarray::{ArrayD, ArrayViewD, IxDyn};
 use rand::Rng;
 use rand_distr::StandardUniform;
-
+use std::any::Any;
 #[derive(Debug, Clone)]
 pub struct CPUStorage<T: Clone> {
     data: ArrayD<T>,
@@ -379,8 +379,11 @@ where
         self.data.shape()
     }
 
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn into_any(self: Box<Self>) -> Box<dyn Any + 'static> {
+        Box::new(self)
     }
 
     fn ndim(&self) -> usize {
