@@ -117,7 +117,6 @@ where
         Ok(host_buffer)
     }
 
-
     /// Synchronous device to host transfer
     pub fn device_to_device(&self, data: &CudaSlice<T>) -> Result<(CudaSlice<T>, u64), String>
     where
@@ -276,7 +275,7 @@ where
 #[repr(C)]
 #[derive(Debug)]
 pub struct CudaTensor<T: FerroxCudaF> {
-    pub data: CudaSlice<T>,
+    pub data: Option<CudaSlice<T>>,
     pub allocation_id: u64,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
@@ -291,22 +290,25 @@ where
         let strides = compute_strides(&shape);
 
         Self {
-            data,
+            data: Some(data),
             allocation_id,
             shape,
             strides,
         }
     }
 
-
     pub fn data(&self) -> &CudaSlice<T> {
-        &self.data
+        self.data.as_ref().expect("CudaTensor data was already consumed")
     }
 
     pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
-        &mut self.data
+        self.data.as_mut().expect("CudaTensor data was already consumed")
     }
 
+      // Take ownership of the slice (consuming method)
+    fn take_data(&mut self) -> CudaSlice<T> {
+        self.data.take().expect("CudaTensor data was already consumed")
+    }
 
     /// Create tensor from CPU ndarray without taking ownership
     /// This allows borrowing external ndarray data for GPU transfer
@@ -342,8 +344,6 @@ where
         Ok(Self::new(cuda_data, shape, id))
     }
 
-
-
     /// Create tensor from host data using context manager
     pub fn from_vec(
         context_manager: &CudaContextManager<T>,
@@ -364,15 +364,13 @@ where
         Ok(Self::new(cuda_data, shape, id))
     }
 
-
     /// Transfer tensor data back to CPU
     pub fn to_cpu(self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
-
-        context_manager.device_to_host(&self.data)
-
+        let slice = self.data();
+        context_manager.device_to_host(slice)
     }
 
     /// Transfer tensor data back to CPU asynchronously
@@ -381,28 +379,27 @@ where
         context_manager: &CudaContextManager<T>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
-
-        context_manager.device_to_host_async(&self.data, stream_name)
-
+        let slice = self.data();
+        context_manager.device_to_host_async(slice, stream_name)
     }
 
     /// Get tensor data as vector
     pub fn to_vec(self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
-
-        let mut full_data = context_manager.device_to_host(&self.data)?;
+        let slice = self.data();
+        let mut full_data = context_manager.device_to_host(&slice)?;
         let expected_size = self.size(); // This is shape.iter().product()
         if full_data.len() > expected_size {
-                // Memory pool returned larger slice - truncate to logical size
-                full_data.truncate(expected_size);
-            } else if full_data.len() < expected_size {
-                return Err(format!(
-                    "CudaSlice has {} elements but tensor expects {} - memory corruption!",
-                    full_data.len(),
-                    expected_size
-                ));
-            }
+            // Memory pool returned larger slice - truncate to logical size
+            full_data.truncate(expected_size);
+        } else if full_data.len() < expected_size {
+            return Err(format!(
+                "CudaSlice has {} elements but tensor expects {} - memory corruption!",
+                full_data.len(),
+                expected_size
+            ));
+        }
 
-            Ok(full_data)
+        Ok(full_data)
     }
 
     /// Create zeroed CUDA tensor
@@ -685,25 +682,22 @@ pub fn can_broadcast_to(from_shape: &[usize], to_shape: &[usize]) -> bool {
     true
 }
 
-
 impl<T> Drop for CudaTensor<T>
 where T: FerroxCudaF
 {
-
     fn drop(&mut self) {
-        // Return GPU memory to pool when storage is dropped
-        // This prevents memory leaks by ensuring cleanup happens automatically
-            // Return to pool using the centralized function from manager
-            if let Err(e) = return_cuda_slice::<T>(self.allocation_id, self.data.clone()) {
+        // Take ownership of the slice without cloning - this is the key fix
+        if let Some(slice) = self.data.take() {
+            // Move slice to pool - no clone() call means no cuda_free here
+            if let Err(e) = return_cuda_slice::<T>(self.allocation_id, slice) {
                 eprintln!("Warning: Failed to return CUDA memory to pool: {}", e);
-                // If return_to_pool fails, CudaSlice will be dropped normally
-                // This still frees GPU memory but doesn't reuse it
-
+                // slice ownership was transferred to return_cuda_slice
+                // If it fails, the slice will be properly dropped inside the pool function
+            }
+        }
+        // If data is None, it was already consumed - nothing to do
     }
 }
-
-}
-
 
 impl<T> Clone for CudaTensor<T>
 where
@@ -712,16 +706,15 @@ where
     /// Proper deep clone that allocates new GPU memory with new allocation_id
     /// This prevents double-free errors and memory corruption
     fn clone(&self) -> Self {
-        
         // Copy data from original to new allocation using CUDA memcpy
-        let (slice, id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
-            ctx.device_to_device(&self.data)
-        }).expect("Failed to copy GPU data during clone");
+        let (slice, id) =
+            with_cuda_context(|ctx: &CudaContextManager<T>| ctx.device_to_device(self.data()))
+                .expect("Failed to copy GPU data during clone");
 
         // Create new CudaTensor with independent allocation_id
         Self {
-            data: slice,
-            allocation_id: id, // NEW allocation_id
+            data: Some(slice),
+            allocation_id: id, 
             shape: self.shape.clone(),
             strides: self.strides.clone(),
         }

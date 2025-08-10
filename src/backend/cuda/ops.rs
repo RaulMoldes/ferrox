@@ -2,6 +2,8 @@
 // High-level CUDA tensor operations that mirror CPU tensor operations
 // This module provides the user-facing API for neural network operations on GPU
 
+use std::mem::ManuallyDrop;
+
 use super::context::CudaTensor;
 use super::kernels::KernelManager;
 use crate::backend::cuda::context::compute_strides;
@@ -83,7 +85,6 @@ impl<T: FerroxCudaF> CudaOps<T> {
         }
     }
 
-   
     /// Helper method to use the cuda memory pool
     fn create_tensor_from_pool(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
         let size = shape.iter().product();
@@ -92,15 +93,12 @@ impl<T: FerroxCudaF> CudaOps<T> {
         // Create tensor from pooled allocation
         let strides = compute_strides(shape);
 
-        Ok(
-            CudaTensor {
-                data: pool_alloc.data,
-                allocation_id: pool_alloc.allocation_id,
-                shape: shape.to_vec(),
-                strides,
-            }
-
-        )
+        Ok(CudaTensor {
+            data: Some(pool_alloc.data),
+            allocation_id: pool_alloc.allocation_id,
+            shape: shape.to_vec(),
+            strides,
+        })
     }
 
     fn get_slice_from_pool(&self, size: usize) -> Result<(CudaSlice<T>, u64), String> {
@@ -121,15 +119,12 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
         let strides = compute_strides(shape);
 
-        Ok(
-            CudaTensor {
-                data: result,
-                allocation_id: id,
-                shape: shape.to_vec(),
-                strides,
-            }
-        )
-
+        Ok(CudaTensor {
+            data: Some(result),
+            allocation_id: id,
+            shape: shape.to_vec(),
+            strides,
+        })
     }
 
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
@@ -153,22 +148,16 @@ impl<T: FerroxCudaF> CudaOps<T> {
         self.kernels
             .launch_fill_random(cfg, &mut result, size as i32, seed)?;
         let strides = compute_strides(shape);
-        Ok(
-            CudaTensor {
-                data: result,
-                allocation_id: id,
-                shape: shape.to_vec(),
-                strides,
-            }
-        )
+        Ok(CudaTensor {
+            data: Some(result),
+            allocation_id: id,
+            shape: shape.to_vec(),
+            strides,
+        })
     }
 
     /// Element-wise addition: result = a + b
-    pub fn add(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn add(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());
         }
@@ -183,11 +172,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise multiplication: result = a * b
-    pub fn mul(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn mul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for multiplication".to_string());
         }
@@ -202,11 +187,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise division: result = a / b
-    pub fn div(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn div(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for division".to_string());
         }
@@ -221,11 +202,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise subtraction: result = a - b
-    pub fn sub(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn sub(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for subtraction".to_string());
         }
@@ -240,11 +217,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise power: result = a^b
-    pub fn power(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn power(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for power operation".to_string());
         }
@@ -309,7 +282,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Scalar addition: result = tensor + scalar
     pub fn add_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-       let scalar_tensor = self.full(&a.shape, scalar)?;
+        let scalar_tensor = self.full(&a.shape, scalar)?;
         let result = self.add(a, &scalar_tensor)?;
 
         Ok(result)
@@ -317,7 +290,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Scalar multiplication: result = tensor * scalar
     pub fn mul_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-       let scalar_tensor = self.full(&a.shape, scalar)?;
+        let scalar_tensor = self.full(&a.shape, scalar)?;
         let result = self.mul(a, &scalar_tensor)?;
 
         Ok(result)
@@ -325,7 +298,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Scalar division: result = tensor / scalar
     pub fn div_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-       let scalar_tensor = self.full(&a.shape, scalar)?;
+        let scalar_tensor = self.full(&a.shape, scalar)?;
         let result = self.div(a, &scalar_tensor)?;
 
         Ok(result)
@@ -333,18 +306,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Scalar subtraction: result = tensor - scalar
     pub fn sub_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
-       let scalar_tensor = self.full(&a.shape, scalar)?;
+        let scalar_tensor = self.full(&a.shape, scalar)?;
         let result = self.sub(a, &scalar_tensor)?;
 
         Ok(result)
     }
 
     /// Scalar power: result = tensor^scalar
-    pub fn power_scalar(
-        &self,
-        base: &CudaTensor<T>,
-        exponent: T,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn power_scalar(&self, base: &CudaTensor<T>, exponent: T) -> Result<CudaTensor<T>, String> {
         let exponent_tensor = self.full(&base.shape, exponent)?;
         let result = self.power(base, &exponent_tensor)?;
         Ok(result)
@@ -611,11 +580,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// # Requirements:
     /// - A must be [M, K], B must be [K, N] -> Result is [M, N]
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
-    pub fn matmul(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn matmul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.ndim() != 2 || b.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
@@ -693,11 +658,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn greater(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
         }
@@ -712,11 +673,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn less(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
@@ -750,11 +707,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less_equal_scalar(
-        &self,
-        a: &CudaTensor<T>,
-        scalar: T,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn less_equal_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let size = a.size();
         let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
@@ -770,11 +723,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater_scalar(
-        &self,
-        a: &CudaTensor<T>,
-        scalar: T,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn greater_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let size = a.size();
         let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
@@ -790,11 +739,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
-    pub fn less_scalar(
-        &self,
-        a: &CudaTensor<T>,
-        scalar: T,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn less_scalar(&self, a: &CudaTensor<T>, scalar: T) -> Result<CudaTensor<T>, String> {
         let size = a.size();
         let mut result = self.create_tensor_from_pool(a.shape())?;
         let cfg = self.get_launch_config(size);
@@ -805,11 +750,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
     }
 
     /// Element-wise equality: result = (a == b) ? 1.0 : 0.0
-    pub fn equal(
-        &self,
-        a: &CudaTensor<T>,
-        b: &CudaTensor<T>,
-    ) -> Result<CudaTensor<T>, String> {
+    pub fn equal(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
         }
