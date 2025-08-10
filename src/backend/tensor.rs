@@ -29,8 +29,20 @@ impl<T> Clone for Tensor<T>
 where
     T: FerroxCudaF + Clone,
 {
+    /// Clone creates a new tensor with same storage type and device, copying data
+    /// Uses storage backend's clone_storage() to preserve device placement
     fn clone(&self) -> Self {
-       todo!("Implement this")
+        let storage = self.storage
+            .as_ref()
+            .expect("Tensor must have storage backend for cloning");
+
+        // Use storage backend's clone method to create independent copy
+        let cloned_storage = storage.clone_storage()
+            .expect("Failed to clone storage backend");
+
+        // Create new tensor with cloned storage on same device
+        Self::from_storage_backend(cloned_storage, self.device)
+            .expect("Failed to create tensor from cloned storage")
     }
 }
 
@@ -272,15 +284,87 @@ where
 
     // Get CPU data reference
     /// Note: This method currently panics if the data is on cpu. Prefer into_data() to convert any type of tensor to a ndarray ArrayD. It mimics PyTorch's to_numpy().
+    /// Get CPU data reference for CPU tensors only
+    /// For GPU tensors, use cpu_data_owned() to get a copy or cpu_data_mut() for in-place conversion
     pub fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
-        self.storage
+        let storage = self.storage
             .as_ref()
-            .ok_or("Tensor has no storage backend")?
-            .cpu_data()
+            .ok_or("Tensor has no storage backend")?;
+
+        // Only works for CPU storage - return borrowed reference
+        if !storage.is_gpu() {
+            return storage.cpu_data();
+        }
+
+        // For GPU storage, direct access not possible without mutation
+        Err("Cannot get CPU data reference from GPU tensor. Use cpu_data_owned() for copy or cpu_data_mut() for in-place conversion".to_string())
     }
 
-    /// Get mutable CPU data. Note: This method currently panics if the data is on cpu.
+    /// Get owned CPU data, creating copy for GPU tensors using move_storage
+    /// This method handles both CPU and GPU tensors by returning owned data
+    pub fn cpu_data_owned(&self) -> Result<ArrayD<T>, String> {
+        let storage = self.storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        // For CPU storage - clone the data
+        if !storage.is_gpu() {
+            return Ok(storage.cpu_data()?.clone());
+        }
+
+        // For GPU storage, create CPU copy using move_storage
+        #[cfg(feature = "cuda")]
+        {
+
+            // Clone the GPU storage to create an independent copy
+            let gpu_storage_copy = storage.clone_storage()?;
+
+            let manager = get_backend::<T>();
+            // Move the cloned storage to CPU, consuming the GPU copy
+            let (_device, cpu_storage) = manager.move_storage(gpu_storage_copy, Device::CPU)?;
+
+            // Extract owned CPU data
+            Ok(cpu_storage.cpu_data()?.clone())
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        Err("Cannot access GPU data without CUDA feature".to_string())
+    }
+
+    /// Get mutable CPU data reference, moving from GPU if necessary
+    /// Uses manager's move_storage to convert storage in-place
     pub fn cpu_data_mut(&mut self) -> Result<&mut ArrayD<T>, String> {
+        // Check if we need to move storage
+        let needs_move = self.storage
+            .as_ref()
+            .map(|s| s.is_gpu())
+            .unwrap_or(false);
+
+        if needs_move {
+            #[cfg(feature = "cuda")]
+            {
+
+
+                // Take ownership of storage to move it
+                let storage = self.storage.take()
+                    .ok_or("Tensor has no storage backend")?;
+
+                let manager = get_backend::<T>();
+                // Move GPU storage to CPU, consuming the GPU storage
+                let (new_device, cpu_storage) = manager.move_storage(storage, Device::CPU)?;
+
+                // Update tensor with CPU storage
+                self.storage = Some(cpu_storage);
+                self.device = new_device;
+            }
+
+            #[cfg(not(feature = "cuda"))]
+            {
+                return Err("Cannot move GPU data without CUDA feature".to_string());
+            }
+        }
+
+        // Now get mutable reference to CPU data
         self.storage
             .as_mut()
             .ok_or("Tensor has no storage backend")?
@@ -310,37 +394,31 @@ where
         self.device
     }
 
-    /// Extract data from tensor, consuming it
-    /// This method handles both CPU and GPU tensors by syncing to CPU first
+     /// Extract data consuming tensor, handling both CPU and GPU tensors
+    /// Converts CUDA storage to CPU if needed using manager's move_storage
     pub fn into_data(self) -> Result<ArrayD<T>, String> {
         let storage = self.storage.ok_or("Tensor has no storage backend")?;
 
-        // Try to get CPU data directly
-        match storage.cpu_data() {
-            Ok(data) => Ok(data.clone()),
-            Err(_) if storage.is_gpu() => {
-                // GPU storage - need to sync to CPU first
-                #[cfg(feature = "cuda")]
-                {
-                    if let Some(gpu_storage) = storage
-                        .as_any()
-                        .downcast_ref::<CUDAStorage<T>>()
-                    {
-                        let host_data = with_cuda_context(move |ctx: &CudaContextManager<T>| {
-                            gpu_storage.cuda_data.to_vec(ctx)
-                        })?;
-
-                        let cpu_array =
-                            ArrayD::from_shape_vec(IxDyn(gpu_storage.cuda_data.shape()), host_data)
-                                .map_err(|e| format!("Failed to create CPU array: {e}"))?;
-
-                        return Ok(cpu_array);
-                    }
-                }
-                Err("Cannot extract GPU data without CUDA feature".to_string())
-            }
-            Err(e) => Err(format!("Failed to extract data: {e}")),
+        // If already CPU storage, extract directly
+        if !storage.is_gpu() {
+            return storage.cpu_data().cloned();
         }
+
+        // For GPU storage, use manager to move to CPU then extract
+        #[cfg(feature = "cuda")]
+        {
+
+
+            let manager = get_backend::<T>();
+            // Move storage consumes the GPU storage, returns CPU storage
+            let (_device, cpu_storage) = manager.move_storage(storage, Device::CPU)?;
+
+            // Extract data from CPU storage
+            cpu_storage.cpu_data().cloned()
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        Err("Cannot extract GPU data without CUDA feature".to_string())
     }
 
     /* pub fn execute_custom<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
@@ -836,13 +914,13 @@ where
             if let (Some(cond_cpu), Some(true_cpu), Some(false_cpu)) = (
                 condition_storage
                     .as_any()
-                    .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
+                    .downcast_ref::<CPUStorage<T>>(),
                 true_storage
                     .as_any()
-                    .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
+                    .downcast_ref::<CPUStorage<T>>(),
                 false_storage
                     .as_any()
-                    .and_then(|s| s.downcast_ref::<CPUStorage<T>>()),
+                    .downcast_ref::<CPUStorage<T>>(),
             ) {
                 let result_storage = CPUStorage::where_condition(cond_cpu, true_cpu, false_cpu)?;
                 return Self::from_storage_backend(result_storage, condition.device);
@@ -856,13 +934,13 @@ where
                 if let (Some(cond_gpu), Some(true_gpu), Some(false_gpu)) = (
                     condition_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<CUDAStorage<T>>()),
+                        .downcast_ref::<CUDAStorage<T>>(),
                     true_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<CUDAStorage<T>>()),
+                        .downcast_ref::<CUDAStorage<T>>(),
                     false_storage
                         .as_any()
-                        .and_then(|s| s.downcast_ref::<CUDAStorage<T>>()),
+                        .downcast_ref::<CUDAStorage<T>>(),
                 ) {
                     let result_storage =
                         CUDAStorage::where_condition(cond_gpu, true_gpu, false_gpu)?;
@@ -886,17 +964,16 @@ where
 {
     /// SLICING SUPPORT
     ///
-    /// Get immutable slice view of tensor data using storage backend
-    /// Zero-cost access to underlying memory for efficient operations
+    /// Get immutable slice view, moving from GPU if necessary
+    /// This method automatically handles device transfer using manager
     pub fn as_slice(&self) -> Result<&[T], String> {
-        let storage = self
-            .storage
+        let storage = self.storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
-        // Only works for CPU storage
+        // Only works for CPU storage - GPU requires mutation
         if storage.is_gpu() {
-            return Err("Cannot get slice from GPU tensor. Use .to_cpu() first".to_string());
+            return Err("Cannot get slice from GPU tensor without mutation. Use as_slice_mut() or into_data()".to_string());
         }
 
         let cpu_data = storage.cpu_data()?;
@@ -905,23 +982,44 @@ where
             .ok_or("ArrayD is not contiguous - cannot convert to slice".to_string())
     }
 
-    /// Get mutable slice view of tensor data using storage backend
-    /// Enables in-place operations without reallocations
-    /// Only works for owned CPU storage
+    /// Get mutable slice view, automatically moving from GPU using manager
+    /// Uses move_storage to convert GPU storage to CPU in-place
     pub fn as_slice_mut(&mut self) -> Result<&mut [T], String> {
-        let storage = self
-            .storage
+        // Check if we need to move from GPU to CPU
+        let needs_move = self.storage
+            .as_ref()
+            .map(|s| s.is_gpu())
+            .unwrap_or(false);
+
+        if needs_move {
+            #[cfg(feature = "cuda")]
+            {
+
+
+                // Take ownership of storage to move it
+                let storage = self.storage.take()
+                    .ok_or("Tensor has no storage backend")?;
+
+                let manager = get_backend::<T>();
+                // Move GPU storage to CPU using manager, consuming GPU storage
+                let (new_device, cpu_storage) = manager.move_storage(storage, Device::CPU)?;
+
+                // Update tensor with CPU storage
+                self.storage = Some(cpu_storage);
+                self.device = new_device;
+            }
+
+            #[cfg(not(feature = "cuda"))]
+            {
+                return Err("Cannot move GPU data without CUDA feature".to_string());
+            }
+        }
+
+        let storage = self.storage
             .as_mut()
             .ok_or("Tensor has no storage backend")?;
 
-        // Only works for CPU storage
-        if storage.is_gpu() {
-            return Err(
-                "Cannot get mutable slice from GPU tensor. Use .to_cpu() first".to_string(),
-            );
-        }
-
-        // Check if storage owns its data
+        // Check if storage owns its data (required for mutable slice)
         if !storage.owns_data() {
             return Err("Cannot get mutable slice from borrowed storage".to_string());
         }

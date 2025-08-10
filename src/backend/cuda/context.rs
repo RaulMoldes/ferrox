@@ -4,6 +4,7 @@ use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
 use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
 
+use crate::backend::with_cuda_context;
 use crate::FerroxCudaF;
 #[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
@@ -114,6 +115,29 @@ where
             .map_err(|e| format!("Device to host transfer failed: {}", e))?;
 
         Ok(host_buffer)
+    }
+
+
+    /// Synchronous device to host transfer
+    pub fn device_to_device(&self, data: &CudaSlice<T>) -> Result<(CudaSlice<T>, u64), String>
+    where
+        T: cudarc::driver::DeviceRepr + Clone + Default,
+    {
+        // Allocate device buffer
+        let (mut device_buffer, id) = self.alloc_zeros(data.len())?;
+
+        let stream = match self.stream_manager.get_stream("copy_d2d") {
+            Some(d2h_stream) => d2h_stream,
+            None => self.stream_manager.default_stream(),
+        };
+
+        // Copy data from device to device using the correct cudarc API
+
+        stream
+            .memcpy_dtod(data, &mut device_buffer)
+            .map_err(|e| format!("Device to host transfer failed: {}", e))?;
+
+        Ok((device_buffer, id))
     }
 
     // ============= BACKEND INTERFACE METHODS =============
@@ -250,7 +274,7 @@ where
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CudaTensor<T: FerroxCudaF> {
     pub data: CudaSlice<T>,
     pub allocation_id: u64,
@@ -678,4 +702,28 @@ where T: FerroxCudaF
     }
 }
 
+}
+
+
+impl<T> Clone for CudaTensor<T>
+where
+    T: FerroxCudaF + cudarc::driver::DeviceRepr + Clone,
+{
+    /// Proper deep clone that allocates new GPU memory with new allocation_id
+    /// This prevents double-free errors and memory corruption
+    fn clone(&self) -> Self {
+        
+        // Copy data from original to new allocation using CUDA memcpy
+        let (slice, id) = with_cuda_context(|ctx: &CudaContextManager<T>| {
+            ctx.device_to_device(&self.data)
+        }).expect("Failed to copy GPU data during clone");
+
+        // Create new CudaTensor with independent allocation_id
+        Self {
+            data: slice,
+            allocation_id: id, // NEW allocation_id
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+        }
+    }
 }

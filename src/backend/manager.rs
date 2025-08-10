@@ -310,7 +310,7 @@ where
 
                 let cpu_storage: Box<dyn StorageBackend<T>> =
                     Box::new(CPUStorage::<T>::new(cpu_array));
-                return Ok((validated_target, cpu_storage));
+                Ok((validated_target, cpu_storage))
             }
 
             #[cfg(not(feature = "cuda"))]

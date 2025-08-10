@@ -38,7 +38,7 @@ where
     }
 
     fn into_any(self: Box<Self>) -> Box<dyn std::any::Any + 'static> {
-        Box::new(self)
+        self as Box<dyn std::any::Any + 'static>
     }
 
     fn ndim(&self) -> usize {
