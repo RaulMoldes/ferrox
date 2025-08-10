@@ -1,5 +1,6 @@
 pub mod optim;
 pub mod parameter;
+pub mod layers;
 
 use crate::backend::number::FerroxCudaF;
 use crate::graph::AutoFerroxEngine;

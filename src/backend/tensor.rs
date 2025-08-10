@@ -883,11 +883,7 @@ where
         Ok(cpu_data.iter_mut())
     }
 
-    /// Convert to Vec using storage backend
-    #[allow(deprecated)]
-    pub fn to_vec(&self) -> Result<Vec<T>, String> {
-        Ok(self.cpu_data()?.clone().into_raw_vec())
-    }
+   
 
     /// Conditional selection using storage backend
     #[allow(deprecated)]

@@ -1,4 +1,4 @@
-use crate::backend::number::FerroxCudaF;
+use crate::backend::number::{FerroxCudaF, FerroxF};
 use crate::backend::Device;
 use crate::backend::Tensor;
 use rand::Rng;
@@ -43,6 +43,10 @@ where
         }
     }
 
+    pub fn set_name(&mut self, name: String) {
+        self.name = Some(name);
+    }
+
     /// Returns the shape of this parameter
     pub fn shape(&self) -> &[usize] {
         self.data.shape()
@@ -63,10 +67,9 @@ where
     pub fn from_init<F>(shape: &[usize], mut init_fn: F) -> Self
     where
         F: FnMut() -> f64,
-        T: From<f64>,
     {
         let total_elements: usize = shape.iter().product();
-        let data: Vec<T> = (0..total_elements).map(|_| T::from(init_fn())).collect();
+        let data: Vec<T> = (0..total_elements).map(|_| <T as FerroxF>::from_f64(init_fn()).unwrap()).collect();
 
         // Use best available device instead of defaulting to CPU
         let device = crate::backend::default_device();
@@ -79,11 +82,10 @@ where
     /// Creates a parameter from initialization with specific device
     pub fn from_init_with_device<F>(shape: &[usize], mut init_fn: F, device: Device) -> Self
     where
-        F: FnMut() -> f64,
-        T: From<f64>,
+        F: FnMut() -> f64
     {
         let total_elements: usize = shape.iter().product();
-        let data: Vec<T> = (0..total_elements).map(|_| T::from(init_fn())).collect();
+        let data: Vec<T> = (0..total_elements).map(|_| <T as FerroxF>::from_f64(init_fn()).unwrap()).collect();
 
         let tensor = Tensor::from_vec_with_device(data, shape, device)
             .expect("Failed to create parameter tensor from initialization");
@@ -94,8 +96,6 @@ where
     /// Creates a parameter with Xavier/Glorot uniform initialization
     /// Suitable for layers with tanh or sigmoid activations
     pub fn xavier_uniform(shape: &[usize]) -> Self
-    where
-        T: From<f64>,
     {
         let mut rng = rand::rng();
 
@@ -108,10 +108,8 @@ where
 
     /// Creates a parameter with Xavier initialization on specific device
     pub fn xavier_uniform_with_device(shape: &[usize], device: Device) -> Self
-    where
-        T: From<f64>,
     {
-        use rand::Rng;
+
         let mut rng = rand::rng();
 
         let (fan_in, fan_out) = Self::calculate_fan_in_out(shape);
@@ -123,8 +121,6 @@ where
     /// Creates a parameter with Kaiming/He uniform initialization
     /// Suitable for layers with ReLU activations
     pub fn kaiming_uniform(shape: &[usize]) -> Self
-    where
-        T: From<f64>,
     {
         let mut rng = rand::rng();
 
@@ -137,8 +133,6 @@ where
 
     /// Creates a parameter with Kaiming initialization on specific device
     pub fn kaiming_uniform_with_device(shape: &[usize], device: Device) -> Self
-    where
-        T: From<f64>,
     {
         let mut rng = rand::rng();
 
@@ -150,32 +144,24 @@ where
 
     /// Creates a parameter initialized with zeros
     pub fn zeros(shape: &[usize]) -> Self
-    where
-        T: From<f64>,
     {
         Self::from_init(shape, || 0.0)
     }
 
     /// Creates a parameter initialized with zeros on specific device
     pub fn zeros_with_device(shape: &[usize], device: Device) -> Self
-    where
-        T: From<f64>,
     {
         Self::from_init_with_device(shape, || 0.0, device)
     }
 
     /// Creates a parameter initialized with ones
     pub fn ones(shape: &[usize]) -> Self
-    where
-        T: From<f64>,
     {
         Self::from_init(shape, || 1.0)
     }
 
     /// Creates a parameter initialized with ones on specific device
     pub fn ones_with_device(shape: &[usize], device: Device) -> Self
-    where
-        T: From<f64>,
     {
         Self::from_init_with_device(shape, || 1.0, device)
     }
