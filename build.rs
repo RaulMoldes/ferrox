@@ -35,7 +35,7 @@ fn compile_cuda_kernels() {
         "comparison", // New kernel
         "convolutions",
         "fill",
-        "materialize"
+        "materialize",
     ];
 
     println!("Compiling CUDA kernels...");

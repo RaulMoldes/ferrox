@@ -684,6 +684,8 @@ where
             0
         };
 
+      
+
         // If logical size > physical size, we have broadcast expansion
         logical_size > physical_size || !self.is_contiguous()
     }

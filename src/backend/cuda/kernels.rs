@@ -143,10 +143,11 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
     },
     KernelConfig {
         name: "materialize",
-        ptx: FILL_PTX,
+        ptx: MATERIALIZE_PTX,
         module: "materialize_module",
         functions: &[
             "materialize",
+            "materialize_f64",
         ],
     },
     KernelConfig {
@@ -734,7 +735,7 @@ impl KernelManager {
         T: FerroxCudaN + 'static,
     {
         // Get kernel name using the same pattern as other kernels
-        let kernel_name = self.get_kernel_name::<T>("materialize_strided");
+        let kernel_name = self.get_kernel_name::<T>("materialize");
 
         launch_kernel!(
             self,
