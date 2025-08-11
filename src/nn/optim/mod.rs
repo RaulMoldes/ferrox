@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{read, write};
 
+use crate::FerroxN;
+
 pub mod adam;
 pub mod sgd;
 
@@ -191,9 +193,9 @@ where
     fn from(group: &ParameterGroup<T>) -> Self {
         Self {
             params: group.params.iter().map(|id| id.0).collect(),
-            lr: group.lr.map(|v| FerroxF::to_f64(v)),
-            weight_decay: group.weight_decay.map(|v| FerroxF::to_f64(v)),
-            momentum: group.momentum.map(|v| FerroxF::to_f64(v)),
+            lr: group.lr.map(|v| <T as FerroxN>::to_f64(v)),
+            weight_decay: group.weight_decay.map(|v| <T as FerroxN>::to_f64(v)),
+            momentum: group.momentum.map(|v| <T as FerroxN>::to_f64(v)),
             name: group.name.clone(),
         }
     }
@@ -245,13 +247,13 @@ where
         serializable: &SerializableParameterGroup,
     ) -> Result<Self, OptimizerError>
     where
-        T: crate::backend::number::CPUNumber,
+        T: crate::backend::number::FerroxN,
     {
         Ok(Self {
             params: serializable.params.iter().map(|&id| NodeId(id)).collect(),
-            lr: serializable.lr.and_then(FerroxF::from_f64),
-            weight_decay: serializable.weight_decay.and_then(FerroxF::from_f64),
-            momentum: serializable.momentum.and_then(FerroxF::from_f64),
+            lr: serializable.lr.and_then(<T as FerroxN>::from_f64),
+            weight_decay: serializable.weight_decay.and_then(<T as FerroxN>::from_f64),
+            momentum: serializable.momentum.and_then(<T as FerroxN>::from_f64),
             name: serializable.name.clone(),
         })
     }
@@ -371,7 +373,7 @@ where
     /// Load optimizer state from state dict
     fn load_state_dict(&mut self, state_dict: &OptimizerStateDict) -> Result<(), OptimizerError>
     where
-        T: Clone + crate::backend::number::CPUNumber + 'static;
+        T: Clone + crate::backend::number::FerroxN + 'static;
 
     /// Save state dict to file
     fn save_checkpoint(&self, filepath: &str) -> Result<(), OptimizerError>
@@ -388,7 +390,7 @@ where
     /// Load state dict from file
     fn load_checkpoint(&mut self, filepath: &str) -> Result<(), OptimizerError>
     where
-        T: Clone + crate::backend::number::CPUNumber + 'static,
+        T: Clone + crate::backend::number::FerroxN + 'static,
     {
         let bytes = read(filepath).map_err(|e| {
             OptimizerError::TensorOperation(format!("Failed to read checkpoint: {}", e))
@@ -398,16 +400,13 @@ where
     }
 }
 
-
-
-
 #[cfg(test)]
 mod serialization_tests {
 
+    use crate::backend::manager::best_f32_device;
     use crate::backend::Tensor;
     use crate::graph::AutoFerroxEngine;
-    use crate::backend::manager::best_f32_device;
-    use crate::nn::optim::{Optimizer, adam::Adam, sgd::SGD};
+    use crate::nn::optim::{adam::Adam, sgd::SGD, Optimizer};
 
     #[test]
     fn test_adam_save_load() {

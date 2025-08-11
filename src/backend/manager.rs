@@ -3,7 +3,7 @@
 use crate::backend::memory::CudaMemoryPool;
 #[allow(unused_imports)]
 use crate::backend::memory::{MemoryPool, PoolAllocation};
-use crate::backend::number::FerroxCudaF;
+use crate::backend::number::{FerroxCudaN, FerroxN};
 use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::backend::Device;
 #[cfg(feature = "cuda")]
@@ -17,8 +17,10 @@ use crate::backend::cuda::ops::CudaOps;
 use crate::backend::cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
 use crate::backend::storage::CUDAStorage;
+#[cfg(feature = "cuda")]
 
-pub struct BackendManager<T: FerroxCudaF> {
+
+pub struct BackendManager<T: FerroxCudaN> {
     #[cfg(feature = "cuda")]
     cuda_backend: Option<CudaContextManager<T>>,
     #[cfg(feature = "cuda")]
@@ -26,13 +28,13 @@ pub struct BackendManager<T: FerroxCudaF> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: FerroxCudaF> Default for BackendManager<T> {
+impl<T: FerroxCudaN> Default for BackendManager<T> {
     fn default() -> Self {
         Self::init()
     }
 }
 
-impl<T: FerroxCudaF> BackendManager<T> {
+impl<T: FerroxCudaN> BackendManager<T> {
     pub fn new() -> Self {
         Self {
             #[cfg(feature = "cuda")]
@@ -257,85 +259,84 @@ impl<T: FerroxCudaF> BackendManager<T> {
     }
 
     pub fn move_storage(
-    &self,
-    storage: Box<dyn StorageBackend<T>>,
-    target_device: Device,
-) -> Result<(Device, Box<dyn StorageBackend<T>>), String>
-where
-    T: Clone,
-{
-    let validated_target = self.validate_device(target_device)?;
+        &self,
+        storage: Box<dyn StorageBackend<T>>,
+        target_device: Device,
+    ) -> Result<(Device, Box<dyn StorageBackend<T>>), String>
+    where
+        T: Clone,
+    {
+        let validated_target = self.validate_device(target_device)?;
 
-    let needs_transfer = match validated_target {
-        Device::CPU => storage.is_gpu(),
-        #[cfg(feature = "cuda")]
-        Device::CUDA(_) => !storage.is_gpu(),
-    };
-
-    if !needs_transfer {
-        return Ok((validated_target, storage));
-    }
-
-    match validated_target {
-        Device::CPU => {
-            // GPU -> CPU
+        let needs_transfer = match validated_target {
+            Device::CPU => storage.is_gpu(),
             #[cfg(feature = "cuda")]
-            {
-                // downcast by value: consumes storage and returns Box<CUDAStorage<T>>
-                let gpu_storage_box = match storage.into_any().downcast::<CUDAStorage<T>>() {
-                    Ok(b) => b,
-                    Err(_) => {
-                        return Err(
+            Device::CUDA(_) => !storage.is_gpu(),
+        };
+
+        if !needs_transfer {
+            return Ok((validated_target, storage));
+        }
+
+        match validated_target {
+            Device::CPU => {
+                // GPU -> CPU
+                #[cfg(feature = "cuda")]
+                {
+                    // downcast by value: consumes storage and returns Box<CUDAStorage<T>>
+                    let gpu_storage_box = match storage.into_any().downcast::<CUDAStorage<T>>() {
+                        Ok(b) => b,
+                        Err(_) => return Err(
                             "The storage is not CUDAstorage, cannot be transferred from GPU->CPU"
                                 .to_string(),
-                        )
-                    }
-                };
+                        ),
+                    };
 
-                // Move the content inside the box
-                let gpu_storage: CUDAStorage<T> = *gpu_storage_box;
+                    // Move the content inside the box
+                    let gpu_storage: CUDAStorage<T> = *gpu_storage_box;
 
-                // IMPORTANT: take ownership of the shape before moving out of cuda_data
-                let shape_vec: Vec<usize> = gpu_storage.cuda_data.shape().to_vec();
+                    // IMPORTANT: take ownership of the shape before moving out of cuda_data
+                    let shape_vec: Vec<usize> = gpu_storage.cuda_data.shape().to_vec();
 
-                // Move `cuda_data`inside the closure
-                let host_data = with_cuda_context(move |ctx: &CudaContextManager<T>| {
-                    // `to_vec` consumes the tensor using move.
-                    gpu_storage.cuda_data.to_vec(ctx)
+                    // Move `cuda_data`inside the closure
+                    let host_data = with_cuda_context(move |ctx: &CudaContextManager<T>| {
+                        // `to_vec` consumes the tensor using move.
+                        gpu_storage.cuda_data.to_vec(ctx)
+                    })?;
+
+                    // Build  ArrayD
+                    let cpu_array = ArrayD::from_shape_vec(ndarray::IxDyn(&shape_vec), host_data)
+                        .map_err(|e| format!("Failed to create CPU array: {}", e))?;
+
+                    let cpu_storage: Box<dyn StorageBackend<T>> =
+                        Box::new(CPUStorage::<T>::new(cpu_array));
+                    Ok((validated_target, cpu_storage))
+                }
+
+                #[cfg(not(feature = "cuda"))]
+                {
+                    return Err(
+                        "CUDA feature no habilitada; no es posible transferir desde GPU"
+                            .to_string(),
+                    );
+                }
+            }
+
+            #[cfg(feature = "cuda")]
+            Device::CUDA(_device_idx) => {
+                // CPU -> GPU
+                let cpu_data = storage.cpu_data()?;
+
+                let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
+                    crate::backend::cuda::CudaTensor::from_cpu_array(ctx, cpu_data)
                 })?;
 
-                // Build  ArrayD
-                let cpu_array = ArrayD::from_shape_vec(ndarray::IxDyn(&shape_vec), host_data)
-                    .map_err(|e| format!("Failed to create CPU array: {}", e))?;
-
-                let cpu_storage: Box<dyn StorageBackend<T>> =
-                    Box::new(CPUStorage::<T>::new(cpu_array));
-                Ok((validated_target, cpu_storage))
+                let cuda_storage: Box<dyn StorageBackend<T>> =
+                    Box::new(CUDAStorage::<T>::new(cuda_tensor));
+                Ok((validated_target, cuda_storage))
             }
-
-            #[cfg(not(feature = "cuda"))]
-            {
-                return Err("CUDA feature no habilitada; no es posible transferir desde GPU".to_string());
-            }
-        }
-
-        #[cfg(feature = "cuda")]
-        Device::CUDA(_device_idx) => {
-            // CPU -> GPU
-            let cpu_data = storage.cpu_data()?;
-
-            let cuda_tensor = with_cuda_context(|ctx: &CudaContextManager<T>| {
-                crate::backend::cuda::CudaTensor::from_cpu_array(ctx, cpu_data)
-            })?;
-
-            let cuda_storage: Box<dyn StorageBackend<T>> =
-                Box::new(CUDAStorage::<T>::new(cuda_tensor));
-            Ok((validated_target, cuda_storage))
         }
     }
-}
-
-
 }
 
 // Global instances
@@ -366,7 +367,7 @@ pub fn best_f64_device() -> Device {
     get_f64_backend().best_device()
 }
 
-pub fn get_backend<T: FerroxCudaF>() -> &'static BackendManager<T> {
+pub fn get_backend<T: FerroxCudaN>() -> &'static BackendManager<T> {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => unsafe {
             std::mem::transmute::<&BackendManager<f32>, &BackendManager<T>>(get_f32_backend())
@@ -374,11 +375,17 @@ pub fn get_backend<T: FerroxCudaF>() -> &'static BackendManager<T> {
         id if id == std::any::TypeId::of::<f64>() => unsafe {
             std::mem::transmute::<&BackendManager<f64>, &BackendManager<T>>(get_f64_backend())
         },
-        _ => panic!("Unsupported float type for backend"),
+        id if id == std::any::TypeId::of::<i64>() => unsafe {
+            std::mem::transmute::<&BackendManager<f64>, &BackendManager<T>>(get_f64_backend())
+        }
+         id if id == std::any::TypeId::of::<i32>() => unsafe {
+            std::mem::transmute::<&BackendManager<f32>, &BackendManager<T>>(get_f32_backend())
+        }
+        _ => panic!("Unsupported type for backend"),
     }
 }
 
-pub fn has_cuda<T: FerroxCudaF>() -> bool {
+pub fn has_cuda<T: FerroxCudaN>() -> bool {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => has_f32_cuda(),
         id if id == std::any::TypeId::of::<f64>() => has_f64_cuda(),
@@ -386,7 +393,7 @@ pub fn has_cuda<T: FerroxCudaF>() -> bool {
     }
 }
 
-pub fn best_device<T: FerroxCudaF>() -> Device {
+pub fn best_device<T: FerroxCudaN>() -> Device {
     match std::any::TypeId::of::<T>() {
         id if id == std::any::TypeId::of::<f32>() => best_f32_device(),
         id if id == std::any::TypeId::of::<f64>() => best_f64_device(),
@@ -397,7 +404,7 @@ pub fn best_device<T: FerroxCudaF>() -> Device {
 #[cfg(feature = "cuda")]
 pub fn with_cuda_context<F, R, T>(f: F) -> Result<R, String>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
     F: FnOnce(&CudaContextManager<T>) -> Result<R, String>,
 {
     let backend: &'static BackendManager<T> = get_backend::<T>();
@@ -410,7 +417,7 @@ where
 #[cfg(feature = "cuda")]
 pub fn with_cuda_ops<F, R, T>(f: F) -> Result<R, String>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
     F: FnOnce(&CudaOps<T>) -> Result<R, String>,
 {
     let backend: &'static BackendManager<T> = get_backend::<T>();
@@ -424,7 +431,7 @@ where
 #[cfg(feature = "cuda")]
 pub fn with_cuda_pool<F, R, T>(f: F) -> Result<R, String>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
     F: FnOnce(&mut CudaMemoryPool<T>) -> Result<R, String>,
 {
     let backend: &'static BackendManager<T> = get_backend::<T>();
@@ -440,14 +447,14 @@ where
 #[cfg(feature = "cuda")]
 pub fn alloc_cuda_slice<T>(size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.allocate(size))
 }
 
 // Main function for CUDA ops and context to return memory to pool
 #[cfg(feature = "cuda")]
-pub fn return_cuda_slice<T: FerroxCudaF>(
+pub fn return_cuda_slice<T: FerroxCudaN>(
     allocation_id: u64,
     slice: CudaSlice<T>,
 ) -> Result<(), String> {
@@ -458,7 +465,7 @@ pub fn return_cuda_slice<T: FerroxCudaF>(
 mod backend_manager_tests {
     use super::*;
     use crate::backend::storage::StorageBackend;
-    use crate::backend::{get_backend, Device, FerroxCudaF};
+    use crate::backend::{get_backend, Device, FerroxCudaN};
     use ndarray::{Array1, ArrayD};
 
     // Test basic backend initialization for both f32 and f64

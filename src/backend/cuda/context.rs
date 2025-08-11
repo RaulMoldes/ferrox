@@ -5,7 +5,7 @@ use super::stream_manager::StreamManager;
 use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
 
 use crate::backend::with_cuda_context;
-use crate::FerroxCudaF;
+use crate::{FerroxCudaF, FerroxCudaN};
 #[allow(unused_imports)]
 use cudarc::driver::DeviceSlice;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream};
@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 pub struct CudaContextManager<T>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     ctx: Arc<CudaContext>,
     stream_manager: StreamManager,
@@ -25,7 +25,7 @@ where
 
 impl<T> CudaContextManager<T>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     pub fn new() -> Result<Self, String> {
         Self::from_device_id(0)
@@ -274,7 +274,7 @@ where
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct CudaTensor<T: FerroxCudaF> {
+pub struct CudaTensor<T: FerroxCudaN> {
     pub data: Option<CudaSlice<T>>,
     pub allocation_id: u64,
     pub shape: Vec<usize>,
@@ -283,7 +283,7 @@ pub struct CudaTensor<T: FerroxCudaF> {
 
 impl<T> CudaTensor<T>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     /// Creates a new CUDA tensor with computed strides
     pub fn new(data: CudaSlice<T>, shape: Vec<usize>, allocation_id: u64) -> Self {
@@ -298,16 +298,22 @@ where
     }
 
     pub fn data(&self) -> &CudaSlice<T> {
-        self.data.as_ref().expect("CudaTensor data was already consumed")
+        self.data
+            .as_ref()
+            .expect("CudaTensor data was already consumed")
     }
 
     pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
-        self.data.as_mut().expect("CudaTensor data was already consumed")
+        self.data
+            .as_mut()
+            .expect("CudaTensor data was already consumed")
     }
 
-      // Take ownership of the slice (consuming method)
+    // Take ownership of the slice (consuming method)
     pub fn take_data(&mut self) -> CudaSlice<T> {
-        self.data.take().expect("CudaTensor data was already consumed")
+        self.data
+            .take()
+            .expect("CudaTensor data was already consumed")
     }
 
     /// Create tensor from CPU ndarray without taking ownership
@@ -433,7 +439,6 @@ where
     /// Check if tensor is contiguous
     pub fn is_contiguous(&self) -> bool {
         let expected_strides = compute_strides(&self.shape);
-        println!("Expected strides: {:?}", expected_strides);
         self.strides == expected_strides
     }
 
@@ -454,6 +459,9 @@ where
         Ok(())
     }
 
+
+
+
     // ============= IN-PLACE TENSOR OPERATIONS =============
 
     /// In-place broadcast operation - changes tensor view without copying data
@@ -465,6 +473,11 @@ where
             ));
         }
 
+        // If shapes are identical, no work needed
+        if self.shape == target_shape {
+            return Ok(());
+        }
+
         // Compute new strides for broadcasted tensor
         let mut new_strides = vec![0; target_shape.len()];
         let offset = target_shape.len() - self.shape.len();
@@ -472,7 +485,7 @@ where
         for (i, &dim) in self.shape.iter().enumerate() {
             let target_idx = offset + i;
             if dim == 1 && target_shape[target_idx] != 1 {
-                // Broadcasting dimension - stride becomes 0
+                // Broadcasting dimension - stride becomes 0 (data will repeat)
                 new_strides[target_idx] = 0;
             } else {
                 // Non-broadcasting dimension - keep original stride
@@ -480,8 +493,13 @@ where
             }
         }
 
+        // Update shape and strides - data stays the same size
         self.shape = target_shape.to_vec();
         self.strides = new_strides;
+
+        // NOTE: self.data remains unchanged - this is key!
+        // The physical data size stays small, logical size increases
+
         Ok(())
     }
 
@@ -655,6 +673,22 @@ where
 
         Ok(())
     }
+
+
+    // Check to see if we need to materialize.
+    pub fn needs_materialization(&self) -> bool {
+        let logical_size = self.size(); // shape.iter().product()
+        let physical_size = if let Some(data) = &self.data {
+            data.len() // actual GPU memory allocated
+        } else {
+            0
+        };
+
+        // If logical size > physical size, we have broadcast expansion
+        logical_size > physical_size || !self.is_contiguous()
+    }
+
+
 }
 
 /// Compute row-major strides for a given shape
@@ -683,7 +717,8 @@ pub fn can_broadcast_to(from_shape: &[usize], to_shape: &[usize]) -> bool {
 }
 
 impl<T> Drop for CudaTensor<T>
-where T: FerroxCudaF
+where
+    T: FerroxCudaN,
 {
     fn drop(&mut self) {
         // Take ownership of the slice without cloning - this is the key fix
@@ -701,7 +736,7 @@ where T: FerroxCudaF
 
 impl<T> Clone for CudaTensor<T>
 where
-    T: FerroxCudaF + cudarc::driver::DeviceRepr + Clone,
+    T: FerroxCudaN + cudarc::driver::DeviceRepr + Clone,
 {
     /// Proper deep clone that allocates new GPU memory with new allocation_id
     /// This prevents double-free errors and memory corruption

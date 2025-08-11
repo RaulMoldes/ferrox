@@ -107,7 +107,7 @@ extern "C" __global__ void matmul_f64(const double* __restrict__ A,
     int col_base = blockIdx.x * TILE_SIZE + threadIdx.x * 2;
 
     // Double tiling (each thread computes a 2x2 mini block)
-    float sum[2][2] = { {0.0, 0.0}, {0.0, 0.0} };
+    double sum[2][2] = { {0.0, 0.0}, {0.0, 0.0} };
 
     for (int tile = 0; tile < (K + TILE_SIZE - 1) / TILE_SIZE; ++tile) {
         // COLLABORATIVE LOAD

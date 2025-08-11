@@ -12,14 +12,11 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, Su
 #[cfg(feature = "cuda")]
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
-/// Trait that defines the basic operations and properties for CPUNumber types.
-/// This trait is designed to be implemented by both integer and floating-point types,
-/// providing a common interface for arithmetic operations, comparisons, and conversions.
-/// I did not implement it for unsigned integers because they do not support negative values,
-/// which is a requirement for some operations like negation and signum.
-/// It includes methods for basic arithmetic operations, assignment operations,
-/// and conversions between different CPUNumber types.
-pub trait CPUNumber:
+/// Base trait for all numeric types in FerroxN.
+/// Provides common interface for arithmetic operations, comparisons, and conversions.
+/// Designed for both integer and floating-point types, excluding unsigned integers
+/// due to lack of negative value support required for negation and signum operations.
+pub trait FerroxN:
     // Basic arithmetic operations
     Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self> +
     // Assignment operations
@@ -49,12 +46,12 @@ pub trait CPUNumber:
 
     /// Checks if the value is zero
     fn is_zero(&self) -> bool {
-        *self == <Self as CPUNumber>::zero()
+        *self == <Self as FerroxN>::zero()
     }
 
     /// Checks if the value is one
     fn is_one(&self) -> bool {
-        *self == <Self as CPUNumber>::one()
+        *self == <Self as FerroxN>::one()
     }
 
     /// Absolute value
@@ -66,12 +63,19 @@ pub trait CPUNumber:
     /// Power using an integer exponent
     fn powi(self, exp: i32) -> Self;
 
+
+    
     /// Converts to f64 for operations that require floating point
     fn to_f64(self) -> f64;
 
+    /// Converts to f32 for operations that require floating point
+    fn to_f32(self) -> f32;
+
+    /// Converts from f32 (may fail for integer types if there's precision loss)
+    fn from_f32(value: f32) -> Option<Self>;
+
     /// Converts from f64 (may fail for integer types if there's precision loss)
     fn from_f64(value: f64) -> Option<Self>;
-
 
     /// Converts from i32 (may fail if there's precision loss)
     fn from_i32(value: i32) -> Option<Self>;
@@ -79,7 +83,7 @@ pub trait CPUNumber:
     /// Converts from i16 (may fail if there's precision loss)
     fn from_i16(value: i16) -> Option<Self>;
 
-    // Converts from i64 (may fail if there's precision loss)
+    /// Converts from i64 (may fail if there's precision loss)
     fn from_i64(value: i64) -> Option<Self>;
 
     /// Minimum value representable by this type
@@ -89,14 +93,18 @@ pub trait CPUNumber:
     fn max_value() -> Self;
 }
 
-/// Additional trait for floating-point CPUNumber types
-pub trait FerroxF: CPUNumber {
+/// Additional trait for floating-point FerroxN types
+/// Now properly extends FerroxN instead of the incorrect CPUNumber trait
+pub trait FerroxF: FerroxN {
+    /// Provide default implementations using FerroxN trait methods
     fn zero() -> Self {
-        <Self as CPUNumber>::from_f64(0.0).expect("Failed to convert 0.0 to FerroxF type")
+        <Self as FerroxN>::from_f64(0.0).expect("Failed to convert 0.0 to FerroxF type")
     }
+
     fn one() -> Self {
-        <Self as CPUNumber>::from_f64(1.0).expect("Failed to convert 1.0 to FerroxF type")
+        <Self as FerroxN>::from_f64(1.0).expect("Failed to convert 1.0 to FerroxF type")
     }
+
     /// Square root
     fn sqrt(self) -> Self;
 
@@ -133,37 +141,36 @@ pub trait FerroxF: CPUNumber {
     /// Epsilon for floating-point comparisons
     fn epsilon() -> Self;
 
-    fn to_f64(self) -> f64 {
-        // Default implementation for Float types
-        CPUNumber::to_f64(self)
-    }
-
-    fn from_f64(value: f64) -> Option<Self> {
-        // Default implementation for Float types
-        CPUNumber::from_f64(value)
-    }
-
-    fn from_i32(value: i32) -> Option<Self> {
-        // Default implementation for Float types
-        CPUNumber::from_i32(value)
-    }
-
-    fn from_i16(value: i16) -> Option<Self> {
-        // Default implementation for Float types
-        CPUNumber::from_i16(value)
-    }
-
-    fn from_i64(value: i64) -> Option<Self> {
-        // Default implementation for Float types
-        CPUNumber::from_i64(value)
-    }
 }
 
+// ============= GPU TRAIT DEFINITIONS =============
+
+/// CUDA-compatible numeric trait that extends FerroxN with GPU-specific requirements
+/// This trait is for all numeric types (integers and floats) that can be used on GPU
+#[cfg(feature = "cuda")]
+pub trait FerroxCudaN: FerroxN + DeviceRepr + ValidAsZeroBits + Unpin + 'static {}
+
+/// When CUDA is not available, FerroxCudaN is just an alias for FerroxN
+#[cfg(not(feature = "cuda"))]
+pub trait FerroxCudaN: FerroxN {}
+
+/// CUDA-compatible floating-point trait that extends both FerroxF and FerroxCudaN
+/// This ensures floating-point GPU types have both float operations and GPU compatibility
+#[cfg(feature = "cuda")]
+pub trait FerroxCudaF: FerroxF + FerroxCudaN {}
+
+/// When CUDA is not available, FerroxCudaF extends both FerroxF and FerroxCudaN
+#[cfg(not(feature = "cuda"))]
+pub trait FerroxCudaF: FerroxF + FerroxCudaN {}
+
+// ============= FERROXN IMPLEMENTATIONS =============
+
 // Implementation for f64
-impl CPUNumber for f64 {
+impl FerroxN for f64 {
     fn zero() -> Self {
         0.0
     }
+
     fn one() -> Self {
         1.0
     }
@@ -171,9 +178,11 @@ impl CPUNumber for f64 {
     fn abs(self) -> Self {
         self.abs()
     }
+
     fn signum(self) -> Self {
         self.signum()
     }
+
     fn powi(self, exp: i32) -> Self {
         self.powi(exp)
     }
@@ -181,15 +190,27 @@ impl CPUNumber for f64 {
     fn to_f64(self) -> f64 {
         self
     }
+
+    fn to_f32(self) -> f32 {
+        self as f32
+    }
+
+    fn from_f32(value: f32) -> Option<Self> {
+        Some(value as f64)
+    }
+
     fn from_f64(value: f64) -> Option<Self> {
         Some(value)
     }
+
     fn from_i32(value: i32) -> Option<Self> {
         Some(value as f64)
     }
+
     fn from_i16(value: i16) -> Option<Self> {
         Some(value as f64)
     }
+
     fn from_i64(value: i64) -> Option<Self> {
         Some(value as f64)
     }
@@ -197,6 +218,7 @@ impl CPUNumber for f64 {
     fn min_value() -> Self {
         f64::MIN
     }
+
     fn max_value() -> Self {
         f64::MAX
     }
@@ -206,46 +228,58 @@ impl FerroxF for f64 {
     fn sqrt(self) -> Self {
         self.sqrt()
     }
+
     fn exp(self) -> Self {
         self.exp()
     }
+
     fn ln(self) -> Self {
         self.ln()
     }
+
     fn log10(self) -> Self {
         self.log10()
     }
+
     fn powf(self, exp: Self) -> Self {
         self.powf(exp)
     }
+
     fn sin(self) -> Self {
         self.sin()
     }
+
     fn cos(self) -> Self {
         self.cos()
     }
+
     fn tan(self) -> Self {
         self.tan()
     }
+
     fn is_nan(self) -> bool {
         self.is_nan()
     }
+
     fn is_infinite(self) -> bool {
         self.is_infinite()
     }
+
     fn is_finite(self) -> bool {
         self.is_finite()
     }
+
     fn epsilon() -> Self {
         f64::EPSILON
     }
 }
 
 // Implementation for f32
-impl CPUNumber for f32 {
+impl FerroxN for f32 {
     fn zero() -> Self {
         0.0
     }
+
     fn one() -> Self {
         1.0
     }
@@ -253,9 +287,11 @@ impl CPUNumber for f32 {
     fn abs(self) -> Self {
         self.abs()
     }
+
     fn signum(self) -> Self {
         self.signum()
     }
+
     fn powi(self, exp: i32) -> Self {
         self.powi(exp)
     }
@@ -263,6 +299,15 @@ impl CPUNumber for f32 {
     fn to_f64(self) -> f64 {
         self as f64
     }
+
+    fn to_f32(self) -> f32 {
+        self
+    }
+
+    fn from_f32(value: f32) -> Option<Self> {
+        Some(value)
+    }
+
     fn from_f64(value: f64) -> Option<Self> {
         if value.is_finite() && value >= f32::MIN as f64 && value <= f32::MAX as f64 {
             Some(value as f32)
@@ -270,6 +315,7 @@ impl CPUNumber for f32 {
             None
         }
     }
+
     fn from_i32(value: i32) -> Option<Self> {
         // i32 values up to 2^24 can be exactly represented in f32
         if value.abs() <= (1 << 24) {
@@ -278,9 +324,11 @@ impl CPUNumber for f32 {
             None
         }
     }
+
     fn from_i16(value: i16) -> Option<Self> {
         Some(value as f32)
     }
+
     fn from_i64(value: i64) -> Option<Self> {
         // Only small i64 values can be exactly represented in f32
         if value.abs() <= (1i64 << 24) {
@@ -293,6 +341,7 @@ impl CPUNumber for f32 {
     fn min_value() -> Self {
         f32::MIN
     }
+
     fn max_value() -> Self {
         f32::MAX
     }
@@ -302,46 +351,61 @@ impl FerroxF for f32 {
     fn sqrt(self) -> Self {
         self.sqrt()
     }
+
     fn exp(self) -> Self {
         self.exp()
     }
+
     fn ln(self) -> Self {
         self.ln()
     }
+
     fn log10(self) -> Self {
         self.log10()
     }
+
     fn powf(self, exp: Self) -> Self {
         self.powf(exp)
     }
+
     fn sin(self) -> Self {
         self.sin()
     }
+
     fn cos(self) -> Self {
         self.cos()
     }
+
     fn tan(self) -> Self {
         self.tan()
     }
+
     fn is_nan(self) -> bool {
         self.is_nan()
     }
+
     fn is_infinite(self) -> bool {
         self.is_infinite()
     }
+
     fn is_finite(self) -> bool {
         self.is_finite()
     }
+
     fn epsilon() -> Self {
         f32::EPSILON
     }
+
+
+
 }
 
 // Implementation for i32
-impl CPUNumber for i32 {
+impl FerroxN for i32 {
     fn zero() -> Self {
         0
     }
+
     fn one() -> Self {
         1
     }
@@ -349,9 +413,11 @@ impl CPUNumber for i32 {
     fn abs(self) -> Self {
         self.abs()
     }
+
     fn signum(self) -> Self {
         self.signum()
     }
+
     fn powi(self, exp: i32) -> Self {
         if exp < 0 {
             if (self == 1) || (self == -1 && exp % 2 == 0) {
@@ -369,12 +435,36 @@ impl CPUNumber for i32 {
     fn to_f64(self) -> f64 {
         self as f64
     }
+
+    fn to_f32(self) -> f32 {
+        self as f32
+    }
+
+    fn from_f32(value: f32) -> Option<Self> {
+        // Check if value fits in i32 and is exact integer
+        if value.is_finite() && value.fract() == 0.0 {
+            let int_val = value as i64; // Use i64 to avoid temporary overflow
+            if int_val >= i32::MIN as i64 && int_val <= i32::MAX as i64 {
+                return Some(int_val as i32);
+            }
+        }
+        None
+    }
+
     fn from_f64(value: f64) -> Option<Self> {
         if value.fract() == 0.0 && value >= i32::MIN as f64 && value <= i32::MAX as f64 {
             Some(value as i32)
         } else {
             None
         }
+    }
+
+    fn from_i32(value: i32) -> Option<Self> {
+        Some(value)
+    }
+
+    fn from_i16(value: i16) -> Option<Self> {
+        Some(value as i32)
     }
 
     fn from_i64(value: i64) -> Option<Self> {
@@ -384,26 +474,22 @@ impl CPUNumber for i32 {
             None
         }
     }
-    fn from_i32(value: i32) -> Option<Self> {
-        Some(value)
-    }
-    fn from_i16(value: i16) -> Option<Self> {
-        Some(value as i32)
-    }
 
     fn min_value() -> Self {
         i32::MIN
     }
+
     fn max_value() -> Self {
         i32::MAX
     }
 }
 
 // Implementation for i64
-impl CPUNumber for i64 {
+impl FerroxN for i64 {
     fn zero() -> Self {
         0
     }
+
     fn one() -> Self {
         1
     }
@@ -411,9 +497,11 @@ impl CPUNumber for i64 {
     fn abs(self) -> Self {
         self.abs()
     }
+
     fn signum(self) -> Self {
         self.signum()
     }
+
     fn powi(self, exp: i32) -> Self {
         if exp < 0 {
             if (self == 1) || (self == -1 && exp % 2 == 0) {
@@ -431,6 +519,24 @@ impl CPUNumber for i64 {
     fn to_f64(self) -> f64 {
         self as f64
     }
+
+    fn to_f32(self) -> f32 {
+        self as f32
+    }
+
+    fn from_f32(value: f32) -> Option<Self> {
+        // Check that it's finite and exact integer
+        if value.is_finite() && value.fract() == 0.0 {
+            // Use f64 to avoid overflow
+            let int_val = value as f64;
+            // Check i64 range
+            if int_val >= i64::MIN as f64 && int_val <= i64::MAX as f64 {
+                return Some(int_val as i64);
+            }
+        }
+        None
+    }
+
     fn from_f64(value: f64) -> Option<Self> {
         if value.fract() == 0.0 && value >= i64::MIN as f64 && value <= i64::MAX as f64 {
             Some(value as i64)
@@ -439,44 +545,44 @@ impl CPUNumber for i64 {
         }
     }
 
-    fn from_i64(value: i64) -> Option<Self> {
-        if (i64::MIN..=i64::MAX).contains(&value) {
-            Some(value)
-        } else {
-            None
-        }
-    }
     fn from_i32(value: i32) -> Option<Self> {
         Some(value as i64)
     }
+
     fn from_i16(value: i16) -> Option<Self> {
         Some(value as i64)
+    }
+
+    fn from_i64(value: i64) -> Option<Self> {
+        Some(value)
     }
 
     fn min_value() -> Self {
         i64::MIN
     }
+
     fn max_value() -> Self {
         i64::MAX
     }
 }
 
-// ============= GPU TRAIT DEFINITIONS =============
-
-/// When CUDA is available, FerroxCudaF extends FerroxF with GPU-specific requirements
-/// This trait requires both FerroxF functionality and CUDA compatibility traits
-#[cfg(feature = "cuda")]
-pub trait FerroxCudaF: FerroxF + DeviceRepr + ValidAsZeroBits + Unpin + 'static {}
-
-/// When CUDA is not available, FerroxCudaF is just an alias for FerroxF
-/// This allows the same generic bounds to work regardless of CUDA availability
-#[cfg(not(feature = "cuda"))]
-pub trait FerroxCudaF: FerroxF {}
-
 // ============= CUDA IMPLEMENTATIONS =============
 
-// When CUDA is enabled, implement FerroxCudaF for all types that satisfy the requirements
-// The primitive types automatically implement DeviceRepr, ValidAsZeroBits, and Unpin from cudarc
+// When CUDA is enabled, implement FerroxCudaN for numeric types that satisfy GPU requirements
+#[cfg(feature = "cuda")]
+impl FerroxCudaN for f32 {}
+
+#[cfg(feature = "cuda")]
+impl FerroxCudaN for f64 {}
+
+#[cfg(feature = "cuda")]
+impl FerroxCudaN for i32 {}
+
+#[cfg(feature = "cuda")]
+impl FerroxCudaN for i64 {}
+
+// When CUDA is enabled, implement FerroxCudaF for floating-point types
+// These automatically get both FerroxF and FerroxCudaN functionality
 #[cfg(feature = "cuda")]
 impl FerroxCudaF for f32 {}
 
@@ -485,7 +591,12 @@ impl FerroxCudaF for f64 {}
 
 // ============= NON-CUDA IMPLEMENTATIONS =============
 
-// When CUDA is not available, provide blanket implementation for all FerroxF typeFs
-// This ensures that all FerroxF types automatically implement FerroxCudaF
+// When CUDA is not available, provide blanket implementations
+// All FerroxN types automatically implement FerroxCudaN
+#[cfg(not(feature = "cuda"))]
+impl<T: FerroxN> FerroxCudaN for T {}
+
+// All FerroxF types automatically implement FerroxCudaF
+// Since FerroxCudaF requires both FerroxF and FerroxCudaN, and we have blanket impl for FerroxCudaN
 #[cfg(not(feature = "cuda"))]
 impl<T: FerroxF> FerroxCudaF for T {}

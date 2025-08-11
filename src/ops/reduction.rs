@@ -4,7 +4,7 @@
 
 use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
-use crate::FerroxF;
+use crate::{FerroxF, FerroxN};
 
 /// Sum reduction: output = sum(input, axes)
 /// Reduces tensor along specified axes or all elements if None
@@ -157,7 +157,7 @@ where
             input_shape.iter().product::<usize>() as f64
         };
 
-        let scale = FerroxF::from_f64(1.0 / reduction_size)
+        let scale = <T as FerroxN>::from_f64(1.0 / reduction_size)
             .ok_or("Failed to convert reduction scale to tensor type")?;
 
         // Scale and broadcast gradient back to input shape

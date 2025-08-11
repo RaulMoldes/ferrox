@@ -2,15 +2,15 @@
 // Loss functions for neural networks using the computational graph
 // All losses are implemented as operations that work through the tensor API and graph system
 
-use crate::backend::{FerroxCudaF};
+use crate::backend::FerroxCudaF;
 use crate::graph::{AutoFerroxEngine, NodeId};
+use crate::nn::losses::{Loss, ReductionType};
 use crate::ops::{
     basic::{Mul, Sub},
     reduction::{Mean, Sum},
-    unary::{Abs},
+    unary::Abs,
 };
 use std::marker::PhantomData;
-use crate::nn::losses::{Loss, ReductionType};
 
 /// Mean Squared Error Loss: MSE = mean((predictions - targets)²)
 /// Used for regression tasks where targets are continuous values
@@ -140,6 +140,7 @@ where
         let abs_diff = graph
             .apply_operation(abs_op, vec![diff])
             .map_err(|e| format!("L1 absolute value computation failed: {}", e))?;
+
 
         // Step 3: Apply reduction strategy
         match self.reduction {

@@ -1,14 +1,14 @@
-pub mod optim;
-pub mod parameter;
 pub mod layers;
 pub mod losses;
+pub mod optim;
+pub mod parameter;
 
 use crate::backend::number::FerroxCudaF;
+use crate::backend::Device;
 use crate::graph::AutoFerroxEngine;
 use crate::graph::NodeId;
 use crate::nn::parameter::Parameter;
 use std::collections::HashMap;
-use crate::backend::Device;
 use std::slice::{Iter, IterMut};
 
 /// Core trait for all neural network modules
@@ -36,12 +36,14 @@ where
     /// Create parameter nodes in the computational graph and return mapping
     /// This is the key method that connects parameters to the gradient system
     /// Returns (parameter_name, node_id) pairs for optimizer registration
-    fn create_parameters_in_graph(&self, engine: &mut AutoFerroxEngine<T>) -> HashMap<String, NodeId>
+    fn create_parameters_in_graph(
+        &self,
+        engine: &mut AutoFerroxEngine<T>,
+    ) -> HashMap<String, NodeId>
     where
         T: rand_distr::num_traits::FromPrimitive,
     {
         let mut param_map = HashMap::new();
-
 
         for (param_counter, param) in self.parameters().into_iter().enumerate() {
             // Create a unique name if parameter doesn't have one
@@ -122,7 +124,9 @@ where
             if param.data.device() != first_device {
                 return Err(format!(
                     "Parameter {} is on device {:?}, but parameter 0 is on device {:?}",
-                    i, param.data.device(), first_device
+                    i,
+                    param.data.device(),
+                    first_device
                 ));
             }
         }
@@ -219,7 +223,10 @@ where
     }
 
     /// Create parameter nodes for all modules in the list
-    fn create_parameters_in_graph(&self, engine: &mut AutoFerroxEngine<T>) -> HashMap<String, NodeId>
+    fn create_parameters_in_graph(
+        &self,
+        engine: &mut AutoFerroxEngine<T>,
+    ) -> HashMap<String, NodeId>
     where
         T: FerroxCudaF,
     {
@@ -300,7 +307,8 @@ where
 
         // Apply each module in sequence
         for (i, module) in self.modules.iter().enumerate() {
-            current_input = module.forward(graph, current_input)
+            current_input = module
+                .forward(graph, current_input)
                 .map_err(|e| format!("Sequential module {} failed: {}", i, e))?;
         }
 
@@ -316,7 +324,10 @@ where
         self.modules.parameters_mut()
     }
 
-    fn create_parameters_in_graph(&self, engine: &mut AutoFerroxEngine<T>) -> HashMap<String, NodeId>
+    fn create_parameters_in_graph(
+        &self,
+        engine: &mut AutoFerroxEngine<T>,
+    ) -> HashMap<String, NodeId>
     where
         T: rand_distr::num_traits::FromPrimitive,
     {

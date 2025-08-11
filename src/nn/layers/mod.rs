@@ -1,12 +1,12 @@
 // src/nn/layers/mod.rs
 // Module declaration and basic usage test for neural network layers
 
-pub mod linear;
 pub mod activation;
+pub mod linear;
 
 // Re-export commonly used layers for convenience
-pub use linear::Linear;
 pub use activation::{ReLU, Sigmoid, Tanh};
+pub use linear::Linear;
 
 #[cfg(test)]
 mod layer_tests {
@@ -26,11 +26,9 @@ mod layer_tests {
         let layer = Linear::<f32>::new_with_device(3, 2, true, device);
 
         // Create test input: batch of 2 samples, each with 3 features
-        let input_data = Tensor::from_vec_with_device(
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[2, 3],
-            device,
-        ).expect("Failed to create input tensor");
+        let input_data =
+            Tensor::from_vec_with_device(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], device)
+                .expect("Failed to create input tensor");
 
         let input_node = engine.create_variable(input_data, false);
 
@@ -45,7 +43,10 @@ mod layer_tests {
             .expect("Output tensor not found");
 
         assert_eq!(output_tensor.shape(), &[2, 2]); // [batch_size, out_features]
-        println!("Linear layer test passed - output shape: {:?}", output_tensor.shape());
+        println!(
+            "Linear layer test passed - output shape: {:?}",
+            output_tensor.shape()
+        );
     }
 
     /// Test ReLU activation layer
@@ -58,11 +59,9 @@ mod layer_tests {
         let relu = ReLU::<f32>::new();
 
         // Create test input with both positive and negative values
-        let input_data = Tensor::from_vec_with_device(
-            vec![-2.0, -1.0, 0.0, 1.0, 2.0],
-            &[5],
-            device,
-        ).expect("Failed to create input tensor");
+        let input_data =
+            Tensor::from_vec_with_device(vec![-2.0, -1.0, 0.0, 1.0, 2.0], &[5], device)
+                .expect("Failed to create input tensor");
 
         let input_node = engine.create_variable(input_data, false);
 
@@ -77,10 +76,16 @@ mod layer_tests {
             .expect("Output tensor not found");
 
         assert_eq!(output_tensor.shape(), &[5]);
-        println!("ReLU activation test passed - output shape: {:?}", output_tensor.shape());
+        println!(
+            "ReLU activation test passed - output shape: {:?}",
+            output_tensor.shape()
+        );
 
         // Verify ReLU behavior: negative values should become 0
-        let output_vec = output_tensor.clone().into_data().expect("Failed to convert to  Array");
+        let output_vec = output_tensor
+            .clone()
+            .into_data()
+            .expect("Failed to convert to  Array");
         assert_eq!(output_vec[0], 0.0); // -2.0 -> 0.0
         assert_eq!(output_vec[1], 0.0); // -1.0 -> 0.0
         assert_eq!(output_vec[2], 0.0); // 0.0 -> 0.0
@@ -103,7 +108,8 @@ mod layer_tests {
             vec![1.0, -1.0, 2.0, -2.0],
             &[2, 2], // 2 samples, 2 features each
             device,
-        ).expect("Failed to create input tensor");
+        )
+        .expect("Failed to create input tensor");
 
         let input_node = engine.create_variable(input_data, false);
 
@@ -122,7 +128,10 @@ mod layer_tests {
             .expect("Final output tensor not found");
 
         assert_eq!(output_tensor.shape(), &[2, 3]); // [batch_size, linear_out_features]
-        println!("Linear + ReLU composition test passed - final shape: {:?}", output_tensor.shape());
+        println!(
+            "Linear + ReLU composition test passed - final shape: {:?}",
+            output_tensor.shape()
+        );
     }
 
     /// Test parameter collection from layers

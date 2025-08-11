@@ -6,22 +6,23 @@ mod cuda;
 use crate::backend::cuda::context::CudaTensor;
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::ops::CudaOps;
+use crate::{FerroxCudaF, FerroxF};
 
 pub use cpu::CPUStorage;
 #[cfg(feature = "cuda")]
 pub use cuda::CUDAStorage;
 
-use crate::backend::FerroxCudaF;
+use crate::backend::FerroxCudaN;
 
 use ndarray::ArrayD;
-use std::fmt::Debug;
 use std::any::Any;
+use std::fmt::Debug;
 
 /// Trait for different storage ownership patterns
 /// This allows us to have different storage implementations without enum overhead
 pub trait StorageBackend<T>: Debug + Any
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     /// Get tensor shape
     fn shape(&self) -> &[usize];
@@ -103,7 +104,7 @@ where
     /// Constrains all values to the range [min_val, max_val]
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
 
     fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
 
@@ -114,7 +115,7 @@ where
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> ;
 
     /// Element-wise less than or equal comparison: self <= other
     /// Returns new storage with 1.0 for true, 0.0 for false
@@ -159,7 +160,7 @@ where
 
     /// Sigmoid activation function: 1 / (1 + exp(-self))
     /// Returns new storage with sigmoid applied element-wise
-    fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxF;
 
     /// ReLU activation function: max(0, self)
     /// Returns new storage with ReLU applied element-wise
@@ -167,23 +168,23 @@ where
 
     /// Exponential function: exp(self)
     /// Returns new storage with exponential applied element-wise
-    fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
 
     /// Natural logarithm: ln(self)
     /// Returns new storage with natural log applied element-wise
-    fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
 
     /// Hyperbolic tangent: tanh(self)
     /// Returns new storage with tanh applied element-wise
-    fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
 
     /// Element-wise power: self ^ other
     /// Returns new storage with element-wise power operation
-    fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
 
     /// Scalar power: self ^ scalar
     /// Returns new storage with scalar power applied element-wise
-    fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
 
     /// Sum reduction along multiple axes
     fn sum(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String>;
@@ -252,23 +253,6 @@ where
 }
 
 
-/// Trait defining custom operations that can be executed on storage backends
-/// Operations receive different contexts based on storage type (CPU vs CUDA)
-/// All operations create new results, consistent with existing storage operations
-#[allow(unused_variables)]
-pub trait CustomOperation<T: FerroxCudaF, R> {
-    /// Execute on CPU storage. Receives immutable access to underlying ArrayD
-    /// Should create new storage/results rather than mutating input
-    fn execute_cpu(&self, data: &ArrayD<T>) -> Result<R, String> {
-        Err("CPU execution not implemented for this operation".to_string())
-    }
-
-    /// Execute on CUDA storage. Receives access to cuda ops for kernel execution.
-    #[cfg(feature = "cuda")]
-    fn execute_cuda(&self, ops: &CudaOps<T>, data: &CudaTensor<T>) -> Result<R, String> {
-        Err("CUDA execution not implemented for this operation".to_string())
-    }
-}
 
 #[cfg(test)]
 mod storage_backend_tests {

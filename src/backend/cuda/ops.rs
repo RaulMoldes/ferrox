@@ -7,8 +7,9 @@ use std::mem::ManuallyDrop;
 use super::context::CudaTensor;
 use super::kernels::KernelManager;
 use crate::backend::cuda::context::compute_strides;
+use crate::backend::manager::with_cuda_context;
 use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
-use crate::{FerroxCudaF, FerroxF};
+use crate::{FerroxCudaF, FerroxCudaN, FerroxF, FerroxN};
 use cudarc::driver::CudaSlice;
 use cudarc::driver::LaunchConfig;
 use cudarc::driver::ValidAsZeroBits;
@@ -19,12 +20,12 @@ const TILE_SIZE: u32 = 16;
 // CudaOps provides a high-level interface for performing tensor operations on GPU
 /// This is the main interface for performing tensor operations on GPU
 /// The lifetime parameter ensures operations don't outlive the underlying CUDA resources
-pub struct CudaOps<T: FerroxCudaF> {
+pub struct CudaOps<T: FerroxCudaN> {
     kernels: KernelManager,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: FerroxCudaF> CudaOps<T> {
+impl<T: FerroxCudaN> CudaOps<T> {
     pub fn new(kernels: KernelManager) -> Self {
         Self {
             kernels,
@@ -134,7 +135,7 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Create ones tensor - useful for creating bias vectors and normalization
     pub fn ones(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
-        let one = FerroxF::from_f64(1.0).unwrap();
+        let one = <T as FerroxN>::from_f64(1.0).unwrap();
         self.full(shape, one)
     }
 
@@ -156,8 +157,57 @@ impl<T: FerroxCudaF> CudaOps<T> {
         })
     }
 
+    /// Materialize tensor using GPU kernel - expands broadcast data efficiently
+    pub fn materialize(&self, tensor: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        // Skip if already contiguous
+        if !tensor.needs_materialization() {
+            return Ok(tensor.clone()); // Should also be checked by the caller for efficiency
+        }
+
+        let total_elements = tensor.size();
+
+        // Allocate new contiguous memory for materialized data
+        let mut materialized_data = self.create_tensor_from_pool(tensor.shape())?;
+
+        // Prepare kernel parameters
+        let shape_i32: Vec<i32> = tensor.shape.iter().map(|&x| x as i32).collect();
+        let strides_i32: Vec<i32> = tensor.strides.iter().map(|&x| x as i32).collect();
+        let ndim = tensor.shape.len() as i32;
+
+        // Allocate GPU memory for shape and strides arrays
+        let (shape_gpu, shape_id) = with_cuda_context(|ctx| ctx.host_to_device(&shape_i32))?;
+        let (strides_gpu, strides_id) = with_cuda_context(|ctx| ctx.host_to_device(&strides_i32))?;
+
+        // Launch materialization kernel
+        let cfg = self.get_launch_config(total_elements);
+        let result = self.kernels.launch_materialize(
+            cfg,
+            tensor.data(),                // Input: original small data
+            materialized_data.data_mut(), // Output: expanded data
+            &shape_gpu,                   // GPU allocated shape array
+            &strides_gpu,                 // GPU allocated strides array
+            ndim,
+            total_elements as i32,
+        );
+
+        // Return GPU arrays to pool
+        let _ = return_cuda_slice::<i32>(shape_id, shape_gpu);
+        let _ = return_cuda_slice::<i32>(strides_id, strides_gpu);
+
+        result?;
+        Ok(materialized_data)
+    }
+
     /// Element-wise addition: result = a + b
     pub fn add(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());
         }
@@ -173,6 +223,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Element-wise multiplication: result = a * b
     pub fn mul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for multiplication".to_string());
         }
@@ -188,6 +246,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Element-wise division: result = a / b
     pub fn div(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for division".to_string());
         }
@@ -203,6 +269,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Element-wise subtraction: result = a - b
     pub fn sub(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for subtraction".to_string());
         }
@@ -218,6 +292,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Element-wise power: result = a^b
     pub fn power(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for power operation".to_string());
         }
@@ -238,6 +320,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for min operation".to_string());
         }
@@ -262,6 +352,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for max operation".to_string());
         }
@@ -441,6 +539,10 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Sum reduction along specified axes or all elements
     pub fn sum_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
+
         let size = input.size();
         let mut result = self.create_tensor_from_pool(&[])?;
         let cfg = self.get_launch_config(size);
@@ -457,6 +559,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         self.reduce_axes(
             input,
             axes,
@@ -476,6 +581,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Max reduction along all elements
     pub fn max_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         let size = input.size();
         let mut result = self.create_tensor_from_pool(&[])?;
         let cfg = self.get_launch_config(size);
@@ -492,6 +600,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         axes: &[usize], // Changed from usize to &[usize]
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         self.reduce_axes(
             input,
             axes,
@@ -511,6 +622,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Min reduction along all elements
     pub fn min_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         let size = input.size();
 
         let mut result = self.create_tensor_from_pool(&[])?;
@@ -528,6 +642,9 @@ impl<T: FerroxCudaF> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         self.reduce_axes(
             input,
             axes,
@@ -547,8 +664,11 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Mean operation (uses sum + division)
     pub fn mean_all(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         let sum_result = self.sum_all(input)?;
-        let size_scalar = FerroxF::from_f64(1.0 / input.size() as f64)
+        let size_scalar = <T as FerroxN>::from_f64(1.0 / input.size() as f64)
             .ok_or("Failed to convert size to tensor type")?;
         let result = self.mul_scalar(&sum_result, size_scalar)?;
 
@@ -562,11 +682,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
         let sum_result = self.sum_axes(input, axes, keep_dims)?;
         // Calculate divisor as product of all reduced dimensions
         let divisor: f64 = axes.iter().map(|&axis| input.shape[axis] as f64).product();
 
-        let divisor_scalar = <T as crate::backend::number::FerroxF>::from_f64(1.0 / divisor)
+        let divisor_scalar = <T as crate::backend::number::FerroxN>::from_f64(1.0 / divisor)
             .ok_or("Failed to convert divisor to tensor type")?;
 
         let result = self.mul_scalar(&sum_result, divisor_scalar)?;
@@ -581,6 +704,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
     /// - A must be [M, K], B must be [K, N] -> Result is [M, N]
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
     pub fn matmul(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.ndim() != 2 || b.ndim() != 2 {
             return Err("Matrix multiplication requires 2D tensors".to_string());
         }
@@ -620,6 +751,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
         }
@@ -644,6 +783,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
         a: &CudaTensor<T>,
         b: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
@@ -674,6 +821,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
     pub fn less(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
         }
@@ -751,6 +906,14 @@ impl<T: FerroxCudaF> CudaOps<T> {
 
     /// Element-wise equality: result = (a == b) ? 1.0 : 0.0
     pub fn equal(&self, a: &CudaTensor<T>, b: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        if a.needs_materialization() {
+            self.materialize(a);
+        }
+
+        if b.needs_materialization() {
+            self.materialize(b);
+        }
+
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
         }
@@ -816,6 +979,17 @@ impl<T: FerroxCudaF> CudaOps<T> {
         true_val: &CudaTensor<T>,
         false_val: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
+        if condition.needs_materialization() {
+            self.materialize(condition);
+        }
+
+        if true_val.needs_materialization() {
+            self.materialize(true_val);
+        }
+
+        if false_val.needs_materialization() {
+            self.materialize(false_val);
+        }
         if condition.shape != true_val.shape || condition.shape != false_val.shape {
             return Err("Shape mismatch for  condition operation".to_string());
         }
@@ -850,6 +1024,13 @@ impl<T: FerroxCudaF> CudaOps<T> {
         stride: (usize, usize),
         padding: (usize, usize),
     ) -> Result<CudaTensor<T>, String> {
+        if input.needs_materialization() {
+            self.materialize(input);
+        }
+
+        if filter.needs_materialization() {
+            self.materialize(filter);
+        }
         // Validate input dimensions
         if input.shape.len() != 4 || filter.shape.len() != 4 {
             return Err("Conv2D requires 4D tensors [batch, channels, height, width]".to_string());

@@ -1,9 +1,8 @@
 pub mod regression;
 
-use crate::backend::{FerroxCudaF};
+use crate::backend::FerroxCudaF;
 use crate::graph::{AutoFerroxEngine, NodeId};
 pub use regression::{L1Loss, MSELoss};
-
 
 /// Base trait for all loss functions
 /// Mirrors PyTorch's loss interface, providing forward computation through computational graph

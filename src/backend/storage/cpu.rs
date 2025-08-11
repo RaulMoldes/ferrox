@@ -1,10 +1,11 @@
 // src/backend/storage/cpu.rs
 use super::StorageBackend;
-use crate::backend::{FerroxCudaF, FerroxF};
+use crate::backend::{FerroxCudaF,FerroxCudaN, FerroxF};
 use ndarray::{ArrayD, ArrayViewD, IxDyn};
 use rand::Rng;
 use rand_distr::StandardUniform;
 use std::any::Any;
+use crate::FerroxN;
 #[derive(Debug, Clone)]
 pub struct CPUStorage<T: Clone> {
     data: ArrayD<T>,
@@ -52,7 +53,7 @@ impl<T: Clone> CPUStorage<T> {
 
 impl<T> CPUStorage<T>
 where
-    T: crate::backend::number::FerroxCudaF + Clone,
+    T: crate::backend::number::FerroxCudaN + Clone,
 {
     /// Convert image patches to column matrix (im2col) - reused from original impl
     /// This transforms 4D convolution into efficient 2D matrix multiplication
@@ -77,7 +78,7 @@ where
         let col_height = channels * kernel_h * kernel_w;
         let col_width = batch * out_h * out_w;
 
-        let mut col_data = vec![FerroxF::zero(); col_height * col_width];
+        let mut col_data = vec![FerroxN::zero(); col_height * col_width];
 
         // Use effective data access for logical views
         let input_data = if let Some(data) = self.data.as_slice() {
@@ -134,7 +135,8 @@ where
         filter: &ArrayD<T>,
         stride: (usize, usize),
         padding: (usize, usize),
-    ) -> Result<ArrayD<T>, String> {
+    ) -> Result<ArrayD<T>, String>
+    {
         let input_shape = self.shape();
         let filter_shape = filter.shape();
 
@@ -182,7 +184,7 @@ where
         } else {
             return Err("Failed to get contiguous output data".to_string());
         };
-        let mut final_output = vec![FerroxF::zero(); batch * out_channels * out_h * out_w];
+        let mut final_output = vec![FerroxN::zero(); batch * out_channels * out_h * out_w];
 
         for out_c in 0..out_channels {
             for b in 0..batch {
@@ -207,7 +209,7 @@ where
 
 impl<T> CPUStorage<T>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     // Move the generic reduce method to the concrete implementation
     // This avoids making StorageBackend non-dyn-compatible
@@ -318,8 +320,8 @@ where
     {
         let mut rng = rand::rng();
         let total_elements: usize = shape.iter().product();
-        let two = FerroxF::from_f64(2.0).expect("Cannot cast from f64");
-        let one = FerroxF::one();
+        let two = FerroxN::from_f64(2.0).expect("Cannot cast from f64");
+        let one = FerroxN::one();
         let data: Vec<T> = (0..total_elements)
             .map(|_| rng.random::<T>() * two - one) // Simple random between -1 and 1
             .collect();
@@ -335,6 +337,7 @@ where
         false_vals: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>
     where
+        T: FerroxCudaF,
         Self: Sized,
     {
         // Get data from all three storages
@@ -355,7 +358,7 @@ where
             .zip(true_data.iter())
             .zip(false_data.iter())
             .map(|((&cond, &true_val), &false_val)| {
-                if cond > FerroxF::zero() {
+                if cond > FerroxN::zero() {
                     true_val
                 } else {
                     false_val
@@ -373,7 +376,7 @@ where
 
 impl<T> StorageBackend<T> for CPUStorage<T>
 where
-    T: FerroxCudaF,
+    T: FerroxCudaN,
 {
     fn shape(&self) -> &[usize] {
         self.data.shape()
@@ -383,7 +386,7 @@ where
         self
     }
     fn into_any(self: Box<Self>) -> Box<dyn Any + 'static> {
-         self as Box<dyn std::any::Any + 'static>
+        self as Box<dyn std::any::Any + 'static>
     }
 
     fn ndim(&self) -> usize {
@@ -724,11 +727,12 @@ where
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let result_data: Vec<T> = self
             .data
             .iter()
-            .map(|&x| <T as FerroxF>::one() / x)
+            .map(|&x| <T as FerroxN>::one() / x)
             .collect();
 
         let result_array = ndarray::Array::from_shape_vec(self.data.raw_dim(), result_data)
@@ -752,7 +756,9 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxF
+    {
         let result_data = self.data.mapv(|x| x.sqrt());
         Ok(Box::new(CPUStorage::new(result_data)))
     }
@@ -760,23 +766,25 @@ where
     fn greater_equal(
         &self,
         other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+    ) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let storage = self.compare(other, |&a, &b| {
             if a >= b {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         })?;
         Ok(Box::new(storage))
     }
 
-    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let result_array = self.data.mapv(|x| {
             if x >= scalar {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         });
         Ok(Box::new(CPUStorage::new(result_array)))
@@ -785,118 +793,130 @@ where
     fn less_equal(
         &self,
         other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+    ) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let storage = self.compare(other, |&a, &b| {
             if a <= b {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         })?;
         Ok(Box::new(storage))
     }
 
-    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let result_array = self.data.mapv(|x| {
             if x <= scalar {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         });
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let storage = self.compare(other, |&a, &b| {
             if a > b {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         })?;
         Ok(Box::new(storage))
     }
 
-    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let result_array = self.data.mapv(|x| {
             if x > scalar {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         });
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let storage = self.compare(other, |&a, &b| {
             if a < b {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         })?;
         Ok(Box::new(storage))
     }
 
-    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let result_array = self.data.mapv(|x| {
             if x < scalar {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         });
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         let storage = self.compare(other, |&a, &b| {
             if a == b {
-                FerroxF::one()
+                FerroxN::one()
             } else {
-                FerroxF::zero()
+                FerroxN::zero()
             }
         })?;
         Ok(Box::new(storage))
     }
 
-    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         // Flip 0s to 1s and non-zeros to 0s
         let result_data = self.data.mapv(|x| {
-            if x == <T as crate::backend::number::FerroxF>::zero() {
-                <T as crate::backend::number::FerroxF>::one()
+            if x == <T as FerroxN>::zero() {
+                <T as FerroxN>::one()
             } else {
-                <T as crate::backend::number::FerroxF>::zero()
+                <T as FerroxN>::zero()
             }
         });
 
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxN
+    {
         // Check if values are in range [min_val, max_val]
         let result_data = self.data.mapv(|x| {
             if x >= min_val && x <= max_val {
-                <T as crate::backend::number::FerroxF>::one()
+                <T as FerroxN>::one()
             } else {
-                <T as crate::backend::number::FerroxF>::zero()
+                <T as FerroxN>::zero()
             }
         });
 
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxN
+    {
         // Return 1 for positive, -1 for negative, 0 for zero
         let result_data = self.data.mapv(|x| {
-            if x > <T as crate::backend::number::FerroxF>::zero() {
-                <T as crate::backend::number::FerroxF>::one()
-            } else if x < <T as crate::backend::number::FerroxF>::zero() {
-                -<T as crate::backend::number::FerroxF>::one()
+            if x > <T as FerroxN>::zero() {
+                <T as FerroxN>::one()
+            } else if x < <T as FerroxN>::zero() {
+                -<T as FerroxN>::one()
             } else {
-                <T as crate::backend::number::FerroxF>::zero()
+                <T as FerroxN>::zero()
             }
         });
 
@@ -936,14 +956,16 @@ where
 
         // Perform matrix multiplication using ndarray's dot product
         let result = a.dot(&b);
-       
+
         Ok(Box::new(CPUStorage::new(result.into_dyn())))
     }
 
-    fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxF
+    {
         // Sigmoid function: 1 / (1 + exp(-x))
         let result_data = self.data.mapv(|x| {
-            let one = <T as crate::backend::number::FerroxF>::one();
+            let one = <T as FerroxN>::one();
             let neg_x = -x;
             one / (one + neg_x.exp())
         });
@@ -951,10 +973,11 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         // ReLU activation: max(0, x)
         let result_data = self.data.mapv(|x| {
-            let zero = <T as crate::backend::number::FerroxF>::zero();
+            let zero = <T as FerroxN>::zero();
             if x > zero {
                 x
             } else {
@@ -965,56 +988,62 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxCudaF
+     {
         // Element-wise exponential
         let result_data = self.data.mapv(|x| x.exp());
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxCudaF
+    {
         // Element-wise natural logarithm
         let result_data = self.data.mapv(|x| x.ln());
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxCudaF
+    {
         // Numerically stable hyperbolic tangent implementation
         // Avoids overflow for large positive/negative values
         let result_data = self.data.mapv(|x| {
             // For numerical stability, we use different formulas based on the sign of x
             // This prevents overflow when x is very large or very small
 
-            if x > FerroxF::from_f64(20.0).unwrap() {
+            if x > FerroxN::from_f64(20.0).unwrap() {
                 // For large positive x, tanh(x) ≈ 1
                 // Avoids computing exp(x) which would overflow
-                FerroxF::one()
-            } else if x < FerroxF::from_f64(-20.0).unwrap() {
+                FerroxN::one()
+            } else if x < FerroxN::from_f64(-20.0).unwrap() {
                 // For large negative x, tanh(x) ≈ -1
                 // Avoids computing exp(-x) which would overflow
-                FerroxF::from_f64(-1.0).unwrap()
-            } else if x >= FerroxF::zero() {
+                FerroxN::from_f64(-1.0).unwrap()
+            } else if x >= FerroxN::zero() {
                 // For non-negative x, use: tanh(x) = (1 - exp(-2x)) / (1 + exp(-2x))
                 // This formulation is stable for positive x
-                let exp_neg_2x = (-x * FerroxF::from_f64(2.0).unwrap()).exp();
+                let exp_neg_2x = (-x * FerroxN::from_f64(2.0).unwrap()).exp();
                 let numerator = <T as FerroxF>::one() - exp_neg_2x;
                 let denominator = <T as FerroxF>::one() + exp_neg_2x;
 
                 // Check for potential division by zero (shouldn't happen with this formulation)
-                if denominator == FerroxF::zero() {
-                    FerroxF::one() // Return 1 as limit
+                if denominator == FerroxN::zero() {
+                    FerroxN::one() // Return 1 as limit
                 } else {
                     numerator / denominator
                 }
             } else {
                 // For negative x, use: tanh(x) = (exp(2x) - 1) / (exp(2x) + 1)
                 // This formulation is stable for negative x
-                let exp_2x = (x * FerroxF::from_f64(2.0).unwrap()).exp();
-                let numerator = exp_2x - FerroxF::one();
-                let denominator = exp_2x + FerroxF::one();
+                let exp_2x = (x * FerroxN::from_f64(2.0).unwrap()).exp();
+                let numerator = exp_2x - FerroxN::one();
+                let denominator = exp_2x + FerroxN::one();
 
                 // Check for potential division by zero (shouldn't happen with this formulation)
-                if denominator == FerroxF::zero() {
-                    FerroxF::from_f64(-1.0).unwrap() // Return -1 as limit
+                if denominator == FerroxN::zero() {
+                    FerroxN::from_f64(-1.0).unwrap() // Return -1 as limit
                 } else {
                     numerator / denominator
                 }
@@ -1024,7 +1053,9 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxCudaF
+    {
         let other_data = other.cpu_data()?;
 
         if self.shape() != other_data.shape() {
@@ -1043,7 +1074,9 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where T: FerroxCudaF
+    {
         // Scalar power operation
         let result_data = self.data.mapv(|x| x.powf(scalar));
         Ok(Box::new(CPUStorage::new(result_data)))
@@ -1076,7 +1109,7 @@ where
 
         // Convert divisor to tensor type and divide
         let divisor_scalar =
-            FerroxF::from_f64(1.0 / divisor).ok_or("Failed to convert divisor to tensor type")?;
+            FerroxN::from_f64(1.0 / divisor).ok_or("Failed to convert divisor to tensor type")?;
 
         sum_result.mul_scalar(divisor_scalar)
     }
@@ -1118,7 +1151,8 @@ where
         filter: &dyn StorageBackend<T>,
         stride: (usize, usize),
         padding: (usize, usize),
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+    ) -> Result<Box<dyn StorageBackend<T>>, String>
+    {
         // Ensure filter is also CPU storage
         let filter_data = filter.cpu_data()?;
 

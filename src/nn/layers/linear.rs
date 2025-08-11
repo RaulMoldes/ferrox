@@ -7,9 +7,8 @@ use crate::backend::{Device, Tensor};
 use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
-use crate::ops::{MatMul, Add, BroadcastTo};
 use crate::ops::Transpose;
-
+use crate::ops::{Add, BroadcastTo, MatMul};
 
 /// Linear transformation layer: y = x * W^T + b
 /// This implements the basic feedforward layer found in most neural networks
@@ -50,8 +49,8 @@ where
     ) -> Self {
         // Weight matrix shape: [out_features, in_features] for efficient computation
         // This allows input @ weight.T + bias without needing transpose in forward pass
-        let mut weight = Parameter::xavier_uniform_with_device(&[out_features, in_features], device);
-
+        let mut weight =
+            Parameter::xavier_uniform_with_device(&[out_features, in_features], device);
 
         weight.set_name("weight".to_string());
 
@@ -134,14 +133,15 @@ where
 
 impl<T> Module<T> for Linear<T>
 where
-    T: FerroxCudaF  + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF + rand_distr::num_traits::FromPrimitive,
 {
-      /// Forward pass: y = x @ W^T + b
+    /// Forward pass: y = x @ W^T + b
     /// Input shape: [batch_size, in_features] or [in_features]
     /// Output shape: [batch_size, out_features] or [out_features]
     fn forward(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
         // Get input tensor to validate dimensions
-        let input_tensor = graph.get_tensor(input)
+        let input_tensor = graph
+            .get_tensor(input)
             .ok_or("Input tensor not found in graph")?;
 
         // Validate input dimensions
@@ -175,16 +175,16 @@ where
         }
 
         // Create weight node in computational graph
-        let weight_node = graph.create_variable(self.weight.data.clone(), self.weight.requires_grad);
+        let weight_node =
+            graph.create_variable(self.weight.data.clone(), self.weight.requires_grad);
 
-
-// Apply linear transformation: input @ weight^T
-// Since our weight is stored as [out_features, in_features], we need to transpose it
-// Use Transpose operation through the computational graph for proper gradient flow
-let transpose_op = Box::new(Transpose::new());
-let weight_t_node = graph
-    .apply_operation(transpose_op, vec![weight_node])
-    .map_err(|e| format!("Weight transpose failed: {}", e))?;
+        // Apply linear transformation: input @ weight^T
+        // Since our weight is stored as [out_features, in_features], we need to transpose it
+        // Use Transpose operation through the computational graph for proper gradient flow
+        let transpose_op = Box::new(Transpose::new());
+        let weight_t_node = graph
+            .apply_operation(transpose_op, vec![weight_node])
+            .map_err(|e| format!("Weight transpose failed: {}", e))?;
 
         // Perform matrix multiplication: output = input @ weight^T
         let matmul_op = Box::new(MatMul);
@@ -194,17 +194,23 @@ let weight_t_node = graph
 
         // Add bias if present
         if let Some(ref bias_param) = self.bias {
+
             // Extract shape information first to avoid borrow checker issues
             let result_shape = {
-                let linear_result_tensor = graph.get_tensor(linear_result)
+                let linear_result_tensor = graph
+                    .get_tensor(linear_result)
                     .ok_or("Linear result tensor not found in graph")?;
                 linear_result_tensor.shape().to_vec() // Copy shape to owned Vec
             };
 
+
             let bias_shape = bias_param.data.shape();
 
             // Create bias node in computational graph
-            let bias_node = graph.create_variable(bias_param.data.clone(), bias_param.requires_grad);
+            let bias_node =
+                graph.create_variable(bias_param.data.clone(), bias_param.requires_grad);
+
+
 
             // Check if we need to broadcast bias to match result shape
             if bias_shape != result_shape.as_slice() {
@@ -214,12 +220,13 @@ let weight_t_node = graph
                 let broadcasted_bias = graph
                     .apply_operation(broadcast_op, vec![bias_node])
                     .map_err(|e| format!("Bias broadcasting failed: {}", e))?;
-
+                
                 // Now perform element-wise addition with matching shapes
                 let add_op = Box::new(Add::new());
                 let final_result = graph
                     .apply_operation(add_op, vec![linear_result, broadcasted_bias])
                     .map_err(|e| format!("Bias addition failed: {}", e))?;
+                let final_tensor = graph.get_tensor(final_result).unwrap();
 
                 Ok(final_result)
             } else {
@@ -228,6 +235,8 @@ let weight_t_node = graph
                 let final_result = graph
                     .apply_operation(add_op, vec![linear_result, bias_node])
                     .map_err(|e| format!("Bias addition failed: {}", e))?;
+                let final_tensor = graph.get_tensor(final_result).unwrap();
+
 
                 Ok(final_result)
             }
@@ -235,7 +244,6 @@ let weight_t_node = graph
             Ok(linear_result)
         }
     }
-
 
     /// Collect all parameters (weight and bias)
     fn parameters(&self) -> Vec<&Parameter<T>> {

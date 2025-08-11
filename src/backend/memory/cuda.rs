@@ -5,7 +5,7 @@
 #[cfg(feature = "cuda")]
 use super::{MemoryPool, PoolAllocation, PoolBucket, PoolStats};
 #[cfg(feature = "cuda")]
-use crate::backend::FerroxCudaF;
+use crate::FerroxCudaN;
 
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaSlice, CudaStream};
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(feature = "cuda")]
-pub struct CudaMemoryPool<T: FerroxCudaF> {
+pub struct CudaMemoryPool<T: FerroxCudaN> {
     buckets: Vec<PoolBucket<CudaSlice<T>>>,
     allocation_counter: u64,
     stream: Arc<CudaStream>,
@@ -25,7 +25,7 @@ pub struct CudaMemoryPool<T: FerroxCudaF> {
 }
 
 #[cfg(feature = "cuda")]
-impl<T: FerroxCudaF> CudaMemoryPool<T> {
+impl<T: FerroxCudaN> CudaMemoryPool<T> {
     pub fn new(stream: Arc<CudaStream>) -> Self {
         // GPU memory is more expensive so use smaller buckets and be more conservative
         let buckets = vec![
@@ -57,7 +57,7 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
 }
 
 #[cfg(feature = "cuda")]
-impl<T: FerroxCudaF> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
+impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
     fn allocate(&mut self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String> {
         if size == 0 {
             return Err("Cannot allocate zero-sized CUDA memory".to_string());
@@ -130,7 +130,7 @@ impl<T: FerroxCudaF> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
 }
 
 #[cfg(feature = "cuda")]
-impl<T: FerroxCudaF> CudaMemoryPool<T> {
+impl<T: FerroxCudaN> CudaMemoryPool<T> {
     // Common allocation logic
     // Try to get slice from pool. If not, get the slice.
     fn allocate_with_stream(
@@ -208,7 +208,6 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
         allocation_id: u64,
         slice: Option<CudaSlice<T>>, // None for deallocate-only, Some(slice) for return_to_pool
     ) -> Result<(), String> {
-       
         if let Some(bucket_idx) = self.active_allocations.remove(&allocation_id) {
             self.stats.active_allocations -= 1;
 
@@ -231,7 +230,7 @@ impl<T: FerroxCudaF> CudaMemoryPool<T> {
 }
 
 #[cfg(feature = "cuda")]
-impl<T: FerroxCudaF> CudaMemoryPool<T> {
+impl<T: FerroxCudaN> CudaMemoryPool<T> {
     pub fn return_to_pool(
         &mut self,
         allocation_id: u64,

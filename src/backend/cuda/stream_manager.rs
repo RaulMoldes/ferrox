@@ -2,7 +2,7 @@ use crate::backend::memory::MemoryPool;
 // src/backend/cuda/stream_manager.rs
 // Stream management helper - does NOT own the CUDA context
 use crate::backend::manager::with_cuda_pool;
-use crate::FerroxCudaF;
+use crate::FerroxCudaN;
 use cudarc::driver::{CudaContext, CudaSlice, CudaStream, ValidAsZeroBits};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -110,7 +110,7 @@ impl StreamManager {
         stream_name: Option<&str>,
     ) -> Result<CudaSlice<T>, String>
     where
-        T: FerroxCudaF,
+        T: FerroxCudaN,
     {
         let stream = match stream_name {
             Some(name) => {
@@ -145,7 +145,7 @@ impl StreamManager {
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String>
     where
-        T: FerroxCudaF,
+        T: FerroxCudaN,
     {
         let stream = match stream_name {
             Some(name) => {

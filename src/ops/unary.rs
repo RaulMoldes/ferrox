@@ -2,9 +2,9 @@
 // Unary operations for the computational graph
 // These wrap tensor API methods to enable automatic differentiation
 
-use crate::backend::{FerroxCudaF, Tensor};
+use crate::backend::{FerroxCudaF,  Tensor};
 use crate::ops::Operator;
-use crate::FerroxF;
+use crate::{FerroxN, FerroxF};
 
 /// Element-wise exponential: output = exp(input)
 #[derive(Debug, Clone)]
@@ -116,7 +116,7 @@ where
 
         // For sqrt: d/dx(sqrt(x)) = 1/(2*sqrt(x))
 
-        let two = FerroxF::from_f64(2.0).ok_or("Failed to convert 2.0 to tensor type")?;
+        let two = <T as FerroxN>::from_f64(2.0).ok_or("Failed to convert 2.0 to tensor type")?;
         let denominator = outputs.mul_scalar(two)?;
         let result = grad_output.div(&denominator)?;
 
@@ -244,7 +244,7 @@ where
 
         // For sigmoid: d/dx(sigmoid(x)) = sigmoid(x) * (1 - sigmoid(x))
 
-        let one = FerroxF::one();
+        let one = <T as FerroxF>::one();
         let one_minus_sigmoid = outputs.sub_scalar(one)?;
         let local_grad = outputs.mul(&one_minus_sigmoid)?;
         let result = grad_output.mul(&local_grad)?;
@@ -290,7 +290,7 @@ where
         // For tanh: d/dx(tanh(x)) = 1 - tanh²(x)
 
         let tanh_squared = outputs.mul(outputs)?;
-        let one = FerroxF::one();
+        let one = <T as FerroxF>::one();
         let local_grad = tanh_squared.sub_scalar(one)?.neg()?; // 1 - tanh²(x) = -(tanh²(x) - 1)
         let result = grad_output.mul(&local_grad)?;
 
@@ -334,7 +334,7 @@ where
 
         // For ReLU: d/dx(max(0, x)) = 1 if x > 0, else 0
         // Create a mask where input > 0
-        let zero = FerroxF::zero();
+        let zero = <T as FerroxF>::zero();
         let mask = inputs[0].greater_scalar(zero)?;
         let result = grad_output.mul(&mask)?;
 

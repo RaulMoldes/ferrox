@@ -6,6 +6,7 @@ use crate::graph::NodeId;
 use crate::nn::optim::{Optimizer, OptimizerError, OptimizerStateDict, ParameterGroup};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use crate::FerroxN;
 
 // Adam optimizer with proper AdamW-style decoupled weight decay
 /// Implements bias correction and AMSGrad variant
@@ -59,9 +60,9 @@ where
     pub fn with_defaults(lr: T) -> Self {
         Self::new(
             lr,
-            <T as FerroxF>::from_f64(0.9).unwrap(),
-            <T as FerroxF>::from_f64(0.999).unwrap(),
-            <T as FerroxF>::from_f64(1e-8).unwrap(),
+            <T as FerroxN>::from_f64(0.9).unwrap(),
+            <T as FerroxN>::from_f64(0.999).unwrap(),
+            <T as FerroxN>::from_f64(1e-8).unwrap(),
             <T as FerroxF>::zero(),
             false,
         )
@@ -71,9 +72,9 @@ where
     pub fn adamw(lr: T, weight_decay: T) -> Self {
         Self::new(
             lr,
-            <T as FerroxF>::from_f64(0.9).unwrap(),
-            <T as FerroxF>::from_f64(0.999).unwrap(),
-            <T as FerroxF>::from_f64(1e-8).unwrap(),
+            <T as FerroxN>::from_f64(0.9).unwrap(),
+            <T as FerroxN>::from_f64(0.999).unwrap(),
+            <T as FerroxN>::from_f64(1e-8).unwrap(),
             weight_decay,
             false,
         )
@@ -82,9 +83,9 @@ where
     pub fn amsgrad(lr: T) -> Self {
         Self::new(
             lr,
-            <T as FerroxF>::from_f64(0.9).unwrap(),
-            <T as FerroxF>::from_f64(0.999).unwrap(),
-            <T as FerroxF>::from_f64(1e-8).unwrap(),
+            <T as FerroxN>::from_f64(0.9).unwrap(),
+            <T as FerroxN>::from_f64(0.999).unwrap(),
+            <T as FerroxN>::from_f64(1e-8).unwrap(),
             <T as FerroxF>::zero(),
             true,
         )
@@ -104,11 +105,15 @@ where
 
     /// Compute bias correction factors for current step
     fn compute_bias_corrections(&self) -> (T, T) {
-        let step_f64 = <T as FerroxF>::from_f64(self.step_count as f64).expect("Failed to cast step count to float");
+        let step_f64 = <T as FerroxN>::from_f64(self.step_count as f64)
+            .expect("Failed to cast step count to float");
         let beta1_power = self.beta1.powf(step_f64);
         let beta2_power = self.beta2.powf(step_f64);
 
-        (<T as FerroxF>::one()  - beta1_power, <T as FerroxF>::one() - beta2_power)
+        (
+            <T as FerroxF>::one() - beta1_power,
+            <T as FerroxF>::one() - beta2_power,
+        )
     }
 
     fn get_group_lr(&self, group: &ParameterGroup<T>) -> T {
@@ -155,9 +160,7 @@ where
                 });
                 // Update second moment: v = beta2 * v + (1 - beta2) * grad^2
                 let one_minus_beta2 = <T as FerroxF>::one() - self.beta2;
-                let grad_squared = grad
-                    .mul(grad)
-                    .map_err(OptimizerError::TensorOperation)?;
+                let grad_squared = grad.mul(grad).map_err(OptimizerError::TensorOperation)?;
                 let first_term = buffer
                     .mul_scalar(self.beta2)
                     .map_err(OptimizerError::TensorOperation)?;
@@ -375,19 +378,19 @@ where
         // Save hyperparameters as f64 for serialization
         state_dict
             .hyperparameters
-            .insert("lr".to_string(), FerroxF::to_f64(self.lr));
+            .insert("lr".to_string(), <T as FerroxN>::to_f64(self.lr));
         state_dict
             .hyperparameters
-            .insert("beta1".to_string(), FerroxF::to_f64(self.beta1));
+            .insert("beta1".to_string(), <T as FerroxN>::to_f64(self.beta1));
         state_dict
             .hyperparameters
-            .insert("beta2".to_string(), FerroxF::to_f64(self.beta2));
+            .insert("beta2".to_string(), <T as FerroxN>::to_f64(self.beta2));
         state_dict
             .hyperparameters
-            .insert("eps".to_string(), FerroxF::to_f64(self.eps));
+            .insert("eps".to_string(), <T as FerroxN>::to_f64(self.eps));
         state_dict.hyperparameters.insert(
             "weight_decay".to_string(),
-            FerroxF::to_f64(self.weight_decay),
+            <T as FerroxN>::to_f64(self.weight_decay),
         );
         state_dict
             .hyperparameters
@@ -401,7 +404,10 @@ where
         // Save first moment buffers for all parameters
         let first_moments = self.first_moments.borrow();
         for (&node_id, tensor) in first_moments.iter() {
-            if state_dict.add_buffer(node_id, tensor, "first_moment".to_string()).is_err() {
+            if state_dict
+                .add_buffer(node_id, tensor, "first_moment".to_string())
+                .is_err()
+            {
                 // Skip parameters that cannot be serialized
                 continue;
             }
@@ -410,7 +416,10 @@ where
         // Save second moment buffers for all parameters
         let second_moments = self.second_moments.borrow();
         for (&node_id, tensor) in second_moments.iter() {
-            if state_dict.add_buffer(node_id, tensor, "second_moment".to_string()).is_err() {
+            if state_dict
+                .add_buffer(node_id, tensor, "second_moment".to_string())
+                .is_err()
+            {
                 continue;
             }
         }
@@ -419,7 +428,9 @@ where
         if self.amsgrad {
             let max_second_moments = self.max_second_moments.borrow();
             for (&node_id, tensor) in max_second_moments.iter() {
-                if state_dict.add_buffer(node_id, tensor, "max_second_moment".to_string()).is_err()
+                if state_dict
+                    .add_buffer(node_id, tensor, "max_second_moment".to_string())
+                    .is_err()
                 {
                     continue;
                 }
@@ -451,27 +462,27 @@ where
 
         // Restore hyperparameters if they exist
         if let Some(&lr) = state_dict.hyperparameters.get("lr") {
-            if let Some(lr_val) = FerroxF::from_f64(lr) {
+            if let Some(lr_val) = <T as FerroxN>::from_f64(lr) {
                 self.lr = lr_val;
             }
         }
         if let Some(&beta1) = state_dict.hyperparameters.get("beta1") {
-            if let Some(beta1_val) = FerroxF::from_f64(beta1) {
+            if let Some(beta1_val) = <T as FerroxN>::from_f64(beta1) {
                 self.beta1 = beta1_val;
             }
         }
         if let Some(&beta2) = state_dict.hyperparameters.get("beta2") {
-            if let Some(beta2_val) = FerroxF::from_f64(beta2) {
+            if let Some(beta2_val) = <T as FerroxN>::from_f64(beta2) {
                 self.beta2 = beta2_val;
             }
         }
         if let Some(&eps) = state_dict.hyperparameters.get("eps") {
-            if let Some(eps_val) = FerroxF::from_f64(eps) {
+            if let Some(eps_val) = <T as FerroxN>::from_f64(eps) {
                 self.eps = eps_val;
             }
         }
         if let Some(&weight_decay) = state_dict.hyperparameters.get("weight_decay") {
-            if let Some(wd_val) = FerroxF::from_f64(weight_decay) {
+            if let Some(wd_val) = <T as FerroxN>::from_f64(weight_decay) {
                 self.weight_decay = wd_val;
             }
         }
@@ -486,8 +497,6 @@ where
             self.param_groups.push(group);
         }
 
-
-
         // Restore first moment buffers
         for buffer in state_dict.parameter_buffers.values() {
             if buffer.buffer_type == "first_moment" {
@@ -500,7 +509,7 @@ where
         }
 
         // Restore second moment buffers
-        for buffer in state_dict.parameter_buffers.values(){
+        for buffer in state_dict.parameter_buffers.values() {
             if buffer.buffer_type == "second_moment" {
                 let node_id = NodeId(buffer.node_id);
                 let restored_tensor = buffer.to_tensor::<T>()?;
@@ -527,13 +536,12 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod adam_tests {
-    use crate::backend::Tensor;
     use crate::backend::manager::best_f32_device;
+    use crate::backend::Tensor;
     use crate::graph::AutoFerroxEngine;
-    use crate::nn::optim::{Optimizer, adam::Adam};
+    use crate::nn::optim::{adam::Adam, Optimizer};
 
     #[test]
     fn test_adam_basic_step() {
@@ -550,9 +558,19 @@ mod adam_tests {
         let grad = Tensor::from_vec_with_device(vec![0.5f32], &[1], device).unwrap();
         engine.set_gradient(node, grad);
 
-        let before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let before = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
         optimizer.step(&mut engine).unwrap();
-        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let after = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
 
         // Parameter should decrease with positive gradient
         assert!(after < before);
@@ -563,7 +581,7 @@ mod adam_tests {
     fn test_adam_weight_decay() {
         let mut engine = AutoFerroxEngine::<f32>::new();
         let device = best_f32_device();
-        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1],device ).unwrap();
+        let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
         let node = engine.create_variable(param, true);
 
         // AdamW with weight decay
@@ -574,9 +592,19 @@ mod adam_tests {
         let grad = Tensor::zeros(&[1]).unwrap();
         engine.set_gradient(node, grad);
 
-        let before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let before = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
         optimizer.step(&mut engine).unwrap();
-        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let after = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
 
         // Weight decay should reduce parameter
         assert!(after < before);

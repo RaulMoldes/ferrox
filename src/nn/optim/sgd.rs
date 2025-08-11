@@ -6,7 +6,7 @@ use crate::graph::NodeId;
 use crate::nn::optim::{Optimizer, OptimizerError, OptimizerStateDict, ParameterGroup};
 use std::cell::RefCell;
 use std::collections::HashMap;
-
+use crate::FerroxN;
 /// Stochastic Gradient Descent optimizer with momentum and weight decay
 /// Uses proper L2 weight decay (not AdamW-style decoupled weight decay)
 pub struct SGD<T>
@@ -58,9 +58,7 @@ where
         for group in &self.param_groups {
             for &param_node in &group.params {
                 if let Some(grad) = engine.get_gradient(param_node) {
-                    let grad_squared = grad
-                        .mul(grad)
-                        .map_err(OptimizerError::TensorOperation)?;
+                    let grad_squared = grad.mul(grad).map_err(OptimizerError::TensorOperation)?;
 
                     let norm_contrib = grad_squared
                         .sum(None)
@@ -225,7 +223,7 @@ where
                     let effective_grad =
                         self.apply_weight_decay(group_weight_decay, grad, params)?;
 
-                    let updated_params = if group_momentum != FerroxF::zero() {
+                    let updated_params = if group_momentum != <T as FerroxF>::zero() {
                         self.compute_update(
                             group_momentum,
                             group_lr,
@@ -254,7 +252,7 @@ where
         }
     }
 
-    fn add_param(&mut self, param_group: usize,  param_node_id: NodeId) {
+    fn add_param(&mut self, param_group: usize, param_node_id: NodeId) {
         self.param_groups[param_group].params.insert(param_node_id);
     }
 
@@ -289,13 +287,13 @@ where
         // Save hyperparameters as f64 for serialization
         state_dict
             .hyperparameters
-            .insert("lr".to_string(), FerroxF::to_f64(self.lr));
+            .insert("lr".to_string(), <T as FerroxN>::to_f64(self.lr));
         state_dict
             .hyperparameters
-            .insert("momentum".to_string(), FerroxF::to_f64(self.momentum));
+            .insert("momentum".to_string(), <T as FerroxN>::to_f64(self.momentum));
         state_dict.hyperparameters.insert(
             "weight_decay".to_string(),
-            FerroxF::to_f64(self.weight_decay),
+            <T as FerroxN>::to_f64(self.weight_decay),
         );
         state_dict.hyperparameters.insert(
             "nesterov".to_string(),
@@ -310,7 +308,10 @@ where
         // Save momentum buffers for all parameters that have them
         let momentum_buffers = self.momentum_buffers.borrow();
         for (&node_id, tensor) in momentum_buffers.iter() {
-            if state_dict.add_buffer(node_id, tensor, "momentum".to_string()).is_err() {
+            if state_dict
+                .add_buffer(node_id, tensor, "momentum".to_string())
+                .is_err()
+            {
                 // Skip parameters that cannot be serialized
                 continue;
             }
@@ -336,17 +337,17 @@ where
 
         // Restore hyperparameters if they exist
         if let Some(&lr) = state_dict.hyperparameters.get("lr") {
-            if let Some(lr_val) = FerroxF::from_f64(lr) {
+            if let Some(lr_val) = <T as FerroxN>::from_f64(lr) {
                 self.lr = lr_val;
             }
         }
         if let Some(&momentum) = state_dict.hyperparameters.get("momentum") {
-            if let Some(momentum_val) = FerroxF::from_f64(momentum) {
+            if let Some(momentum_val) = <T as FerroxN>::from_f64(momentum) {
                 self.momentum = momentum_val;
             }
         }
         if let Some(&weight_decay) = state_dict.hyperparameters.get("weight_decay") {
-            if let Some(wd_val) = FerroxF::from_f64(weight_decay) {
+            if let Some(wd_val) = <T as FerroxN>::from_f64(weight_decay) {
                 self.weight_decay = wd_val;
             }
         }
@@ -360,8 +361,6 @@ where
             let group = ParameterGroup::from_serializable(serializable_group)?;
             self.param_groups.push(group);
         }
-
-
 
         // Restore momentum buffers for parameters that had them
         for buffer in state_dict.parameter_buffers.values() {
@@ -378,14 +377,13 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod sgd_tests {
 
     use crate::backend::manager::best_f32_device;
     use crate::backend::Tensor;
     use crate::graph::AutoFerroxEngine;
-    use crate::nn::optim::{Optimizer, sgd::SGD};
+    use crate::nn::optim::{sgd::SGD, Optimizer};
 
     #[test]
     fn test_sgd_basic_step() {
@@ -400,9 +398,19 @@ mod sgd_tests {
         let grad = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
         engine.set_gradient(node, grad);
 
-        let _before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let _before = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
         optimizer.step(&mut engine).unwrap();
-        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let after = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
 
         // Expected: param - lr * grad = 2.0 - 0.1 * 1.0 = 1.9
         assert!((after - 1.9).abs() < 1e-6);
@@ -410,7 +418,6 @@ mod sgd_tests {
 
     #[test]
     fn test_sgd_momentum() {
-
         let mut engine = AutoFerroxEngine::<f32>::new();
         let device = best_f32_device();
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
@@ -429,9 +436,19 @@ mod sgd_tests {
         // Second step - momentum kicks in
         engine.set_gradient(node, grad);
 
-        let before = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let before = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
         optimizer.step(&mut engine).unwrap();
-        let after = engine.get_tensor_data(node).unwrap().clone().first().unwrap();
+        let after = engine
+            .get_tensor_data(node)
+            .unwrap()
+            .clone()
+            .first()
+            .unwrap();
 
         let step_size = (before - after).abs();
 
