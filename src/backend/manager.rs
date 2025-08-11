@@ -17,7 +17,7 @@ use crate::backend::cuda::ops::CudaOps;
 use crate::backend::cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
 use crate::backend::storage::CUDAStorage;
-#[cfg(feature = "cuda")]
+
 
 
 pub struct BackendManager<T: FerroxCudaN> {

@@ -63,10 +63,19 @@ where
         // Sum operation distributes gradient equally to all reduced elements
         let input_shape = inputs[0].shape();
 
-        // Broadcast gradient back to input shape
-        grad_output.broadcast_to(input_shape)?;
+        let result = if grad_output.shape().is_empty(){
 
-        Ok(vec![grad_output])
+            let scalar = grad_output.first()?;
+            Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?
+        }
+        else
+        {
+            // Broadcast gradient back to input shape
+            grad_output.broadcast_to(input_shape)?;
+            grad_output
+        };
+
+        Ok(vec![result])
     }
 
     fn num_inputs(&self) -> usize {
@@ -162,9 +171,20 @@ where
 
         // Scale and broadcast gradient back to input shape
         let mut result = grad_output.mul_scalar(scale)?;
-        result.broadcast_to(input_shape)?;
 
-        Ok(vec![result])
+        let output = if result.shape().is_empty(){
+
+            let scalar = grad_output.first()?;
+            Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?
+        }
+        else
+        {
+            // Broadcast gradient back to input shape
+            result.broadcast_to(input_shape)?;
+            result
+        };
+
+        Ok(vec![output])
     }
 
     fn clone_op(&self) -> Box<dyn Operator<T>> {
@@ -253,11 +273,17 @@ where
         let mut broadcasted_max = inputs[0].max_reduce(self.axes.as_deref())?;
 
         // Broadcast max result back to input shape for comparison
-
-        broadcasted_max.broadcast_to(inputs[0].shape())?;
+        let out = if !broadcasted_max.shape().is_empty(){
+            broadcasted_max.broadcast_to(inputs[0].shape())?;
+            broadcasted_max
+        }else{
+            let item = broadcasted_max.first()?;
+            let device = inputs[0].device();
+            Tensor::full_with_device(inputs[0].shape(), device, item)?
+        };
 
         // Create mask where input == max (gets gradient of 1, others get 0)
-        let mask = inputs[0].equal(&broadcasted_max)?;
+        let mask = inputs[0].equal(&out)?;
 
         // Broadcast grad_output to input shape and apply mask
 
@@ -353,10 +379,18 @@ where
 
         // Broadcast min result back to input shape for comparison
 
-        broadcasted_min.broadcast_to(inputs[0].shape())?;
+        let out = if !broadcasted_min.shape().is_empty(){
+            broadcasted_min.broadcast_to(inputs[0].shape())?;
+            broadcasted_min
+        }else{
+            let item = broadcasted_min.first()?;
+            let device = inputs[0].device();
+            Tensor::full_with_device(inputs[0].shape(), device, item)?
+        };
+
 
         // Create mask where input == min (gets gradient of 1, others get 0)
-        let mask = inputs[0].equal(&broadcasted_min)?;
+        let mask = inputs[0].equal(&out)?;
 
         // Broadcast grad_output to input shape and apply mask
         grad_output.broadcast_to(inputs[0].shape())?;
