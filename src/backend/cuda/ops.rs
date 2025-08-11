@@ -214,11 +214,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
         }else {
             bin
         };
-        with_cuda_context(|ctx| {
-            println!("Original tensor: {:?}", a.clone().to_vec(ctx));
-            println!("Bias: {:?}", b.clone().to_vec(ctx));
-            Ok(())
-        })?;
+      
 
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());

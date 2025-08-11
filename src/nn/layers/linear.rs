@@ -28,6 +28,7 @@ where
     pub out_features: usize,
     /// Training mode flag
     training: bool,
+    parameter_maps: std::cell::RefCell<Option<std::collections::HashMap<String, NodeId>>>,
 }
 
 impl<T> Linear<T>
@@ -69,6 +70,7 @@ where
             in_features,
             out_features,
             training: true,
+            parameter_maps: std::cell::RefCell::new(None),
         }
     }
 
@@ -112,6 +114,7 @@ where
             in_features,
             out_features,
             training: true,
+             parameter_maps: std::cell::RefCell::new(None),
         })
     }
 
@@ -129,12 +132,51 @@ where
     pub fn has_bias(&self) -> bool {
         self.bias.is_some()
     }
+
+       // Helper method to get parameter node IDs (cached from create_parameters_in_graph)
+    fn get_parameter_node(&self, param_name: &str) -> Result<NodeId, String> {
+        let nodes_ref = self.parameter_maps.borrow();
+        match nodes_ref.as_ref() {
+            Some(node_map) => {
+                node_map.get(param_name)
+                    .copied()
+                    .ok_or_else(|| format!("Parameter '{}' not found in node mapping", param_name))
+            }
+            None => {
+                Err("Parameters not yet created in graph. Call create_parameters_in_graph() first.".to_string())
+            }
+        }
+    }
 }
 
 impl<T> Module<T> for Linear<T>
 where
     T: FerroxCudaF + rand_distr::num_traits::FromPrimitive,
 {
+
+
+    fn create_parameters_in_graph(
+        &self,
+        engine: &mut AutoFerroxEngine<T>,
+    ) -> std::collections::HashMap<String, NodeId> {
+        let mut param_map = std::collections::HashMap::new();
+        println!("Initializing parameters in graph!");
+        // Create weight node
+        let weight_node = engine.create_variable(self.weight.data.clone(), self.weight.requires_grad);
+        param_map.insert("weight".to_string(), weight_node);
+
+        // Create bias node if present
+        if let Some(ref bias_param) = self.bias {
+            let bias_node = engine.create_variable(bias_param.data.clone(), bias_param.requires_grad);
+            param_map.insert("bias".to_string(), bias_node);
+        }
+
+        // Store the node mappings for use in forward()
+        *self.parameter_maps.borrow_mut() = Some(param_map.clone());
+
+        param_map
+    }
+
     /// Forward pass: y = x @ W^T + b
     /// Input shape: [batch_size, in_features] or [in_features]
     /// Output shape: [batch_size, out_features] or [out_features]
@@ -174,8 +216,8 @@ where
         }
 
         // Create weight node in computational graph
-        let weight_node =
-            graph.create_variable(self.weight.data.clone(), self.weight.requires_grad);
+
+        let weight_node = self.get_parameter_node("weight")?;
 
         // Apply linear transformation: input @ weight^T
         // Since our weight is stored as [out_features, in_features], we need to transpose it
@@ -206,8 +248,7 @@ where
             let bias_shape = bias_param.data.shape();
 
             // Create bias node in computational graph
-            let bias_node =
-                graph.create_variable(bias_param.data.clone(), bias_param.requires_grad);
+            let bias_node = self.get_parameter_node("bias")?;
 
 
 

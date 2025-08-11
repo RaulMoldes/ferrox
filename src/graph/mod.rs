@@ -454,9 +454,9 @@ where
 
         // Inicializar gradiente de pérdida
         let loss_tensor = self.get_tensor(loss_id).ok_or("Loss node not found")?;
-        println!("Loss {:?}", loss_tensor.clone().into_data()?.as_slice().unwrap());
+
         let ones_grad = Tensor::ones_with_device(loss_tensor.shape(), loss_tensor.device)?;
-        println!("Ones grad {:?}", ones_grad.clone().into_data()?.as_slice().unwrap());
+
         self.gradients.insert(loss_id, ones_grad);
 
         // Ordenamiento topológico y propagación
@@ -465,7 +465,7 @@ where
         self.topological_sort(loss_id, &mut visited, &mut topo_order)?;
 
         topo_order.reverse();
-        println!("Topo order reversed: {:?}", topo_order);
+
         // Propagar gradientes
         for &node_id in &topo_order {
             self.backward_node(node_id)?;
@@ -476,15 +476,12 @@ where
 
     /// Backward para un solo nodo
     fn backward_node(&mut self, node_id: NodeId) -> Result<(), String> {
-
-        println!("Backwarding node id {}", node_id);
         // Take ownership of the gradient data
         let grad_output = match self.gradients.remove(&node_id) {
             Some(grad) => grad,
             None => return Ok(()),
         };
 
-        println!("Grad output: {:?}", grad_output.clone().into_data().unwrap().as_slice().unwrap());
 
         // Obtain node information.
         let node = self
@@ -509,14 +506,7 @@ where
 
                 // Compute input gradients.
                 let input_grads = match op {
-                    Some(o) => {
-                        let grad = o.gradient(grad_output, &mut input_tensors, &tensor)?;
-                        println!("{}", o.as_ref().clone().name());
-                        for g in grad.iter() {
-                        println!("Grad : {:?}", g.clone().into_data().unwrap().as_slice().unwrap());
-                        }
-                        grad
-                    },
+                    Some(o) => o.gradient(grad_output, &mut input_tensors, &tensor)?,
                     None => {
                         panic!(
                             "Cannot compute gradient. Operation not defined for node: {}",
