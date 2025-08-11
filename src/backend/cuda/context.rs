@@ -306,7 +306,7 @@ where
     }
 
       // Take ownership of the slice (consuming method)
-    fn take_data(&mut self) -> CudaSlice<T> {
+    pub fn take_data(&mut self) -> CudaSlice<T> {
         self.data.take().expect("CudaTensor data was already consumed")
     }
 
@@ -386,7 +386,7 @@ where
     /// Get tensor data as vector
     pub fn to_vec(self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
         let slice = self.data();
-        let mut full_data = context_manager.device_to_host(&slice)?;
+        let mut full_data = context_manager.device_to_host(slice)?;
         let expected_size = self.size(); // This is shape.iter().product()
         if full_data.len() > expected_size {
             // Memory pool returned larger slice - truncate to logical size
@@ -714,7 +714,7 @@ where
         // Create new CudaTensor with independent allocation_id
         Self {
             data: Some(slice),
-            allocation_id: id, 
+            allocation_id: id,
             shape: self.shape.clone(),
             strides: self.strides.clone(),
         }

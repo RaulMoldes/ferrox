@@ -4,7 +4,6 @@
 
 use crate::backend::number::FerroxCudaF;
 use crate::backend::{Device, Tensor};
-use crate::backend::manager::best_device;
 use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
@@ -34,12 +33,12 @@ where
 
 impl<T> Linear<T>
 where
-    T: FerroxCudaF + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF,
 {
     /// Create a new linear layer with specified input and output features
     /// Initializes weights with Xavier uniform distribution and bias with zeros
-    pub fn new(in_features: usize, out_features: usize, bias: bool) -> Self {
-        Self::new_with_device(in_features, out_features, bias, best_device::<T>())
+    pub fn new(in_features: usize, out_features: usize, bias: bool, device: Device) -> Self {
+        Self::new_with_device(in_features, out_features, bias, device)
     }
 
     /// Create a new linear layer with specified device

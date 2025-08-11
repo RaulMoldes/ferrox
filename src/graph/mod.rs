@@ -454,7 +454,9 @@ where
 
         // Inicializar gradiente de pérdida
         let loss_tensor = self.get_tensor(loss_id).ok_or("Loss node not found")?;
-        let ones_grad = Tensor::ones(loss_tensor.shape())?;
+
+        let ones_grad = Tensor::ones_with_device(loss_tensor.shape(), loss_tensor.device)?;
+
         self.gradients.insert(loss_id, ones_grad);
 
         // Ordenamiento topológico y propagación

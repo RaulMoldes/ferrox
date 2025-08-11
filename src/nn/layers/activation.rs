@@ -7,7 +7,6 @@ use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
 use crate::ops::{ReLU as ReLUOp, Sigmoid as SigmoidOp, Tanh as TanhOp};
-use std::collections::HashMap;
 
 /// ReLU activation layer: f(x) = max(0, x)
 /// Most commonly used activation function in deep networks

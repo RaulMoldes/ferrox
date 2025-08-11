@@ -936,7 +936,7 @@ where
 
         // Perform matrix multiplication using ndarray's dot product
         let result = a.dot(&b);
-        println!("Result = {result}");
+       
         Ok(Box::new(CPUStorage::new(result.into_dyn())))
     }
 

@@ -12,6 +12,9 @@ use std::fs::{read, write};
 pub mod adam;
 pub mod sgd;
 
+pub use adam::Adam;
+pub use sgd::SGD;
+
 /// Error types for optimizer operations
 #[derive(Debug)]
 pub enum OptimizerError {
@@ -332,7 +335,7 @@ where
     fn reset_grad(&mut self, engine: &mut AutoFerroxEngine<T>);
 
     /// Add a single parameter to be optimized
-    fn add_param(&mut self, param_id: usize, param_node_id: NodeId);
+    fn add_param(&mut self, param_group: usize, param_node_id: NodeId);
 
     /// Add parameter group with custom settings
     fn add_param_group(&mut self, group: ParameterGroup<T>) -> Result<(), OptimizerError>;
@@ -400,7 +403,7 @@ where
 
 #[cfg(test)]
 mod serialization_tests {
-    
+
     use crate::backend::Tensor;
     use crate::graph::AutoFerroxEngine;
     use crate::backend::manager::best_f32_device;
