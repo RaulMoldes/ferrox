@@ -22,7 +22,7 @@ where
     T: FerroxCudaF,
 {
     pub device: Device,
-    storage: Option<Box<dyn StorageBackend<T>>>,
+    pub storage: Option<Box<dyn StorageBackend<T>>>,
 }
 
 impl<T> Clone for Tensor<T>

@@ -341,7 +341,6 @@ impl<T: FerroxCudaN> BackendManager<T> {
 static BACKEND_F32: OnceLock<BackendManager<f32>> = OnceLock::new();
 static BACKEND_F64: OnceLock<BackendManager<f64>> = OnceLock::new();
 
-
 #[allow(clippy::redundant_closure)]
 pub fn get_f32_backend() -> &'static BackendManager<f32> {
     BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())

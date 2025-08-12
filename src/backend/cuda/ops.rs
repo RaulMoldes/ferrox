@@ -1213,49 +1213,58 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
-
-    pub fn partition_tensor(
-    &self,
-    input_in: &CudaTensor<T>,
-    partition_dim: usize,
-    start_index: i32,
-    end_index: i32
-) -> Result<CudaTensor<T>, String> {
-    let input =  if input_in.needs_materialization() {
-        &self.materialize(input_in)?
-    } else {
-        input_in
-    };
-
-    // Obtener tamaño del slice en la dimensión a particionar
-    let slice_size = (end_index - start_index) as usize;
-
-    // Obtener shape original y construir el nuevo shape del tensor resultado
-    let mut new_shape = input.shape().to_vec();
-    new_shape[partition_dim] = slice_size;
-
-    // Crear tensor resultado con el nuevo shape
-    let mut result = self.create_tensor_from_pool(&new_shape)?;
-
-    // Total elementos a copiar depende del nuevo shape (puedes obtenerlo con .len())
-    let size = result.size();
-
-    // Configuración de lanzamiento para kernel CUDA
-    let cfg = self.get_launch_config(size);
-
-    // Lanzar kernel para copiar datos desde input a result
-    // Nota: deberás adaptar el kernel para que entienda la dimensión de partición y haga la copia correcta
-    self.kernels.launch_partition(
-        cfg,
-        input.data(),
-        result.data_mut(),
-        start_index,
-        end_index
-    )?;
-
-    Ok(result)
+   pub fn debug_cuda_tensor(&self, tensor: &CudaTensor<T>, name: &str) -> Result<(), String> {
+    with_cuda_context(|ctx| {
+        let data = tensor.clone().to_vec(ctx)?;
+        println!("{}: {:?}", name, data);
+        Ok(())
+    })?;
+    Ok(())
 }
 
+
+    pub fn partition_tensor(
+        &self,
+        input_in: &CudaTensor<T>,
+        partition_dim: usize,
+        start_index: i32,
+        end_index: i32,
+    ) -> Result<CudaTensor<T>, String> {
+        let input = if input_in.needs_materialization() {
+            println!("MATERIALIZING TENSOR");
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        // Obtener tamaño del slice en la dimensión a particionar
+        let slice_size = (end_index - start_index) as usize;
+
+        // Obtener shape original y construir el nuevo shape del tensor resultado
+        let mut new_shape = input.shape().to_vec();
+        new_shape[partition_dim] = slice_size;
+
+        // Crear tensor resultado con el nuevo shape
+        let mut result = self.create_tensor_from_pool(&new_shape)?;
+
+        // Total elementos a copiar depende del nuevo shape (puedes obtenerlo con .len())
+        let size = result.size();
+
+        // Configuración de lanzamiento para kernel CUDA
+        let cfg = self.get_launch_config(size);
+
+        // Lanzar kernel para copiar datos desde input a result
+        // Nota: deberás adaptar el kernel para que entienda la dimensión de partición y haga la copia correcta
+        self.kernels.launch_partition(
+            cfg,
+            input.data(),
+            result.data_mut(),
+            start_index,
+            end_index,
+        )?;
+
+        Ok(result)
+    }
 
     /// IN - PLACE OPS (THIS DO NOT HAVE AN ASSOCIATED KERNEL SO DO NOT ATTEMPT TO SEARCH FOR IT)
     pub fn squeeze(&self, input: &mut CudaTensor<T>, axis: Option<usize>) -> Result<(), String> {

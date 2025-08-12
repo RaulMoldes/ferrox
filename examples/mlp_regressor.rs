@@ -3,7 +3,7 @@
 // Demonstrates the neural network library capabilities for regression tasks
 
 use ferrox::backend::manager::best_f32_device;
-use ferrox::backend::{ Device, FerroxCudaF, Tensor};
+use ferrox::backend::{Device, FerroxCudaF, Tensor};
 use ferrox::graph::{AutoFerroxEngine, NodeId};
 use ferrox::nn::{
     layers::{Linear, ReLU},
@@ -383,7 +383,6 @@ where
     Ok(())
 }
 
-
 fn train<T, M, L>(
     model: &mut M,
     loss_fn: &L,
@@ -459,7 +458,6 @@ where
     Ok(graph)
 }
 
-
 fn eval<T, M>(
     model: &mut M,
     graph: &mut AutoFerroxEngine<T>,
@@ -470,8 +468,6 @@ where
     T: FerroxCudaF,
     M: Module<T>,
 {
-
-
     // Switch model to evaluation mode (disables dropout, batch norm updates, etc.)
     model.eval();
 

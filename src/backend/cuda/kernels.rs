@@ -146,11 +146,11 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         ptx: MATERIALIZE_PTX,
         module: "materialize_module",
         functions: &[
-        "materialize",
-        "materialize_f64",
-        "partition",
-        "partition_f64"
-         ],
+            "materialize",
+            "materialize_f64",
+            "partition",
+            "partition_f64",
+        ],
     },
     KernelConfig {
         name: "comparison",
@@ -759,9 +759,9 @@ impl KernelManager {
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
-        start_index: i32,                // Number of dimensions
-        end_index: i32,      // Total output elements
-    )-> Result<(), String>
+        start_index: i32, // Number of dimensions
+        end_index: i32,   // Total output elements
+    ) -> Result<(), String>
     where
         T: FerroxCudaN + 'static,
     {
@@ -770,8 +770,8 @@ impl KernelManager {
             self,
             &kernel_name,
             cfg,
-            input,           // const T* input
-            output,          // T* output
+            input,  // const T* input
+            output, // T* output
             &start_index,
             &end_index
         )

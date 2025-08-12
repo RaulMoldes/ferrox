@@ -897,6 +897,91 @@ where
         Err("Cannot index over a tensor in cuda. Move to cpu first.".to_string())
     }
 
+
+
+     fn partition(&self, partition_dim: usize, start_index: i32, end_index: i32) -> Result<Box<dyn StorageBackend<T>>, String> {
+    // Validate partition dimension bounds - prevents CUDA kernel crashes
+    if partition_dim >= self.ndim() {
+        return Err(format!(
+            "Partition dimension {} is out of bounds for tensor with {} dimensions",
+            partition_dim, self.ndim()
+        ));
+    }
+
+    // Input validation - same logic as CPU version for consistency
+    if start_index < 0 {
+        return Err("Start index cannot be negative".to_string());
+    }
+
+    if end_index <= start_index {
+        return Err("End index must be greater than start index".to_string());
+    }
+
+    let input_shape = self.shape();
+    let dim_size = input_shape[partition_dim];
+    if end_index as usize > dim_size {
+        return Err(format!(
+            "End index {} exceeds dimension {} size {}",
+            end_index, partition_dim, dim_size
+        ));
+    }
+
+    // Use with_cuda_ops pattern like all other CUDA operations
+    let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+        // Check if partition dimension is already the last (most internal) dimension
+        let is_last_dim = partition_dim == (input_shape.len() - 1);
+
+        if is_last_dim {
+            // Direct partition - dimension is already internal
+            println!("Direct partition on last dimension");
+            ops.partition_tensor(&self.cuda_data, partition_dim, start_index, end_index)
+        } else {
+            // Use transpose + partition + transpose strategy
+            println!("Using transpose + partition + transpose for dimension {}", partition_dim);
+
+            // Step 1: Create transpose permutation to move partition_dim to last position
+            let ndim = input_shape.len();
+            let mut transpose_axes: Vec<usize> = (0..ndim).collect();
+
+            // Move partition_dim to the end
+            transpose_axes.remove(partition_dim);
+            transpose_axes.push(partition_dim);
+
+            println!("Transpose axes: {:?}", transpose_axes);
+
+            // Step 2: Clone and transpose to make partition_dim the last dimension
+            let mut temp_tensor = self.cuda_data.clone();
+            ops.transpose(&mut temp_tensor, Some(&transpose_axes))?;
+
+            println!("After transpose, shape: {:?}", temp_tensor.shape());
+
+            // Step 3: Partition along the last dimension (which is now our target dimension)
+            let last_dim_index = ndim - 1;
+            let mut partitioned_tensor = ops.partition_tensor(&temp_tensor, last_dim_index, start_index, end_index)?;
+
+            println!("After partition, shape: {:?}", partitioned_tensor.shape());
+
+            // Step 4: Create inverse transpose to restore original dimension order
+            // FIXED: Correct inverse transpose calculation
+            let mut inverse_axes = vec![0; ndim];
+            for (new_pos, &old_pos) in transpose_axes.iter().enumerate() {
+                inverse_axes[old_pos] = new_pos;
+            }
+
+            println!("Inverse transpose axes: {:?}", inverse_axes);
+
+            // Step 5: Apply inverse transpose to restore dimension order
+            ops.transpose(&mut partitioned_tensor, Some(&inverse_axes))?;
+
+            println!("Final result shape: {:?}", partitioned_tensor.shape());
+
+            Ok(partitioned_tensor)
+        }
+    })?;
+
+    Ok(Box::new(CUDAStorage::new(result_cuda)))
+}
+
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Executes custom operation through CUDA ops interface
         with_cuda_ops(|cuda_ops: &CudaOps<T>| op.execute_cuda(cuda_ops, &self.cuda_data))
