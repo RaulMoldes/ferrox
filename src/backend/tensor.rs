@@ -123,6 +123,7 @@ where
         let backend = get_backend::<T>();
         if let Some(storage) = self.storage {
             let (new_device, new_storage) = backend.move_storage(storage, target_device)?;
+            println!("NEW_DEVICE {}", new_device);
             Self::from_storage_backend(new_storage, new_device)
         } else {
             Err("Empty tensor cannot be moved".to_string())
@@ -1317,6 +1318,290 @@ where
     }
 }
 
+
+
+
+
+impl<T> Tensor<T>
+where
+    T: FerroxCudaF + Clone,
+{
+    /// Partitions tensor along specified dimension into equal-sized micro-tensors
+    /// All operations performed on CPU - CUDA tensors automatically moved
+    ///
+    /// # Arguments
+    /// * `axis` - Dimension to partition along (0-indexed)
+    /// * `num_partitions` - Number of micro-tensors to create
+    ///
+    /// # Returns
+    /// Vector of micro-tensors, each containing a slice of the original tensor
+    ///
+    pub fn partition(&self, axis: usize, num_partitions: usize) -> Result<Vec<Self>, String>{
+        self.clone().into_partitions(axis, num_partitions)
+    }
+
+    pub fn batch(&self, batch_size: usize, drop_last: bool) -> Result<Vec<Self>, String>{
+        self.clone().into_batches(batch_size, drop_last)
+    }
+
+    pub fn into_partitions(self, axis: usize, num_partitions: usize) -> Result<Vec<Self>, String> {
+        if num_partitions == 0 {
+            return Err("Number of partitions must be greater than 0".to_string());
+        }
+
+        if axis >= self.ndim() {
+            return Err(format!(
+                "Partition axis {} out of bounds for tensor with {} dimensions",
+                axis, self.ndim()
+            ));
+        }
+
+        let axis_size = self.shape()[axis];
+        if axis_size < num_partitions {
+            return Err(format!(
+                "Cannot partition axis of size {} into {} partitions",
+                axis_size, num_partitions
+            ));
+        }
+
+        // Move to CPU if on CUDA - required for partitioning operations
+        let cpu_tensor = if self.device() != Device::CPU {
+             println!("Moving to cpu");
+            self.to_device(Device::CPU)?
+
+        } else {
+            self
+        };
+
+        let partition_size = axis_size / num_partitions;
+        let remainder = axis_size % num_partitions;
+
+        let mut result = Vec::with_capacity(num_partitions);
+        let mut current_start = 0;
+
+        // Create partitions - distribute remainder across first partitions
+        for i in 0..num_partitions {
+            let current_size = if i < remainder {
+                partition_size + 1  // First 'remainder' partitions get extra element
+            } else {
+                partition_size
+            };
+
+            let current_end = current_start + current_size;
+
+            // Create slice indices for this partition
+            let micro_tensor = cpu_tensor.slice_axis(axis, current_start, current_end)?;
+            result.push(micro_tensor);
+
+            current_start = current_end;
+        }
+
+        Ok(result)
+    }
+
+    /// Creates batches from tensor by grouping along first dimension
+    /// Tensor moved to CPU if on CUDA before batching
+    ///
+    /// # Arguments
+    /// * `batch_size` - Size of each batch
+    /// * `drop_last` - Whether to drop incomplete final batch
+    ///
+    /// # Returns
+    /// Vector of batch tensors, each with shape [batch_size, ...original_shape[1:]]
+    pub fn into_batches(self, batch_size: usize, drop_last: bool) -> Result<Vec<Self>, String> {
+        if batch_size == 0 {
+            return Err("Batch size must be greater than 0".to_string());
+        }
+
+        if self.ndim() == 0 {
+            return Err("Cannot batch scalar tensor".to_string());
+        }
+
+        // Move to CPU if on CUDA - required for batching operations
+        let cpu_tensor = if self.device() != Device::CPU {
+            self.to_device(Device::CPU)?
+        } else {
+            self
+        };
+
+        let total_samples = cpu_tensor.shape()[0];
+        let num_complete_batches = total_samples / batch_size;
+        let has_partial_batch = total_samples % batch_size != 0;
+
+        let num_batches = if drop_last || !has_partial_batch {
+            num_complete_batches
+        } else {
+            num_complete_batches + 1
+        };
+
+        let mut batches = Vec::with_capacity(num_batches);
+
+        // Create complete batches
+        for i in 0..num_complete_batches {
+            let start_idx = i * batch_size;
+            let end_idx = start_idx + batch_size;
+
+            let batch = cpu_tensor.slice_axis(0, start_idx, end_idx)?;
+            batches.push(batch);
+        }
+
+        // Handle partial batch if not dropping
+        if !drop_last && has_partial_batch {
+            let start_idx = num_complete_batches * batch_size;
+            let batch = cpu_tensor.slice_axis(0, start_idx, total_samples)?;
+            batches.push(batch);
+        }
+
+        Ok(batches)
+    }
+
+    /// Helper method to slice tensor along specified axis
+    /// Creates new tensor containing elements from start_idx to end_idx (exclusive)
+    /// Implements core slicing logic used by partition and batch operations
+    fn slice_axis(&self, axis: usize, start_idx: usize, end_idx: usize) -> Result<Self, String> {
+        if axis >= self.ndim() {
+            return Err(format!(
+                "Slice axis {} out of bounds for tensor with {} dimensions",
+                axis, self.ndim()
+            ));
+        }
+
+        if start_idx >= end_idx {
+            return Err("Start index must be less than end index".to_string());
+        }
+
+        if end_idx > self.shape()[axis] {
+            return Err(format!(
+                "End index {} exceeds axis size {}",
+                end_idx, self.shape()[axis]
+            ));
+        }
+
+        // Must work on CPU data - CUDA tensors should be moved to CPU first
+        let cpu_data = self.cpu_data()?;
+
+        // Calculate new shape - slice dimension reduced
+        let mut new_shape = self.shape().to_vec();
+        new_shape[axis] = end_idx - start_idx;
+
+        // Create indices for slicing using ndarray's slice functionality
+        let mut slice_indices = vec![ndarray::Slice::from(..)]; // Full slices for all dims
+        slice_indices.resize(self.ndim(), ndarray::Slice::from(..));
+        slice_indices[axis] = ndarray::Slice::from(start_idx..end_idx);
+
+        // Apply slice operation using ndarray
+        let sliced_data = cpu_data.slice_each_axis(|ax| slice_indices[ax.axis.index()]);
+
+        // Convert back to owned array and create new tensor
+        let owned_slice = sliced_data.to_owned();
+        Ok(Self::new(owned_slice))
+    }
+
+    /// Partitions tensor into chunks of specified size along given axis
+    /// Last chunk may be smaller if tensor size not evenly divisible
+    ///
+    /// # Arguments
+    /// * `axis` - Dimension to chunk along
+    /// * `chunk_size` - Maximum size of each chunk
+    ///
+    /// # Returns
+    /// Vector of tensor chunks
+    pub fn chunk(&self, axis: usize, chunk_size: usize) -> Result<Vec<Self>, String> {
+        if chunk_size == 0 {
+            return Err("Chunk size must be greater than 0".to_string());
+        }
+
+        if axis >= self.ndim() {
+            return Err(format!(
+                "Chunk axis {} out of bounds for tensor with {} dimensions",
+                axis, self.ndim()
+            ));
+        }
+
+        let axis_size = self.shape()[axis];
+        let num_chunks = axis_size.div_ceil(chunk_size); // Ceiling division
+
+        // Move to CPU if on CUDA
+        let cpu_tensor = if self.device() != Device::CPU {
+            self.clone().to_cpu()?
+        } else {
+            self.clone()
+        };
+
+        let mut chunks = Vec::with_capacity(num_chunks);
+
+        for i in 0..num_chunks {
+            let start_idx = i * chunk_size;
+            let end_idx = std::cmp::min(start_idx + chunk_size, axis_size);
+
+            let chunk = cpu_tensor.slice_axis(axis, start_idx, end_idx)?;
+            chunks.push(chunk);
+        }
+
+        Ok(chunks)
+    }
+
+    /// Stacks multiple tensors along new dimension to create batched tensor
+    /// All input tensors must have same shape and be on CPU
+    ///
+    /// # Arguments
+    /// * `tensors` - Vector of tensors to stack (all must have same shape)
+    /// * `axis` - Axis along which to stack (new dimension)
+    ///
+    /// # Returns
+    /// New tensor with stacked data
+    /// NOTE: THIS FUNCTION CHANGES THE SHAPE OF THE ORIGINAL TENSOR. BE CAREFUL WHEN USIING IT ESPECIALLY IF YOU WANT TO KEEP THE ORIGINAL SHAPE. A CALL TO RESHAPE() IS REQUIRED AFTER THIS.
+    pub fn stack(tensors: &[Self], axis: usize) -> Result<Self, String> {
+        if tensors.is_empty() {
+            return Err("Cannot stack empty tensor list".to_string());
+        }
+
+        // Validate all tensors have same shape and convert to CPU if needed
+        let first_shape = tensors[0].shape();
+        let mut cpu_tensors = Vec::with_capacity(tensors.len());
+
+        for tensor in tensors {
+            if tensor.shape() != first_shape {
+                return Err(format!(
+                    "All tensors must have same shape for stacking. Expected {:?}, got {:?}",
+                    first_shape, tensor.shape()
+                ));
+            }
+
+            // Move to CPU if needed
+            let cpu_tensor = if tensor.device() != Device::CPU {
+                tensor.clone().to_cpu()?
+            } else {
+                tensor.clone()
+            };
+            cpu_tensors.push(cpu_tensor);
+        }
+
+        if axis > first_shape.len() {
+            return Err(format!(
+                "Stack axis {} out of bounds. Maximum allowed: {}",
+                axis, first_shape.len()
+            ));
+        }
+
+        // Create new shape with additional dimension at specified axis
+        let mut new_shape = first_shape.to_vec();
+        new_shape.insert(axis, tensors.len());
+
+        // Extract CPU data from all tensors
+        let mut cpu_arrays = Vec::with_capacity(tensors.len());
+        for tensor in &cpu_tensors {
+            cpu_arrays.push(tensor.cpu_data()?.view());
+        }
+
+        // Stack arrays using ndarray
+        let stacked = ndarray::stack(ndarray::Axis(axis), &cpu_arrays)
+            .map_err(|e| format!("Failed to stack tensors: {}", e))?;
+
+        Ok(Self::new(stacked))
+    }
+}
+
 /// ITERATOR METHODS
 pub struct TensorIterator<T> {
     values: Vec<T>,
@@ -1906,4 +2191,221 @@ mod tensor_ops_tests {
         assert_eq!(slice[0], 2.0);
         assert_eq!(slice[1], 3.0);
     }
+
+   /// Helper to create test tensor with sequential data for easy verification
+    fn create_test_tensor(data: Vec<f32>, shape: &[usize]) -> Tensor<f32> {
+        let device = best_device::<f32>();
+        Tensor::from_vec_with_device(data, shape, device).unwrap()
+    }
+
+    /// Helper to assert two tensors are approximately equal
+    fn assert_tensor_equal(a: &Tensor<f32>, b: &Tensor<f32>, tolerance: f32) {
+
+
+        let a_data = a.clone().into_data().unwrap();
+        let b_data = b.clone().into_data().unwrap();
+
+        for (a_val, b_val) in a_data.iter().zip(b_data.iter()) {
+            assert!(
+                (a_val - b_val).abs() < tolerance,
+                "Values differ: {} vs {} (tolerance: {})", a_val, b_val, tolerance
+            );
+        }
+    }
+
+    #[test]
+    fn test_partition_1d_tensor() {
+        // Create 1D tensor with 8 elements [0, 1, 2, 3, 4, 5, 6, 7]
+        let tensor = create_test_tensor((0..8).map(|x| x as f32).collect(), &[8]);
+
+        // Partition into 4 parts along axis 0
+        let partitions = tensor.into_partitions(0, 4).unwrap();
+
+        assert_eq!(partitions.len(), 4, "Should create 4 partitions");
+
+        // Each partition should have 2 elements
+        for (i, partition) in partitions.iter().enumerate() {
+            assert_eq!(partition.shape(), &[2], "Each partition should have shape [2]");
+
+            let data = partition.clone().into_data().unwrap();
+            assert_eq!(data[0] as usize, i * 2, "First element should be {}", i * 2);
+            assert_eq!(data[1] as usize, i * 2 + 1, "Second element should be {}", i * 2 + 1);
+        }
+    }
+
+
+
+    #[test]
+    fn test_partition_uneven_distribution() {
+        // Create tensor with 10 elements, partition into 3 parts
+        let tensor = create_test_tensor((0..10).map(|x| x as f32).collect(), &[10]);
+
+        let partitions = tensor.into_partitions(0, 3).unwrap();
+
+        assert_eq!(partitions.len(), 3, "Should create 3 partitions");
+
+        // First partition gets remainder: 4 elements (10/3 = 3 remainder 1)
+        assert_eq!(partitions[0].shape(), &[4], "First partition should have 4 elements");
+        assert_eq!(partitions[1].shape(), &[3], "Second partition should have 3 elements");
+        assert_eq!(partitions[2].shape(), &[3], "Third partition should have 3 elements");
+
+        // Verify data distribution
+        let p0_data = partitions[0].clone().into_data().unwrap();
+        let p1_data = partitions[1].clone().into_data().unwrap();
+        let p2_data = partitions[2].clone().into_data().unwrap();
+
+        assert_eq!(p0_data.as_slice().unwrap(), &[0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(p1_data.as_slice().unwrap(), &[4.0, 5.0, 6.0]);
+        assert_eq!(p2_data.as_slice().unwrap(), &[7.0, 8.0, 9.0]);
+    }
+
+    #[test]
+    fn test_batch_operation() {
+        // Create tensor with 10 samples
+        let tensor = create_test_tensor((0..10).map(|x| x as f32).collect(), &[10]);
+
+        // Create batches of size 3, keep incomplete batches
+        let batches = tensor.into_batches(3, false).unwrap();
+
+        assert_eq!(batches.len(), 4, "Should create 4 batches");
+
+        // First 3 batches should have size 3
+
+        assert_eq!(batches[0].shape(), &[3], "Batch {} should have shape [3]", 0);
+        assert_eq!(batches[1].shape(), &[3], "Batch {} should have shape [3]", 1);
+        assert_eq!(batches[2].shape(), &[3], "Batch {} should have shape [3]", 2);
+        // Last batch should have size 1 (remainder)
+        assert_eq!(batches[3].shape(), &[1], "Last batch should have shape [1]");
+
+        // Verify batch data
+        let batch0_data = batches[0].clone().into_data().unwrap();
+        let batch3_data = batches[3].clone().into_data().unwrap();
+
+        assert_eq!(batch0_data.as_slice().unwrap(), &[0.0, 1.0, 2.0]);
+        assert_eq!(batch3_data.as_slice().unwrap(), &[9.0]);
+    }
+
+    #[test]
+    fn test_batch_drop_last() {
+        // Create tensor with 10 samples
+        let tensor = create_test_tensor((0..10).map(|x| x as f32).collect(), &[10]);
+
+        // Create batches of size 3, drop incomplete batches
+        let batches = tensor.into_batches(3, true).unwrap();
+
+        assert_eq!(batches.len(), 3, "Should create only 3 complete batches");
+
+        // All batches should have size 3
+        for (i, batch) in batches.iter().enumerate() {
+            assert_eq!(batch.shape(), &[3], "Batch {} should have shape [3]", i);
+        }
+
+        // Verify no partial batch is included
+        let last_batch_data = batches[2].clone().into_data().unwrap();
+        assert_eq!(last_batch_data.as_slice().unwrap(), &[6.0, 7.0, 8.0]);
+    }
+
+    #[test]
+    fn test_batch_2d_tensor() {
+        // Create 2D tensor representing 6 samples with 4 features each
+        let tensor = create_test_tensor((0..24).map(|x| x as f32).collect(), &[6, 4]);
+
+        // Create batches of size 2
+        let batches = tensor.into_batches(2, false).unwrap();
+
+        assert_eq!(batches.len(), 3, "Should create 3 batches");
+
+        // Each batch should have shape [2, 4]
+        for batch in &batches {
+            assert_eq!(batch.shape(), &[2, 4], "Each batch should have shape [2, 4]");
+        }
+
+        // Verify first batch contains samples 0 and 1
+        let first_batch_data = batches[0].clone().into_data().unwrap();
+        let expected_first_batch = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        assert_eq!(first_batch_data.as_slice().unwrap(), &expected_first_batch[..]);
+    }
+
+    #[test]
+    fn test_chunk_operation() {
+        // Create tensor with 10 elements
+        let tensor = create_test_tensor((0..10).map(|x| x as f32).collect(), &[10]);
+
+        // Chunk into pieces of size 3
+        let chunks = tensor.chunk(0, 3).unwrap();
+
+        assert_eq!(chunks.len(), 4, "Should create 4 chunks");
+
+        // First 3 chunks should have size 3
+
+        assert_eq!(chunks[0].shape(), &[3], "Chunk {} should have shape [3]", 0);
+        assert_eq!(chunks[1].shape(), &[3], "Chunk {} should have shape [3]", 1);
+        assert_eq!(chunks[2].shape(), &[3], "Chunk {} should have shape [3]", 2);
+        // Last chunk should have size 1 (remainder)
+        assert_eq!(chunks[3].shape(), &[1], "Last chunk should have shape [1]");
+
+        // Verify chunk data
+        let chunk0_data = chunks[0].clone().into_data().unwrap();
+        let chunk3_data = chunks[3].clone().into_data().unwrap();
+
+        assert_eq!(chunk0_data.as_slice().unwrap(), &[0.0, 1.0, 2.0]);
+        assert_eq!(chunk3_data.as_slice().unwrap(), &[9.0]);
+    }
+
+
+
+
+    // Test CPU to CUDA movement during partitioning (if CUDA available)
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_cuda_tensor_partitioning() {
+        use crate::backend::has_cuda;
+
+        if !has_cuda::<f32>() {
+            println!("Skipping CUDA partition test: CUDA not available");
+            return;
+        }
+
+        // Create CUDA tensor
+        let cuda_device = Device::CUDA(0);
+        let cuda_tensor = Tensor::from_vec_with_device(
+            (0..12).map(|x| x as f32).collect(),
+            &[12],
+            cuda_device
+        ).unwrap();
+
+        assert_eq!(cuda_tensor.device(), cuda_device, "Tensor should be on CUDA");
+
+        // Partition - should automatically move to CPU
+        let partitions = cuda_tensor.into_partitions(0, 3).unwrap();
+
+        assert_eq!(partitions.len(), 3, "Should create 3 partitions");
+
+        // All partitions should be on CPU
+        for (i, partition) in partitions.iter().enumerate() {
+            assert_ne!(partition.device(), Device::CPU, "Partition {} should be back on CUDA", i);
+            assert_eq!(partition.shape(), &[4], "Partition {} should have shape [4]", i);
+        }
+
+        // Verify data integrity
+        let first_partition_data = partitions[0].clone().into_data().unwrap();
+        assert_eq!(first_partition_data.as_slice().unwrap(), &[0.0, 1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_roundtrip_partition_stack() {
+        // Test that partitioning and then stacking recovers original tensor
+        let original = create_test_tensor((0..12).map(|x| x as f32).collect(), &[12]);
+
+        // Partition into 4 pieces
+        let partitions = original.partition(0, 4).unwrap();
+
+        // Stack back together
+        let reconstructed = Tensor::stack(&partitions, 0).unwrap();
+
+
+        // Data should match exactly
+        assert_tensor_equal(&original, &reconstructed, 1e-6);
+    }
+
 }

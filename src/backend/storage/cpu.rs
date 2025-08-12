@@ -1198,72 +1198,7 @@ where
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
 
-    fn partition(
-        &self,
-        partition_dim: usize,
-        start_index: i32,
-        end_index: i32,
-    ) -> Result<Box<dyn StorageBackend<T>>, String> {
-        // Validate partition dimension bounds
-        if partition_dim >= self.ndim() {
-            return Err(format!(
-                "Partition dimension {} is out of bounds for tensor with {} dimensions",
-                partition_dim,
-                self.ndim()
-            ));
-        }
-
-        // Validate indices to prevent panic - defensive programming like other ops
-        if start_index < 0 {
-            return Err("Start index cannot be negative".to_string());
-        }
-
-        if end_index <= start_index {
-            return Err("End index must be greater than start index".to_string());
-        }
-
-        let input_shape = self.shape();
-        let dim_size = input_shape[partition_dim];
-        let end_usize = end_index as usize;
-
-        if end_usize > dim_size {
-            return Err(format!(
-                "End index {} exceeds dimension {} size {}",
-                end_index, partition_dim, dim_size
-            ));
-        }
-
-        // Create slice info for ndarray - more robust approach
-        // Build a vector of slice objects for each dimension
-        let slice_infos: Vec<ndarray::SliceInfoElem> = (0..self.ndim())
-            .map(|dim| {
-                if dim == partition_dim {
-                    // Partition only along the specified dimension
-                    SliceInfoElem::Slice {
-                        start: start_index as isize,
-                        end: Some(end_index as isize),
-                        step: 1,
-                    }
-                } else {
-                    // Keep all elements in other dimensions
-                    SliceInfoElem::Slice {
-                        start: 0,
-                        end: None,
-                        step: 1,
-                    }
-                }
-            })
-            .collect();
-
-        // Apply slicing using ndarray's slice method - handles multi-dimensional correctly
-        let sliced_view = self.data.slice(slice_infos.as_slice());
-
-        // Convert view to owned array - this automatically handles shape calculation
-        let result_array = sliced_view.to_owned();
-
-        // Return new CPUStorage - same pattern as add, sub, mul operations
-        Ok(Box::new(CPUStorage::new(result_array)))
-    }
+    
     /*  fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Execute custom operation with immutable access to ArrayD data
         // Operation creates new results following existing storage pattern

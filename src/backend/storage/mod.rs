@@ -138,12 +138,6 @@ where
     /// Returns new storage with 1.0 for true, 0.0 for false
     fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn partition(
-        &self,
-        partition_dim: usize,
-        start_index: i32,
-        end_index: i32,
-    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 

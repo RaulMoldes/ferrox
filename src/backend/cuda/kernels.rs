@@ -148,8 +148,6 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         functions: &[
             "materialize",
             "materialize_f64",
-            "partition",
-            "partition_f64",
         ],
     },
     KernelConfig {
@@ -754,28 +752,6 @@ impl KernelManager {
         )
     }
 
-    pub fn launch_partition<T>(
-        &self,
-        cfg: LaunchConfig,
-        input: &CudaSlice<T>,
-        output: &mut CudaSlice<T>,
-        start_index: i32, // Number of dimensions
-        end_index: i32,   // Total output elements
-    ) -> Result<(), String>
-    where
-        T: FerroxCudaN + 'static,
-    {
-        let kernel_name = self.get_kernel_name::<T>("partition");
-        launch_kernel!(
-            self,
-            &kernel_name,
-            cfg,
-            input,  // const T* input
-            output, // T* output
-            &start_index,
-            &end_index
-        )
-    }
 
     /// Launch min reduction for all elements (produces scalar)
     pub fn launch_min_all<T>(
