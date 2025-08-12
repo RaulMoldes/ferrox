@@ -145,10 +145,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         name: "materialize",
         ptx: MATERIALIZE_PTX,
         module: "materialize_module",
-        functions: &[
-            "materialize",
-            "materialize_f64",
-        ],
+        functions: &["materialize", "materialize_f64"],
     },
     KernelConfig {
         name: "comparison",
@@ -317,6 +314,7 @@ impl KernelManager {
 
     /// Generic launcher for axis reduction operations (along specific axes)
     /// Handles sum_axes, max_axes, min_axes, prod_axes automatically
+    #[allow(clippy::too_many_arguments)]
     fn launch_reduce_axes<T>(
         &self,
         operation: &str, // "sum", "max", "min", "prod"
@@ -721,15 +719,16 @@ impl KernelManager {
         self.launch_reduce_axes("max", cfg, input, output, outer_size, axis_size, inner_size)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_materialize<T>(
         &self,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
-        shape: &CudaSlice<i32>,    // Target shape as GPU memory
-        strides: &CudaSlice<i32>,  // Input strides as GPU memory
-        ndim: i32,                 // Number of dimensions
-        total_elements: i32,       // Total output elements
+        shape: &CudaSlice<i32>,   // Target shape as GPU memory
+        strides: &CudaSlice<i32>, // Input strides as GPU memory
+        ndim: i32,                // Number of dimensions
+        total_elements: i32,      // Total output elements
     ) -> Result<(), String>
     where
         T: FerroxCudaN + 'static,
@@ -741,12 +740,12 @@ impl KernelManager {
             self,
             &kernel_name,
             cfg,
-            input,          // const T* input
-            output,         // T* output
-            shape,          // const int* shape
-            strides,        // const int* strides
-            &ndim,          // int ndim
-            &total_elements // int total_elements
+            input,           // const T* input
+            output,          // T* output
+            shape,           // const int* shape
+            strides,         // const int* strides
+            &ndim,           // int ndim
+            &total_elements  // int total_elements
         )
     }
 
@@ -837,7 +836,7 @@ impl KernelManager {
             &size
         )
     }
-
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_matmul<T>(
         &self,
         cfg: LaunchConfig,
@@ -1081,6 +1080,7 @@ impl KernelManager {
 
     /// CONVOLUTIONAL KERNELS
     /// Launch 2D convolution with bias support
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_conv2d_forward<T>(
         &self,
         cfg: LaunchConfig,

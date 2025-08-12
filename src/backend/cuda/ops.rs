@@ -164,8 +164,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
             return Ok(tensor.clone()); // Should also be checked by the caller for efficiency
         }
 
-
-
         let total_elements = tensor.size();
 
         // Allocate new contiguous memory for materialized data
@@ -205,16 +203,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
     pub fn add(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else {
+        } else {
             bin
         };
-      
 
         if a.shape != b.shape {
             return Err("Shape mismatch for addition".to_string());
@@ -231,15 +228,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Element-wise multiplication: result = a * b
     pub fn mul(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else {
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else {
+        } else {
             bin
         };
 
@@ -258,17 +255,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Element-wise division: result = a / b
     pub fn div(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }
-        else {
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }
-        else {
+        } else {
             bin
         };
         if a.shape != b.shape {
@@ -286,15 +281,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Element-wise subtraction: result = a - b
     pub fn sub(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
 
@@ -313,15 +308,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Element-wise power: result = a^b
     pub fn power(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else {
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else {
+        } else {
             bin
         };
 
@@ -345,15 +340,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
         ain: &CudaTensor<T>,
         bin: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else {
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
 
@@ -381,15 +376,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
         ain: &CudaTensor<T>,
         bin: &CudaTensor<T>,
     ) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
 
@@ -574,7 +569,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
     pub fn sum_all(&self, input_in: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -594,10 +589,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
-
         let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -620,9 +614,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Max reduction along all elements
     pub fn max_all(&self, input_in: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let input = if input_in.needs_materialization() {
+        let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -642,10 +636,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
         axes: &[usize], // Changed from usize to &[usize]
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
-
-         let input = if input_in.needs_materialization() {
+        let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -666,12 +659,11 @@ impl<T: FerroxCudaN> CudaOps<T> {
         )
     }
 
-
     /// Min reduction along all elements
     pub fn min_all(&self, input_in: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let input = if input_in.needs_materialization() {
+        let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -692,9 +684,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
-         let input = if input_in.needs_materialization() {
+        let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -717,9 +709,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Mean operation (uses sum + division)
     pub fn mean_all(&self, input_in: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let input = if input_in.needs_materialization() {
+        let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -738,9 +730,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
         axes: &[usize],
         keep_dims: bool,
     ) -> Result<CudaTensor<T>, String> {
-         let input = if input_in.needs_materialization() {
+        let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
@@ -762,16 +754,20 @@ impl<T: FerroxCudaN> CudaOps<T> {
     /// # Requirements:
     /// - A must be [M, K], B must be [K, N] -> Result is [M, N]
     /// - This kernel uses optimized tiled matrix multiplication for memory efficiency
-    pub fn matmul(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+    pub fn matmul(
+        &self,
+        ain: &CudaTensor<T>,
+        bin: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String> {
         let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
 
@@ -816,16 +812,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
     ) -> Result<CudaTensor<T>, String> {
         let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
-
 
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
@@ -853,16 +848,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
     ) -> Result<CudaTensor<T>, String> {
         let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
-
 
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
@@ -878,20 +872,22 @@ impl<T: FerroxCudaN> CudaOps<T> {
     }
 
     /// Element-wise greater-or-equal: result = (a >= b) ? 1.0 : 0.0
-    pub fn greater(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+    pub fn greater(
+        &self,
+        ain: &CudaTensor<T>,
+        bin: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String> {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
-
-
 
         if a.shape != b.shape {
             return Err("Shape mismatch for greater_equal operation".to_string());
@@ -908,19 +904,17 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Element-wise less-or-equal: result = (a <= b) ? 1.0 : 0.0
     pub fn less(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
-
+        } else {
             bin
         };
-
 
         if a.shape != b.shape {
             return Err("Shape mismatch for less_equal operation".to_string());
@@ -999,18 +993,17 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Element-wise equality: result = (a == b) ? 1.0 : 0.0
     pub fn equal(&self, ain: &CudaTensor<T>, bin: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
-         let a = if ain.needs_materialization() {
+        let a = if ain.needs_materialization() {
             &self.materialize(ain)?
-        }else{
+        } else {
             ain
         };
 
         let b = if bin.needs_materialization() {
             &self.materialize(bin)?
-        }else{
+        } else {
             bin
         };
-
 
         if a.shape != b.shape {
             return Err("Shape mismatch for equal operation".to_string());
@@ -1079,19 +1072,19 @@ impl<T: FerroxCudaN> CudaOps<T> {
     ) -> Result<CudaTensor<T>, String> {
         let condition = if condition_in.needs_materialization() {
             &self.materialize(condition_in)?
-        }else{
+        } else {
             condition_in
         };
 
         let true_val = if true_val_in.needs_materialization() {
             &self.materialize(true_val_in)?
-        }else{
+        } else {
             true_val_in
         };
 
         let false_val = if false_val_in.needs_materialization() {
             &self.materialize(false_val_in)?
-        }else{
+        } else {
             false_val_in
         };
 
@@ -1131,16 +1124,15 @@ impl<T: FerroxCudaN> CudaOps<T> {
     ) -> Result<CudaTensor<T>, String> {
         let input = if input_in.needs_materialization() {
             &self.materialize(input_in)?
-        }else{
+        } else {
             input_in
         };
 
         let filter = if filter_in.needs_materialization() {
             &self.materialize(filter_in)?
-        }else{
+        } else {
             filter_in
         };
-
 
         // Validate input dimensions
         if input.shape.len() != 4 || filter.shape.len() != 4 {
@@ -1373,16 +1365,11 @@ impl<T: FerroxCudaN> CudaOps<T> {
     }
 }
 
-
-
-
-
 #[cfg(test)]
 mod ops_test {
     use super::*;
 
     use crate::backend::with_cuda_ops;
-
 
     #[test]
     fn test_bias_broadcasting() {
@@ -1392,7 +1379,8 @@ mod ops_test {
         let result = with_cuda_ops(|ops: &CudaOps<f32>| {
             // Crear bias como en tu ejemplo
             let bias_data = vec![0.1f32];
-            let mut bias_tensor = with_cuda_context(|ctx| CudaTensor::from_vec(ctx, bias_data.clone(), vec![1]))?;
+            let mut bias_tensor =
+                with_cuda_context(|ctx| CudaTensor::from_vec(ctx, bias_data.clone(), vec![1]))?;
 
             println!("Original bias shape: {:?}", bias_tensor.shape());
             println!("Original bias data: {:?}", bias_data);
@@ -1402,7 +1390,10 @@ mod ops_test {
 
             println!("After broadcast shape: {:?}", bias_tensor.shape());
             println!("After broadcast strides: {:?}", bias_tensor.strides());
-            println!("Needs materialization: {}", bias_tensor.needs_materialization());
+            println!(
+                "Needs materialization: {}",
+                bias_tensor.needs_materialization()
+            );
 
             // Materializar
             let materialized = ops.materialize(&bias_tensor)?;
@@ -1413,16 +1404,26 @@ mod ops_test {
             // Verificar que todos los valores son 0.1
             for (i, &value) in result_data.iter().enumerate() {
                 if (value - 0.1).abs() > 1e-6 {
-                    return Err(format!("Error en posición {}: esperado 0.1, obtenido {}", i, value));
+                    return Err(format!(
+                        "Error en posición {}: esperado 0.1, obtenido {}",
+                        i, value
+                    ));
                 }
             }
 
             Ok(result_data)
         });
 
-        assert!(result.is_ok(), "Test de broadcast falló: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Test de broadcast falló: {:?}",
+            result.err()
+        );
         let data = result.unwrap();
-        assert_eq!(data, vec![0.1f32; 4], "Los datos no coinciden con el patrón esperado");
+        assert_eq!(
+            data,
+            vec![0.1f32; 4],
+            "Los datos no coinciden con el patrón esperado"
+        );
     }
-
 }

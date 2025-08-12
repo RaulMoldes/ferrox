@@ -4,9 +4,9 @@ use crate::backend::{FerroxCudaF, FerroxF};
 use crate::graph::AutoFerroxEngine;
 use crate::graph::NodeId;
 use crate::nn::optim::{Optimizer, OptimizerError, OptimizerStateDict, ParameterGroup};
+use crate::FerroxN;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::FerroxN;
 /// Stochastic Gradient Descent optimizer with momentum and weight decay
 /// Uses proper L2 weight decay (not AdamW-style decoupled weight decay)
 pub struct SGD<T>
@@ -288,9 +288,10 @@ where
         state_dict
             .hyperparameters
             .insert("lr".to_string(), <T as FerroxN>::to_f64(self.lr));
-        state_dict
-            .hyperparameters
-            .insert("momentum".to_string(), <T as FerroxN>::to_f64(self.momentum));
+        state_dict.hyperparameters.insert(
+            "momentum".to_string(),
+            <T as FerroxN>::to_f64(self.momentum),
+        );
         state_dict.hyperparameters.insert(
             "weight_decay".to_string(),
             <T as FerroxN>::to_f64(self.weight_decay),

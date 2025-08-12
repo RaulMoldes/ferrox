@@ -18,8 +18,6 @@ use crate::backend::cuda::CudaContextManager;
 #[cfg(feature = "cuda")]
 use crate::backend::storage::CUDAStorage;
 
-
-
 pub struct BackendManager<T: FerroxCudaN> {
     #[cfg(feature = "cuda")]
     cuda_backend: Option<CudaContextManager<T>>,
@@ -343,10 +341,12 @@ impl<T: FerroxCudaN> BackendManager<T> {
 static BACKEND_F32: OnceLock<BackendManager<f32>> = OnceLock::new();
 static BACKEND_F64: OnceLock<BackendManager<f64>> = OnceLock::new();
 
+
+#[allow(clippy::redundant_closure)]
 pub fn get_f32_backend() -> &'static BackendManager<f32> {
     BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
 }
-
+#[allow(clippy::redundant_closure)]
 pub fn get_f64_backend() -> &'static BackendManager<f64> {
     BACKEND_F64.get_or_init(|| BackendManager::<f64>::init())
 }
@@ -377,10 +377,10 @@ pub fn get_backend<T: FerroxCudaN>() -> &'static BackendManager<T> {
         },
         id if id == std::any::TypeId::of::<i64>() => unsafe {
             std::mem::transmute::<&BackendManager<f64>, &BackendManager<T>>(get_f64_backend())
-        }
-         id if id == std::any::TypeId::of::<i32>() => unsafe {
+        },
+        id if id == std::any::TypeId::of::<i32>() => unsafe {
             std::mem::transmute::<&BackendManager<f32>, &BackendManager<T>>(get_f32_backend())
-        }
+        },
         _ => panic!("Unsupported type for backend"),
     }
 }
@@ -470,12 +470,15 @@ mod backend_manager_tests {
 
     // Test basic backend initialization for both f32 and f64
     #[test]
+    #[allow(clippy::cmp_null, clippy::ptr_eq)]
     fn test_backend_initialization() {
         let f32_backend = get_backend::<f32>();
         let f64_backend = get_backend::<f64>();
 
         // Both backends should be available
+
         assert!(f32_backend as *const _ != std::ptr::null());
+
         assert!(f64_backend as *const _ != std::ptr::null());
 
         println!("F32 backend has CUDA: {}", f32_backend.has_cuda());

@@ -141,7 +141,6 @@ where
             .apply_operation(abs_op, vec![diff])
             .map_err(|e| format!("L1 absolute value computation failed: {}", e))?;
 
-
         // Step 3: Apply reduction strategy
         match self.reduction {
             ReductionType::Mean => {

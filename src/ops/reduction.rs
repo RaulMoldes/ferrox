@@ -4,7 +4,7 @@
 
 use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
-use crate::{FerroxF, FerroxN};
+use crate::FerroxN;
 
 /// Sum reduction: output = sum(input, axes)
 /// Reduces tensor along specified axes or all elements if None
@@ -63,13 +63,10 @@ where
         // Sum operation distributes gradient equally to all reduced elements
         let input_shape = inputs[0].shape();
 
-        let result = if grad_output.shape().is_empty(){
-
+        let result = if grad_output.shape().is_empty() {
             let scalar = grad_output.first()?;
             Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?
-        }
-        else
-        {
+        } else {
             // Broadcast gradient back to input shape
             grad_output.broadcast_to(input_shape)?;
             grad_output
@@ -172,13 +169,10 @@ where
         // Scale and broadcast gradient back to input shape
         let mut result = grad_output.mul_scalar(scale)?;
 
-        let output = if result.shape().is_empty(){
-
+        let output = if result.shape().is_empty() {
             let scalar = grad_output.first()?;
             Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?
-        }
-        else
-        {
+        } else {
             // Broadcast gradient back to input shape
             result.broadcast_to(input_shape)?;
             result
@@ -273,10 +267,10 @@ where
         let mut broadcasted_max = inputs[0].max_reduce(self.axes.as_deref())?;
 
         // Broadcast max result back to input shape for comparison
-        let out = if !broadcasted_max.shape().is_empty(){
+        let out = if !broadcasted_max.shape().is_empty() {
             broadcasted_max.broadcast_to(inputs[0].shape())?;
             broadcasted_max
-        }else{
+        } else {
             let item = broadcasted_max.first()?;
             let device = inputs[0].device();
             Tensor::full_with_device(inputs[0].shape(), device, item)?
@@ -379,15 +373,14 @@ where
 
         // Broadcast min result back to input shape for comparison
 
-        let out = if !broadcasted_min.shape().is_empty(){
+        let out = if !broadcasted_min.shape().is_empty() {
             broadcasted_min.broadcast_to(inputs[0].shape())?;
             broadcasted_min
-        }else{
+        } else {
             let item = broadcasted_min.first()?;
             let device = inputs[0].device();
             Tensor::full_with_device(inputs[0].shape(), device, item)?
         };
-
 
         // Create mask where input == min (gets gradient of 1, others get 0)
         let mask = inputs[0].equal(&out)?;

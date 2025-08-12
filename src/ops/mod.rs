@@ -145,5 +145,3 @@ pub mod utils {
     pub use super::comparison::Clamp;
     pub use super::elementwise::{Reciprocal, Sign};
 }
-
-

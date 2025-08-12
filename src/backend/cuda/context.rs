@@ -459,9 +459,6 @@ where
         Ok(())
     }
 
-
-
-
     // ============= IN-PLACE TENSOR OPERATIONS =============
 
     /// In-place broadcast operation - changes tensor view without copying data
@@ -674,7 +671,6 @@ where
         Ok(())
     }
 
-
     // Check to see if we need to materialize.
     pub fn needs_materialization(&self) -> bool {
         let logical_size = self.size(); // shape.iter().product()
@@ -684,13 +680,9 @@ where
             0
         };
 
-      
-
         // If logical size > physical size, we have broadcast expansion
         logical_size > physical_size || !self.is_contiguous()
     }
-
-
 }
 
 /// Compute row-major strides for a given shape

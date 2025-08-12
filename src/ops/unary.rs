@@ -2,9 +2,9 @@
 // Unary operations for the computational graph
 // These wrap tensor API methods to enable automatic differentiation
 
-use crate::backend::{FerroxCudaF,  Tensor};
+use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
-use crate::{FerroxN, FerroxF};
+use crate::{FerroxF, FerroxN};
 
 /// Element-wise exponential: output = exp(input)
 #[derive(Debug, Clone)]

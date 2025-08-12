@@ -1,4 +1,4 @@
-use crate::backend::number::{FerroxCudaF, FerroxF, FerroxN};
+use crate::backend::number::{FerroxCudaF, FerroxN};
 use crate::backend::Device;
 use crate::backend::Tensor;
 use rand::Rng;

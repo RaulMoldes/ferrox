@@ -1,11 +1,11 @@
 // src/backend/storage/cpu.rs
 use super::StorageBackend;
-use crate::backend::{FerroxCudaF,FerroxCudaN, FerroxF};
+use crate::backend::{FerroxCudaF, FerroxCudaN, FerroxF};
+use crate::FerroxN;
 use ndarray::{ArrayD, ArrayViewD, IxDyn};
 use rand::Rng;
 use rand_distr::StandardUniform;
 use std::any::Any;
-use crate::FerroxN;
 #[derive(Debug, Clone)]
 pub struct CPUStorage<T: Clone> {
     data: ArrayD<T>,
@@ -135,8 +135,7 @@ where
         filter: &ArrayD<T>,
         stride: (usize, usize),
         padding: (usize, usize),
-    ) -> Result<ArrayD<T>, String>
-    {
+    ) -> Result<ArrayD<T>, String> {
         let input_shape = self.shape();
         let filter_shape = filter.shape();
 
@@ -727,8 +726,7 @@ where
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_data: Vec<T> = self
             .data
             .iter()
@@ -757,7 +755,8 @@ where
     }
 
     fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxF
+    where
+        T: FerroxF,
     {
         let result_data = self.data.mapv(|x| x.sqrt());
         Ok(Box::new(CPUStorage::new(result_data)))
@@ -766,8 +765,7 @@ where
     fn greater_equal(
         &self,
         other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a >= b {
                 FerroxN::one()
@@ -778,8 +776,7 @@ where
         Ok(Box::new(storage))
     }
 
-    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_array = self.data.mapv(|x| {
             if x >= scalar {
                 FerroxN::one()
@@ -793,8 +790,7 @@ where
     fn less_equal(
         &self,
         other: &dyn StorageBackend<T>,
-    ) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a <= b {
                 FerroxN::one()
@@ -805,8 +801,7 @@ where
         Ok(Box::new(storage))
     }
 
-    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn less_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_array = self.data.mapv(|x| {
             if x <= scalar {
                 FerroxN::one()
@@ -817,8 +812,7 @@ where
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn greater(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a > b {
                 FerroxN::one()
@@ -829,8 +823,7 @@ where
         Ok(Box::new(storage))
     }
 
-    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn greater_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_array = self.data.mapv(|x| {
             if x > scalar {
                 FerroxN::one()
@@ -841,8 +834,7 @@ where
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a < b {
                 FerroxN::one()
@@ -853,8 +845,7 @@ where
         Ok(Box::new(storage))
     }
 
-    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_array = self.data.mapv(|x| {
             if x < scalar {
                 FerroxN::one()
@@ -865,8 +856,7 @@ where
         Ok(Box::new(CPUStorage::new(result_array)))
     }
 
-    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn equal(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
         let storage = self.compare(other, |&a, &b| {
             if a == b {
                 FerroxN::one()
@@ -877,8 +867,7 @@ where
         Ok(Box::new(storage))
     }
 
-    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn logical_not(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Flip 0s to 1s and non-zeros to 0s
         let result_data = self.data.mapv(|x| {
             if x == <T as FerroxN>::zero() {
@@ -892,7 +881,8 @@ where
     }
 
     fn in_range(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxN
+    where
+        T: FerroxN,
     {
         // Check if values are in range [min_val, max_val]
         let result_data = self.data.mapv(|x| {
@@ -907,7 +897,8 @@ where
     }
 
     fn sign(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxN
+    where
+        T: FerroxN,
     {
         // Return 1 for positive, -1 for negative, 0 for zero
         let result_data = self.data.mapv(|x| {
@@ -961,7 +952,8 @@ where
     }
 
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxF
+    where
+        T: FerroxF,
     {
         // Sigmoid function: 1 / (1 + exp(-x))
         let result_data = self.data.mapv(|x| {
@@ -973,8 +965,7 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ReLU activation: max(0, x)
         let result_data = self.data.mapv(|x| {
             let zero = <T as FerroxN>::zero();
@@ -989,15 +980,17 @@ where
     }
 
     fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxCudaF
-     {
+    where
+        T: FerroxCudaF,
+    {
         // Element-wise exponential
         let result_data = self.data.mapv(|x| x.exp());
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
     fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxCudaF
+    where
+        T: FerroxCudaF,
     {
         // Element-wise natural logarithm
         let result_data = self.data.mapv(|x| x.ln());
@@ -1005,7 +998,8 @@ where
     }
 
     fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxCudaF
+    where
+        T: FerroxCudaF,
     {
         // Numerically stable hyperbolic tangent implementation
         // Avoids overflow for large positive/negative values
@@ -1054,7 +1048,8 @@ where
     }
 
     fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxCudaF
+    where
+        T: FerroxCudaF,
     {
         let other_data = other.cpu_data()?;
 
@@ -1075,7 +1070,8 @@ where
     }
 
     fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
-    where T: FerroxCudaF
+    where
+        T: FerroxCudaF,
     {
         // Scalar power operation
         let result_data = self.data.mapv(|x| x.powf(scalar));
@@ -1151,8 +1147,7 @@ where
         filter: &dyn StorageBackend<T>,
         stride: (usize, usize),
         padding: (usize, usize),
-    ) -> Result<Box<dyn StorageBackend<T>>, String>
-    {
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Ensure filter is also CPU storage
         let filter_data = filter.cpu_data()?;
 

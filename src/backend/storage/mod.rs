@@ -104,7 +104,9 @@ where
     /// Constrains all values to the range [min_val, max_val]
     fn clamp(&self, min_val: T, max_val: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
+    fn sqrt(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF;
 
     fn reciprocal(&self) -> Result<Box<dyn StorageBackend<T>>, String>;
 
@@ -115,7 +117,7 @@ where
         other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> ;
+    fn greater_equal_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Element-wise less than or equal comparison: self <= other
     /// Returns new storage with 1.0 for true, 0.0 for false
@@ -160,7 +162,9 @@ where
 
     /// Sigmoid activation function: 1 / (1 + exp(-self))
     /// Returns new storage with sigmoid applied element-wise
-    fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxF;
+    fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxF;
 
     /// ReLU activation function: max(0, self)
     /// Returns new storage with ReLU applied element-wise
@@ -168,23 +172,33 @@ where
 
     /// Exponential function: exp(self)
     /// Returns new storage with exponential applied element-wise
-    fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
+    fn exp(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF;
 
     /// Natural logarithm: ln(self)
     /// Returns new storage with natural log applied element-wise
-    fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
+    fn log(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF;
 
     /// Hyperbolic tangent: tanh(self)
     /// Returns new storage with tanh applied element-wise
-    fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
+    fn tanh(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF;
 
     /// Element-wise power: self ^ other
     /// Returns new storage with element-wise power operation
-    fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
+    fn powf(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF;
 
     /// Scalar power: self ^ scalar
     /// Returns new storage with scalar power applied element-wise
-    fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String> where T: FerroxCudaF;
+    fn power_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF;
 
     /// Sum reduction along multiple axes
     fn sum(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String>;
@@ -251,8 +265,6 @@ where
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;*/
 }
-
-
 
 #[cfg(test)]
 mod storage_backend_tests {

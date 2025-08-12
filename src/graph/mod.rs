@@ -482,7 +482,6 @@ where
             None => return Ok(()),
         };
 
-
         // Obtain node information.
         let node = self
             .nodes

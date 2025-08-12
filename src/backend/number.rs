@@ -140,7 +140,6 @@ pub trait FerroxF: FerroxN {
 
     /// Epsilon for floating-point comparisons
     fn epsilon() -> Self;
-
 }
 
 // ============= GPU TRAIT DEFINITIONS =============
@@ -395,9 +394,6 @@ impl FerroxF for f32 {
     fn epsilon() -> Self {
         f32::EPSILON
     }
-
-
-
 }
 
 // Implementation for i32

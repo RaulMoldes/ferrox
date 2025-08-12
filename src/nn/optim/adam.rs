@@ -4,9 +4,9 @@ use crate::backend::{FerroxCudaF, FerroxF};
 use crate::graph::AutoFerroxEngine;
 use crate::graph::NodeId;
 use crate::nn::optim::{Optimizer, OptimizerError, OptimizerStateDict, ParameterGroup};
+use crate::FerroxN;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::FerroxN;
 
 // Adam optimizer with proper AdamW-style decoupled weight decay
 /// Implements bias correction and AMSGrad variant

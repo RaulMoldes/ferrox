@@ -23,7 +23,7 @@ pub use manager::{best_device, get_backend, has_cuda, BackendManager};
 pub use manager::{with_cuda_context, with_cuda_ops};
 
 pub use number::FerroxCudaF;
-pub use number::FerroxF;
 pub use number::FerroxCudaN;
+pub use number::FerroxF;
 pub use number::FerroxN;
 pub use tensor::Tensor;

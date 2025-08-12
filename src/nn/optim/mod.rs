@@ -1,6 +1,6 @@
 use crate::backend::Device;
+use crate::backend::FerroxCudaF;
 use crate::backend::Tensor;
-use crate::backend::{FerroxCudaF, FerroxF};
 use crate::graph::AutoFerroxEngine;
 use crate::graph::NodeId;
 use crate::nn::Module;
@@ -397,6 +397,78 @@ where
         })?;
         let state_dict = OptimizerStateDict::load_from_bytes(&bytes)?;
         self.load_state_dict(&state_dict)
+    }
+}
+
+pub enum Optim<T: FerroxCudaF> {
+    SGD(SGD<T>),
+    Adam(Adam<T>),
+}
+
+impl<T> Optimizer<T> for Optim<T>
+where
+    T: FerroxCudaF,
+{
+    fn step(&mut self, engine: &mut AutoFerroxEngine<T>) -> Result<(), OptimizerError> {
+        match self {
+            Optim::SGD(opt) => opt.step(engine),
+            Optim::Adam(opt) => opt.step(engine),
+        }
+    }
+
+    fn reset_grad(&mut self, engine: &mut AutoFerroxEngine<T>) {
+        match self {
+            Optim::SGD(opt) => opt.reset_grad(engine),
+            Optim::Adam(opt) => opt.reset_grad(engine),
+        }
+    }
+
+    fn add_param(&mut self, param_group: usize, param_node_id: NodeId) {
+        match self {
+            Optim::SGD(opt) => opt.add_param(param_group, param_node_id),
+            Optim::Adam(opt) => opt.add_param(param_group, param_node_id),
+        }
+    }
+
+    fn add_param_group(&mut self, group: ParameterGroup<T>) -> Result<(), OptimizerError> {
+        match self {
+            Optim::SGD(opt) => opt.add_param_group(group),
+            Optim::Adam(opt) => opt.add_param_group(group),
+        }
+    }
+
+    fn get_lr(&self) -> T {
+        match self {
+            Optim::SGD(opt) => opt.get_lr(),
+            Optim::Adam(opt) => opt.get_lr(),
+        }
+    }
+
+    fn set_lr(&mut self, lr: T) {
+        match self {
+            Optim::SGD(opt) => opt.set_lr(lr),
+            Optim::Adam(opt) => opt.set_lr(lr),
+        }
+    }
+
+    fn state_dict(&self) -> OptimizerStateDict
+    where
+        T: Clone + 'static,
+    {
+        match self {
+            Optim::SGD(opt) => opt.state_dict(),
+            Optim::Adam(opt) => opt.state_dict(),
+        }
+    }
+
+    fn load_state_dict(&mut self, state_dict: &OptimizerStateDict) -> Result<(), OptimizerError>
+    where
+        T: Clone + crate::backend::number::FerroxN + 'static,
+    {
+        match self {
+            Optim::SGD(opt) => opt.load_state_dict(state_dict),
+            Optim::Adam(opt) => opt.load_state_dict(state_dict),
+        }
     }
 }
 
