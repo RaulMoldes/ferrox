@@ -20,7 +20,7 @@ where
         self.len() == 0
     }
 
-    
+
 }
 
 /// Basic tensor dataset for supervised learning
@@ -66,48 +66,47 @@ where
         })
     }
 
-    /// Extract slice data for sample at given index from tensor
-    fn extract_slice(&self, tensor: &Tensor<T>, index: usize) -> Result<&[T], String> {
-        let elements_per_sample: usize = tensor.shape()[1..].iter().product();
-        let start = index * elements_per_sample;
-        tensor.slice_range(start, elements_per_sample)
-    }
 
-    /// Create tensor from slice data with sample shape
-    fn create_sample(&self, slice_data: &[T], sample_shape: &[usize]) -> Result<Tensor<T>, String> {
-        Tensor::from_vec_with_device(slice_data.to_vec(), sample_shape, self.device())
-    }
-
-    /// Get device where dataset tensors are stored
-    pub fn device(&self) -> Device {
-        self.inputs.device()
-    }
-
-    /// Move entire dataset to different device
-    pub fn to_device(self, target_device: Device) -> Result<Self, String> {
-        if self.inputs.device() == target_device {
-            return Ok(self);
+        // Create dataset from single tensor - for unsupervised learning
+    pub fn from_tensor(inputs: Tensor<T>, targets: Tensor<T>) -> Result<Self, String> {
+        if inputs.shape()[0] != targets.shape()[0] {
+            return Err(format!(
+                "Input batch size {} doesn't match target batch size {}",
+                inputs.shape()[0], targets.shape()[0]
+            ));
         }
 
-        let inputs = self.inputs.to_device(target_device)?;
-        let targets = self.targets.to_device(target_device)?;
+        let device = inputs.device();
+        let num_samples = inputs.shape()[0];
+
+        // Ensure targets are on same device as inputs
+        let targets = if targets.device() != device {
+            targets.to_device(device)?
+        } else {
+            targets
+        };
 
         Ok(Self {
             inputs,
             targets,
-            num_samples: self.num_samples,
+            num_samples,
         })
     }
 
-    /// Get input tensor shape excluding batch dimension
-    pub fn input_shape(&self) -> &[usize] {
-        &self.inputs.shape()[1..]
+
+       // Create batched dataset using tensor's into_batches method
+    pub fn into_batches(self, batch_size: usize, drop_last: bool) -> Result<BatchedDataset<T>, String> {
+        if batch_size == 0 {
+            return Err("Batch size must be greater than 0".to_string());
+        }
+
+        // Use tensor's into_batches method to create input batches
+        let input_batches = self.inputs.into_batches(batch_size, drop_last)?;
+        let target_batches = self.targets.into_batches(batch_size, drop_last)?;
+
+        Ok(BatchedDataset::new(input_batches, target_batches))
     }
 
-    /// Get target tensor shape excluding batch dimension
-    pub fn target_shape(&self) -> &[usize] {
-        &self.targets.shape()[1..]
-    }
 }
 
 impl<T> Dataset<T> for TensorDataset<T>
@@ -116,23 +115,83 @@ where
 {
     /// Extract single sample using tensor slicing operations
     fn get_item(&self, index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
-        if index >= self.num_samples {
-            return Err(format!(
-                "Index {} out of bounds for dataset with {} samples",
-                index, self.num_samples
-            ));
+
+        if self.inputs.device != Device::CPU || self.targets.device != Device::CPU {
+            panic!("Cannot use `get_item` on a tensor in CUDA storage")
+        } else  if index < self.inputs.len(){
+            let value_target = self.targets[index];
+            let value_input = self.inputs[index];
+
+            let inp = Tensor::from_vec_with_device(vec![value_input], &[], self.inputs.device)?;
+            let tg = Tensor::from_vec_with_device(vec![value_target], &[], self.targets.device)?;
+
+            Ok((inp, tg))
+        }else {
+            Err("Out of bounds error. Index is too big".to_string())
         }
-
-        let input_slice = self.extract_slice(&self.inputs, index)?;
-        let target_slice = self.extract_slice(&self.targets, index)?;
-
-        let input_sample = self.create_sample(input_slice, self.input_shape())?;
-        let target_sample = self.create_sample(target_slice, self.target_shape())?;
-
-        Ok((input_sample, target_sample))
     }
+
+
+
 
     fn len(&self) -> usize {
         self.num_samples
+    }
+}
+
+
+#[derive(Debug)]
+pub struct BatchedDataset<T>
+where
+    T: FerroxCudaF,
+{
+    input_batches: Vec<Tensor<T>>,
+    target_batches: Vec<Tensor<T>>,
+    num_batches: usize,
+}
+
+impl<T> BatchedDataset<T>
+where
+    T: FerroxCudaF + Clone,
+{
+    // Create from pre-computed batch vectors
+    fn new(input_batches: Vec<Tensor<T>>, target_batches: Vec<Tensor<T>>) -> Self {
+        let num_batches = input_batches.len();
+        Self {
+            input_batches,
+            target_batches,
+            num_batches,
+        }
+    }
+
+
+    // Check if empty
+    pub fn is_empty(&self) -> bool {
+        self.num_batches == 0
+    }
+}
+
+
+impl<T> Dataset<T> for BatchedDataset<T>
+where
+    T: FerroxCudaF + Clone,
+{
+    /// Extract single sample using tensor slicing operations
+    fn get_item(&self, index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
+
+         if index < self.len(){
+            let target = self.target_batches[index].clone();
+            let input = self.input_batches[index].clone();
+            Ok((input, target))
+        }else {
+            Err("Out of bounds error. Index is too big".to_string())
+        }
+    }
+
+
+
+    // Get total number of batches
+    fn len(&self) -> usize {
+        self.num_batches
     }
 }

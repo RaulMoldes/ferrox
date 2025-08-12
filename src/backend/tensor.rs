@@ -290,6 +290,7 @@ where
     /// Get CPU data reference for CPU tensors only
     /// For GPU tensors, use cpu_data_owned() to get a copy or cpu_data_mut() for in-place conversion
     pub fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
+
         let storage = self
             .storage
             .as_ref()
@@ -1737,6 +1738,8 @@ where
     type Output = T;
 
     fn index(&self, indices: &[usize]) -> &Self::Output {
+
+
         // Must use storage backend - data field is removed
         let cpu_data = self
             .cpu_data()
