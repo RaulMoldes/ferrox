@@ -6,175 +6,121 @@
 
 **Core Components:**
 
-- **Tensor Engine**: Dynamic computation graph with automatic differentiation
-- **Backend System**: Pluggable CPU/GPU computation backends
-- **Neural Network Library**: High-level APIs for deep learning primitives
-- **Optimization Suite**: Advanced optimizers (SGD, Adam, RMSprop, AdaGrad)
+* **Tensor Engine**: Dynamic computation graph with automatic differentiation
+* **Backend System**: Pluggable CPU/GPU computation backends
+* **Neural Network Library**: High-level APIs for deep learning primitives
+* **Optimization Suite**: Advanced optimizers (SGD, Adam)
 
 **Supported Backends:**
 
-- **CPU**: `ndarray`-based computations with BLAS acceleration
-- **CUDA**: GPU-accelerated operations with custom CUDA kernels
+* **CPU**: `ndarray`-based computations with BLAS acceleration
+* **CUDA**: GPU-accelerated operations with custom CUDA kernels
 
-## Features
+## Technical details
 
-### Core Engine
+### Dual Backend
 
-- Reverse-mode automatic differentiation with dynamic graphs
-- Memory-efficient gradient computation and accumulation
-- Operator overloading for intuitive mathematical expressions
-- Graph visualization with GraphViz integration
-- Zero-copy tensor operations where possible
+The backend manager (`src/backend/manager.rs`) is the main dispatcher between CPU and GPU backends. It manages data movement between devices and handles load balancing to optimize performance.
 
-### GPU Acceleration
+### Memory Management
 
-- Custom CUDA kernels for elementwise operations
-- Efficient memory management with cudarc integration
-- Asynchronous GPU operations with stream support
-- Mixed-precision computation support (f32/f64)
+`src/backend/memory.rs`
+
+* **CPU Memory Allocation**: Ferrox uses jemalloc for efficient CPU memory management. To enable jemalloc, users must compile the library with the jemalloc feature enabled:
+
+```sh
+cargo build --features jemalloc
+```
+
+* **GPU Memory Allocation**: On CUDA devices, Ferrox uses a custom memory allocator optimized for GPU memory reuse. Similar to PyTorch's `CUDACachingAllocator`, it minimizes costly memory reallocations by caching GPU allocations.
+
+### CUDA
+
+`src/backend/cuda/mod.rs`
+
+Ferrox’s CUDA backend delivers high-performance GPU acceleration by combining Rust with native CUDA code.
+
+#### Integration with `cudarc` (v0.16.5)
+
+The backend uses [`cudarc`](https://github.com/mindaptiv/cudarc), a Rust crate offering safe and ergonomic CUDA runtime bindings, enabling direct GPU memory management, kernel launches, and synchronization while maintaining safety.
+
+#### Custom Precompiled CUDA Kernels
+
+To maximize performance, Ferrox includes custom CUDA kernels implemented in C++. These kernels are precompiled ahead of time and loaded dynamically at runtime. This hybrid approach combines Rust’s safety and flexibility with the raw speed of optimized CUDA C++ code.
+
+#### Seamless Tensor Operations
+
+The CUDA backend transparently manages tensor data transfer between CPU and GPU, efficiently executing core tensor operations such as matrix multiplication, element-wise functions, and reductions by fully utilizing GPU parallelism.
+
+### Computational Graph Engine
+
+`src/backend/graph/mod.rs`
+
+At the core of Ferrox lies a powerful and flexible computational graph engine designed for automatic differentiation and efficient execution.
+
+#### The `Ops` trait
+
+Ferrox supports an extensible set of operations (ops) by implementing the `Ops` trait. This design allows users to extend the framework with custom operations tailored to specific needs, fully integrated with the graph engine.
+
+#### Automatic Reverse-Mode Differentiation
+
+The engine implements reverse-mode automatic differentiation (backpropagation), dynamically constructing the computation graph during the forward pass. This dynamic graph enables efficient gradient computation for complex models, powering gradient-based optimization algorithms such as SGD and Adam.
+
+#### Output Caching
+
+To optimize repeated computations, Ferrox caches intermediate outputs of operations within the computational graph. This caching reduces redundant calculations, speeding up both forward and backward passes—particularly beneficial during iterative training loops.
 
 ### Neural Networks
 
-- Modular layer system (Linear, Activation functions)
-- Parameter management with automatic gradient tracking
-- Flexible weight initialization strategies
-- Training/evaluation mode switching
+`src/nn/`
+
+Ferrox provides a minimalistic but flexible neural network library built atop the computational graph engine. It offers:
+
+* Common layer types: fully connected (linear), activation functions (ReLU, Sigmoid, etc.), dropout
+* Easy model composition with a modular, extensible API
+* Support for batch operations and GPU acceleration
+* Utilities for loss functions and metrics
+
+This enables rapid prototyping and training of deep learning models.
 
 ### Optimization
 
-- Multiple optimizer implementations (SGD, Adam)
-- Learning rate scheduling support
-- Weight decay and momentum
+`src/optim/`
+
+Ferrox includes a suite of advanced optimization algorithms commonly used in machine learning:
+
+* **SGD (Stochastic Gradient Descent)** with momentum and weight decay
+* **Adam** optimizer with configurable learning rates and betas
+* Pluggable optimizer interface for easy extension with custom optimization strategies
+
+These optimizers seamlessly integrate with the computational graph and neural network libraries to enable efficient training workflows.
 
 ## System Requirements
 
 ### Basic Requirements
 
-- **Rust**: 1.75.0 or later
-- **Operating System**: Linux mainly.
+* **Rust**: Version 1.75.0 or later
+* **Operating System**: Primarily Linux;
+* **Build Tools**: `cargo` and `nvcc` for compiling CUDA kernels
 
 ### GPU Requirements (Optional)
 
-- **NVIDIA GPU**: Compute Capability
+* **NVIDIA GPU** with Compute Capability 8.0 or higher to support the latest cudarc version.
+* **CUDA Toolkit** compatible with the targeted GPU architecture
 
 ### GPU Acceleration
 
-```rust
-use ferrox::backend::get_backend<f32>;
-
-let backend = get_backend<f32>();
-if backend.has_cuda() {
-    // Tensors automatically use GPU when available
-    let gpu_tensor = tensor.to_cuda()?;
-    let result = gpu_tensor.add_cuda(&other_gpu_tensor)?;
-}
-```
+* CUDA acceleration is optional but recommended for training larger models or computationally intensive tasks.
+* To enable CUDA backend, ensure the CUDA Toolkit is installed and environment variables such as `CUDA_HOME` are properly configured.
 
 ## Examples
 
-Run the provided examples:
+Run the provided examples to get started:
 
 ```bash
-# Basic engine demonstration
-cargo run --example ferrox_example
+# Visualize computation graph and basic engine demo
+cargo run --example graph_visualization
 
-# GPU performance testing
-cargo run --features cuda --example cuda_test
-
-# Neural network training
-cargo run --example neural_network_training
+# Train a simple Multi-Layer Perceptron regressor
+cargo run --example mlp_regressor
 ```
-
-## Performance Characteristics
-
-### CPU Backend
-
-- BLAS-optimized linear algebra operations
-- Memory-efficient gradient computation
-- Single and double precision support
-
-### GPU Backend
-
-- Custom CUDA kernels optimized for ML workloads
-- Asynchronous execution with CUDA streams
-- Memory coalescing for optimal bandwidth utilization
-- Supports batch operations for improved throughput
-
-## Project Status
-
-### Current Implementation Status
-
-**Stable Features:**
-
-- Core automatic differentiation engine
-- CPU tensor operations with ndarray backend
-- Basic neural network layers (Linear)
-- Optimization algorithms (SGD, Adam)
-- Graph visualization system
-
-**GPU Features:**
-
-- CUDA context management and memory allocation
-- Basic elementwise operations (add, mul, div, sub)
-- Activation functions (ReLU, Sigmoid)
-- Reduction operations (sum, mean)
-
-**In Development:**
-
-- Convolution operations (GPU implementation in progress)
-- Tensor dimension manipulation (currently CPU-only)
-- Advanced layer types (Conv2D, BatchNorm, Dropout)
-- Mixed-precision training support
-
-**Planned Features:**
-
-- Distributed training support
-- Model serialization/deserialization
-- ONNX export capabilities
-- WebGPU backend for web deployment
-
-## Troubleshootinng
-
-### Common Issues
-
-**CUDA Compilation Errors:**
-
-- Ensure CUDA toolkit version supports cuCtxCreate_v4
-- Verify NVIDIA drivers are up to date
-- Check that NVCC is in your PATH
-
-**Memory Issues:**
-
-- Monitor GPU memory usage with `nvidia-smi`
-- Reduce batch sizes for large models
-- Use gradient checkpointing for memory-intensive training
-
-**Performance Issues:**
-
-- Verify GPU operations are being used (check with `nvidia-smi`)
-- Ensure tensors are properly transferred to GPU
-- Use appropriate batch sizes for your hardware
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with appropriate tests
-4. Ensure all tests pass: `cargo test --all-features`
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Author's Note
-
-**Compatibility Notice:** With the upgrade to cudarc 0.16.5, this project requires CUDA installations that support cuCtxCreate_v4. Systems with older CUDA versions may encounter the following error when launching kernels:
-
-```
-DlSym { desc: "/usr/lib64-nvidia/libcuda.so: undefined symbol: cuCtxCreate_v4" }
-```
-
-If you encounter this error, please upgrade your CUDA installation to version 11.0 or later, or use the CPU-only build with `--features cpu`.
-
-**Implementation Status:** Convolution operations are currently being implemented and will be available in future releases. Tensor dimension manipulation operations (reshape, transpose, etc.) are currently CPU-only but GPU implementations are planned.
