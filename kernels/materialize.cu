@@ -67,3 +67,28 @@ extern "C" __global__ void materialize_f64(
     // Copy data from input to output
     output[tid] = input[input_idx];
 }
+
+
+
+//////// BATCHED OPS
+
+extern "C" __global__ void partition(const float* src, float* dst, int start_index, int end_index) {
+    int idx = get_global_idx();
+
+    int length = end_index - start_index + 1;
+
+    if (idx < length) {
+        dst[idx] = src[start_index + idx];
+    }
+}
+
+
+extern "C" __global__ void partition_f64(const double* src, double* dst, int start_index, int end_index) {
+    int idx = get_global_idx();
+
+    int length = end_index - start_index + 1;
+
+    if (idx < length) {
+        dst[idx] = src[start_index + idx];
+    }
+}

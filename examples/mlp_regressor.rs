@@ -383,28 +383,28 @@ where
     Ok(())
 }
 
-/// Demonstrate model evaluation
-fn run_train_eval<T, M, L>(
+
+fn train<T, M, L>(
     model: &mut M,
     loss_fn: &L,
     inputs: Tensor<T>,
     targets: Tensor<T>,
-    test_inputs: Tensor<T>,
-    test_targets: Tensor<T>,
     config: &TrainingConfig<T>,
-) -> Result<(), String>
+) -> Result<AutoFerroxEngine<T>, String>
 where
     T: FerroxCudaF,
     M: Module<T>,
     L: Loss<T>,
 {
+    // Create new computational graph for training
     let mut graph = AutoFerroxEngine::new();
 
+    // Initialize optimizer based on configuration
     let mut optimizer = match config.optimizer {
         "SGD" => Optim::SGD(SGD::new(
             config.learning_rate.expect("Lr not provided"),
             config.momentum.expect("Momentum not provided"),
-            config.decay.expect("Decay not provided"), // corregido, no repetir momentum
+            config.decay.expect("Decay not provided"),
             config.nesterov,
         )),
         "Adam" => Optim::Adam(Adam::new(
@@ -418,13 +418,19 @@ where
         _ => panic!("Invalid optimizer name! Must be one of Adam or SGD"),
     };
 
+    // Initialize model parameters in the computational graph
     initialize_model(model, &mut graph, &mut optimizer)?;
 
+    // Pre-allocate loss history for better performance
     let mut loss_history: Vec<T> = Vec::with_capacity(config.num_epochs);
+
+    // Create variable nodes for inputs and targets (no gradients needed for data)
     let input_node = graph.create_variable(inputs.clone(), false);
     let target_node = graph.create_variable(targets.clone(), false);
 
+    // Training loop - iterate through epochs
     for ep in 0..config.num_epochs {
+        // Execute single epoch with benchmarking wrapper
         with_benchmark(|| {
             epoch(
                 &mut graph,
@@ -438,6 +444,7 @@ where
             )
         })()?;
 
+        // Print progress at specified intervals
         if ep % config.print_every == 0 {
             if let Some(&current_loss) = loss_history.last() {
                 println!(
@@ -449,17 +456,37 @@ where
         }
     }
 
-    let (predictions, pred_shape, num_samples) = run_forward(model, &mut graph, &test_inputs)?;
+    Ok(graph)
+}
 
+
+fn eval<T, M>(
+    model: &mut M,
+    graph: &mut AutoFerroxEngine<T>,
+    test_inputs: Tensor<T>,
+    test_targets: Tensor<T>,
+) -> Result<(), String>
+where
+    T: FerroxCudaF,
+    M: Module<T>,
+{
+
+
+    // Switch model to evaluation mode (disables dropout, batch norm updates, etc.)
+    model.eval();
+
+    // Run forward pass through the model
+    let (predictions, pred_shape, num_samples) = run_forward(model, graph, &test_inputs)?;
+
+    // Compute L1 loss (Mean Absolute Error)
     let l1_loss = L1Loss::new(ReductionType::Mean);
-    // Compute L1 loss
-    let l1_value = compute_loss(&mut graph, l1_loss, predictions, &test_targets)?;
+    let l1_value = compute_loss(graph, l1_loss, predictions, &test_targets)?;
 
+    // Compute MSE loss (Mean Squared Error)
     let mse_loss = MSELoss::new(ReductionType::Mean);
-    // Compute L1 loss
-    let mse_value = compute_loss(&mut graph, mse_loss, predictions, &test_targets)?;
+    let mse_value = compute_loss(graph, mse_loss, predictions, &test_targets)?;
 
-    // Print evaluation results
+    // Display comprehensive evaluation results
     println!("=== Model Evaluation Results ===");
     println!("Evaluated on {} samples", num_samples);
     println!("Prediction shape: {:?}", pred_shape);
@@ -486,16 +513,15 @@ fn main() -> Result<(), String> {
 
     let (test_inputs, test_targets) = generate_data::<f32>(100, 4, device)?;
 
-    run_train_eval(
+    let mut trained_autograd = train(
         &mut model,
         &loss_fn,
         train_inputs,
         train_targets,
-        test_inputs,
-        test_targets,
         &training_config,
     )?;
 
+    eval(&mut model, &mut trained_autograd, test_inputs, test_targets)?;
     println!("Example completed successfully!");
     Ok(())
 }
