@@ -12,6 +12,7 @@ use ferrox::nn::{
     Module,
 };
 use ferrox::FerroxN;
+use ferrox::dataset::{BatchedDataset, Dataset, TensorDataset};
 use rand_distr::{Distribution, Normal};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -202,7 +203,7 @@ fn generate_data<T>(
     num_samples: usize,
     input_size: usize,
     device: Device,
-) -> Result<(Tensor<T>, Tensor<T>), String>
+) -> Result<TensorDataset<T>, String>
 where
     T: FerroxCudaF,
 {
@@ -231,11 +232,11 @@ where
         let target = 0.3 * x1 + 0.1 * x2 + noise;
         target_data.push(<T as FerroxN>::from_f64(target).ok_or("Failed to convert target data")?);
     }
+    // Initialize the data. It is recommended to initialize the data on CPU as it will be moved later by the batched dataset to the gpu.
+    let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size],device)?;
+    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, 1],device)?;
 
-    let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size], device)?;
-    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, 1], device)?;
-
-    Ok((inputs, targets))
+    TensorDataset::from_tensor(inputs, targets)
 }
 
 fn with_benchmark<F, R>(func: F) -> impl FnOnce() -> R
@@ -386,8 +387,7 @@ where
 fn train<T, M, L>(
     model: &mut M,
     loss_fn: &L,
-    inputs: Tensor<T>,
-    targets: Tensor<T>,
+    data: BatchedDataset<T>,
     config: &TrainingConfig<T>,
 ) -> Result<AutoFerroxEngine<T>, String>
 where
@@ -423,12 +423,17 @@ where
     // Pre-allocate loss history for better performance
     let mut loss_history: Vec<T> = Vec::with_capacity(config.num_epochs);
 
-    // Create variable nodes for inputs and targets (no gradients needed for data)
-    let input_node = graph.create_variable(inputs.clone(), false);
-    let target_node = graph.create_variable(targets.clone(), false);
+
 
     // Training loop - iterate through epochs
     for ep in 0..config.num_epochs {
+
+        for (inputs, targets) in &data {
+            // Create variable nodes for inputs and targets (no gradients needed for data)
+            let input_node = graph.create_variable(inputs.clone(), false);
+            let target_node = graph.create_variable(targets.clone(), false);
+
+
         // Execute single epoch with benchmarking wrapper
         with_benchmark(|| {
             epoch(
@@ -455,14 +460,15 @@ where
         }
     }
 
+    }
+
     Ok(graph)
 }
 
 fn eval<T, M>(
     model: &mut M,
     graph: &mut AutoFerroxEngine<T>,
-    test_inputs: Tensor<T>,
-    test_targets: Tensor<T>,
+    data: TensorDataset<T>,
 ) -> Result<(), String>
 where
     T: FerroxCudaF,
@@ -470,8 +476,9 @@ where
 {
     // Switch model to evaluation mode (disables dropout, batch norm updates, etc.)
     model.eval();
-
+    let (test_inputs, test_targets) = data.get_item(0)?;
     // Run forward pass through the model
+
     let (predictions, pred_shape, num_samples) = run_forward(model, graph, &test_inputs)?;
 
     // Compute L1 loss (Mean Absolute Error)
@@ -505,19 +512,20 @@ fn main() -> Result<(), String> {
     );
     let loss_fn = L1Loss::<f32>::new(ReductionType::Mean);
 
-    let (train_inputs, train_targets) = generate_data::<f32>(10000, 4, device)?;
+    let train_data = generate_data::<f32>(10000, 4, Device::CPU)?; // Train data is generated on cpu and automatically transferred after batching
 
-    let (test_inputs, test_targets) = generate_data::<f32>(100, 4, device)?;
+    let test_data = generate_data::<f32>(100, 4, device)?;
 
     let mut trained_autograd = train(
         &mut model,
         &loss_fn,
-        train_inputs,
-        train_targets,
+        train_data.into_batches(1000,  false)?,
         &training_config,
     )?;
 
-    eval(&mut model, &mut trained_autograd, test_inputs, test_targets)?;
+
+    println!("Model trained finished");
+    eval(&mut model, &mut trained_autograd, test_data)?;
     println!("Example completed successfully!");
     Ok(())
 }

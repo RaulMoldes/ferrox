@@ -1,5 +1,5 @@
 // src/data/dataset.rs
-use crate::backend::{Device, FerroxCudaF, Tensor};
+use crate::backend::{FerroxCudaF, Tensor};
 
 
 
@@ -114,21 +114,8 @@ where
     T: FerroxCudaF + Clone,
 {
     /// Extract single sample using tensor slicing operations
-    fn get_item(&self, index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
-
-        if self.inputs.device != Device::CPU || self.targets.device != Device::CPU {
-            panic!("Cannot use `get_item` on a tensor in CUDA storage")
-        } else  if index < self.inputs.len(){
-            let value_target = self.targets[index];
-            let value_input = self.inputs[index];
-
-            let inp = Tensor::from_vec_with_device(vec![value_input], &[], self.inputs.device)?;
-            let tg = Tensor::from_vec_with_device(vec![value_target], &[], self.targets.device)?;
-
-            Ok((inp, tg))
-        }else {
-            Err("Out of bounds error. Index is too big".to_string())
-        }
+    fn get_item(&self, _index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
+        Ok((self.inputs.clone(), self.targets.clone()))
     }
 
 
@@ -193,5 +180,39 @@ where
     // Get total number of batches
     fn len(&self) -> usize {
         self.num_batches
+    }
+}
+
+
+impl<T> IntoIterator for BatchedDataset<T>
+where
+    T: FerroxCudaF + Clone,
+{
+    type Item = (Tensor<T>, Tensor<T>);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // zip de los vectores para emparejar input y target en tuplas
+        self.input_batches
+            .into_iter()
+            .zip(self.target_batches)
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+
+impl<'a, T> IntoIterator for &'a BatchedDataset<T>
+where
+    T: FerroxCudaF + Clone,
+{
+    type Item = (&'a Tensor<T>, &'a Tensor<T>);
+    type IntoIter = std::iter::Zip<
+        std::slice::Iter<'a, Tensor<T>>,
+        std::slice::Iter<'a, Tensor<T>>,
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.input_batches.iter().zip(self.target_batches.iter())
     }
 }
