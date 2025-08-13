@@ -10,7 +10,7 @@ use crate::ops::{
     comparison::Clamp,
     reduction::{Mean, Sum},
     scalar::AddScalar,
-    unary::{Log, Softmax, Neg},
+    unary::{Log, Neg, Softmax},
 };
 use crate::FerroxN;
 use std::marker::PhantomData;
@@ -210,19 +210,21 @@ where
                 .apply_operation(softmax_op, vec![predictions])
                 .map_err(|e| format!("CCE softmax application failed: {}", e))?;
 
-            // Add epsilon for numerical stability
-            let epsilon = FerroxN::from_f64(1e-7).unwrap();
-            let add_eps_op = Box::new(AddScalar::new(epsilon));
+            // Clamp probabilities to prevent log(0) which causes gradient explosion
+            let min_prob = FerroxN::from_f64(1e-8).unwrap(); // Increased from 1e-7
+            let max_prob = FerroxN::from_f64(1.0 - 1e-8).unwrap(); // Prevent log(1) = 0 issues
+            let clamp_op = Box::new(Clamp::new(min_prob, max_prob));
             graph
-                .apply_operation(add_eps_op, vec![raw_probs])
-                .map_err(|e| format!("CCE epsilon addition failed: {}", e))?
+                .apply_operation(clamp_op, vec![raw_probs])
+                .map_err(|e| format!("CCE probability clamping failed: {}", e))?
         } else {
-            // Add epsilon even if probabilities are provided
-            let epsilon = FerroxN::from_f64(1e-7).unwrap();
-            let add_eps_op = Box::new(AddScalar::new(epsilon));
+            // Even if probabilities are provided, clamp them for stability
+            let min_prob = FerroxN::from_f64(1e-8).unwrap();
+            let max_prob = FerroxN::from_f64(1.0 - 1e-8).unwrap();
+            let clamp_op = Box::new(Clamp::new(min_prob, max_prob));
             graph
-                .apply_operation(add_eps_op, vec![predictions])
-                .map_err(|e| format!("CCE epsilon addition failed: {}", e))?
+                .apply_operation(clamp_op, vec![predictions])
+                .map_err(|e| format!("CCE probability clamping failed: {}", e))?
         };
 
         // Step 3: Compute log of stabilized probabilities
@@ -270,5 +272,78 @@ where
 
     fn reduction(&self) -> ReductionType {
         self.reduction
+    }
+}
+
+
+#[cfg(test)]
+mod cce_loss_tests {
+    use crate::backend::manager::best_f32_device;
+    use crate::backend::Tensor;
+    use crate::graph::AutoFerroxEngine;
+    use crate::nn::losses::classification::CCELoss;
+    use crate::nn::losses::{Loss, ReductionType};
+
+    #[test]
+    fn test_cce_loss() {
+        let mut engine = AutoFerroxEngine::<f32>::new();
+        let device = best_f32_device();
+
+        // Simple 2-class case with known expected loss
+        // Logits: class 0 has higher score, class 1 has lower score
+        let logits = Tensor::from_vec_with_device(
+            vec![2.0, 1.0], // Should favor class 0
+            &[1, 2], // batch_size=1, num_classes=2
+            device
+        ).unwrap();
+
+        // One-hot target: correct class is 0
+        let targets = Tensor::from_vec_with_device(
+            vec![1.0, 0.0], // Class 0 is correct
+            &[1, 2],
+            device
+        ).unwrap();
+
+        // Create nodes in graph
+        let logits_node = engine.create_variable(logits.clone(), false);
+        let targets_node = engine.create_variable(targets.clone(), false);
+
+        // CCE loss with softmax
+        let cce_loss = CCELoss::from_logits(ReductionType::None); // No reduction for easier verification
+
+        // Compute loss
+        let loss_node = cce_loss.forward(&mut engine, logits_node, targets_node).unwrap();
+        let loss_tensor = engine.get_tensor(loss_node).unwrap();
+        let loss_value = loss_tensor.clone().first().unwrap();
+
+        // Manual calculation for verification:
+        // softmax([2.0, 1.0]) = [0.731, 0.269] (approximately)
+        // CCE = -sum(target * log(softmax)) = -(1.0 * log(0.731) + 0.0 * log(0.269))
+        //     = -log(0.731) ≈ 0.312
+        let expected_loss = -(0.731f32).ln();
+
+        println!("Computed loss: {:.6}", loss_value);
+        println!("Expected loss: {:.6}", expected_loss);
+
+        assert!((loss_value - expected_loss).abs() < 0.05,
+            "CCE loss mismatch: expected ~{:.4}, got {:.4}", expected_loss, loss_value);
+
+        // Test backward pass
+        engine.backward(loss_node).unwrap();
+
+        // Check if gradients exist and are reasonable
+        let logits_grad = engine.get_gradient(logits_node).unwrap();
+        let grad_data = logits_grad.clone().into_data().unwrap();
+        let grad_values = grad_data.as_slice().unwrap();
+
+        println!("Logits gradient: [{:.6}, {:.6}]", grad_values[0], grad_values[1]);
+
+        // For correct prediction (class 0), gradient should be:
+        // grad[0] = softmax[0] - target[0] = 0.731 - 1.0 = -0.269 (negative, good)
+        // grad[1] = softmax[1] - target[1] = 0.269 - 0.0 = 0.269 (positive, penalizing)
+        assert!(grad_values[0] < 0.0, "Gradient for correct class should be negative");
+        assert!(grad_values[1] > 0.0, "Gradient for incorrect class should be positive");
+        assert!((grad_values[0] + grad_values[1]).abs() < 1e-5,
+            "CCE gradients should sum to ~0, got sum: {:.6}", grad_values[0] + grad_values[1]);
     }
 }

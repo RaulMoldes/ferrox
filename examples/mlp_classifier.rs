@@ -8,7 +8,7 @@ use ferrox::dataset::{BatchedDataset, Dataset, TensorDataset};
 use ferrox::graph::{AutoFerroxEngine, NodeId};
 use ferrox::nn::{
     layers::{Linear, ReLU},
-    losses::{BCELoss, Loss, CCELoss, ReductionType},
+    losses::{BCELoss, CCELoss, Loss, ReductionType},
     optim::{Adam, Optim, Optimizer, SGD},
     Module,
 };
@@ -77,21 +77,25 @@ where
         graph: &mut AutoFerroxEngine<T>,
         input: ferrox::graph::NodeId,
     ) -> Result<ferrox::graph::NodeId, String> {
+
+
+
+
         // Layer 1: Linear -> ReLU
         let hidden1_out = self.hidden1.forward(graph, input)?;
+
+
         let activated1 = self.activation1.forward(graph, hidden1_out)?;
 
         // Layer 2: Linear -> ReLU
         let hidden2_out = self.hidden2.forward(graph, activated1)?;
-        let activated2 = self.activation2.forward(graph, hidden2_out)?;
 
+        let activated2 = self.activation2.forward(graph, hidden2_out)?;
         // Output layer: Linear (produces logits, no activation)
         let logits = self.output.forward(graph, activated2)?;
 
         Ok(logits)
     }
-
-
 
     /// Override create_parameters_in_graph to properly handle nested layers
     fn create_parameters_in_graph(
@@ -166,7 +170,7 @@ where
             batch_size: 32,
             num_epochs: 100,
             learning_rate: Some(FerroxN::from_f32(0.00001).unwrap()), // Much lower learning rate for stability
-            print_every: 10,
+            print_every: 1,
             optimizer: "Adam", // Adam works better for classification
             // SGD defaults
             momentum: Some(FerroxN::from_f32(0.9).unwrap()),
@@ -261,7 +265,9 @@ where
         // Create one-hot encoding
         for j in 0..num_classes {
             let target_value = if j == class_idx { 1.0 } else { 0.0 };
-            target_data.push(<T as FerroxN>::from_f64(target_value).ok_or("Failed to convert target data")?);
+            target_data.push(
+                <T as FerroxN>::from_f64(target_value).ok_or("Failed to convert target data")?,
+            );
         }
     }
 
@@ -392,7 +398,7 @@ where
 {
     // Forward pass through model
     let predictions = model.forward(graph, input_node)?;
-
+    
     // Compute loss using the loss function
     let loss_node = loss_fn.forward(graph, predictions, target_node)?;
 
@@ -529,7 +535,6 @@ where
         println!("Evaluated on {} samples", num_samples);
         println!("Prediction shape: {:?}", pred_shape);
         println!("BCE Loss: {:.6}", <T as FerroxN>::to_f64(bce_value));
-
     } else {
         // Multiclass classification - use CCE loss
         println!("=== Multiclass Classification Evaluation ===");
@@ -567,14 +572,14 @@ fn main() -> Result<(), String> {
         config.num_samples as usize,
         config.input_size as usize,
         config.output_size as usize,
-        Device::CPU
+        Device::CPU,
     )?;
 
     let multiclass_test_data = generate_multiclass_data::<f32>(
         100,
         config.input_size as usize,
         config.output_size as usize,
-        device
+        device,
     )?;
 
     let mut trained_multiclass_graph = train(
@@ -584,7 +589,11 @@ fn main() -> Result<(), String> {
         &training_config,
     )?;
 
-    eval_classifier(&mut multiclass_model, &mut trained_multiclass_graph, multiclass_test_data)?;
+    eval_classifier(
+        &mut multiclass_model,
+        &mut trained_multiclass_graph,
+        multiclass_test_data,
+    )?;
 
     // Demo 2: Binary Classification with BCE Loss
     println!("\n=== Training Binary Classifier ===");
@@ -600,14 +609,10 @@ fn main() -> Result<(), String> {
     let binary_train_data = generate_binary_data::<f32>(
         config.num_samples as usize,
         config.input_size as usize,
-        Device::CPU
+        Device::CPU,
     )?;
 
-    let binary_test_data = generate_binary_data::<f32>(
-        100,
-        config.input_size as usize,
-        device
-    )?;
+    let binary_test_data = generate_binary_data::<f32>(100, config.input_size as usize, device)?;
 
     let mut trained_binary_graph = train(
         &mut binary_model,
@@ -616,7 +621,11 @@ fn main() -> Result<(), String> {
         &training_config,
     )?;
 
-    eval_classifier(&mut binary_model, &mut trained_binary_graph, binary_test_data)?;
+    eval_classifier(
+        &mut binary_model,
+        &mut trained_binary_graph,
+        binary_test_data,
+    )?;
 
     println!("\n--- Classification Demo Completed Successfully! ---");
     Ok(())

@@ -257,3 +257,78 @@ impl Default for Squeeze {
 /// Expand dimensions operation: output = expand_dims(input, axis)
 /// Alias for Unsqueeze operation, following TensorFlow naming convention
 pub type ExpandDims = Unsqueeze;
+
+
+
+#[cfg(test)]
+mod reshape_ops_test {
+    use crate::backend::manager::best_f32_device;
+    use crate::backend::Tensor;
+    use crate::ops::matrix::Transpose;
+    use crate::ops::Operator;
+
+
+    #[test]
+    fn test_transpose() {
+        let device = best_f32_device();
+
+        // Create a weight matrix similar to what Linear layer uses: [out_features, in_features]
+        let weight_data = vec![
+            -0.124830216, 0.22747543, 0.57083875, -0.19728178,
+            -0.1812076, 0.42339596, 0.37712204, 0.015537508,
+            -0.05177227, -0.4744638, 0.033790253, 0.39341143,
+            -0.18968286, -0.26776776, 0.16704325, 0.13673706,
+        ];
+
+        let weights = Tensor::from_vec_with_device(
+            weight_data.clone(),
+            &[4, 4], // 4x4 matrix
+            device,
+        ).unwrap();
+
+
+
+        // Test transpose operation
+        let transpose_op = Transpose::new();
+        let mut inputs = [&weights];
+
+        
+
+        // Perform transpose
+        let transposed = transpose_op.compute(&mut inputs).unwrap();
+        let transposed_data = transposed.to_vec().unwrap();
+
+
+        // Check for NaN values in result
+        let has_nan = transposed_data.iter().any(|&x: &f32| x.is_nan());
+        if has_nan {
+            println!("TRANSPOSE PRODUCES NaN VALUES!");
+            let nan_positions: Vec<_> = transposed_data
+                .iter()
+                .enumerate()
+                .filter(|(_, &val)| val.is_nan())
+                .map(|(i, _)| i)
+                .collect();
+            println!("NaN found at positions: {:?}", nan_positions);
+        } else {
+            println!("✓ Transpose completed without NaN");
+        }
+
+        // Verify transpose is mathematically correct (before checking for NaN)
+        // Element at position (i,j) in original should be at (j,i) in transposed
+        for i in 0..4 {
+            for j in 0..4 {
+                let original_val: f32 = weight_data[i * 4 + j];
+                let transposed_val: f32 = transposed_data[j * 4 + i];
+
+                if !original_val.is_nan() && !transposed_val.is_nan() {
+                    assert!((original_val - transposed_val).abs() < 1e-6,
+                        "Transpose error at ({},{}): expected {}, got {}",
+                        i, j, original_val, transposed_val);
+                }
+            }
+        }
+
+        assert!(!has_nan, "Transpose operation should not produce NaN values");
+    }
+}

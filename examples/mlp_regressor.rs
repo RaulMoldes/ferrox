@@ -183,7 +183,7 @@ where
             num_epochs: 100,
             learning_rate: Some(FerroxN::from_f32(0.0001).unwrap()), // Small learning rate for stability
             print_every: 1,
-            optimizer: "SGD",
+            optimizer: "Adam",
             // SGD defaults
             momentum: Some(FerroxN::from_f32(0.0).unwrap()),
             nesterov: false,

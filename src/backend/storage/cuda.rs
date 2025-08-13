@@ -769,7 +769,13 @@ where
     }
 
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
-        with_cuda_ops(|ops: &CudaOps<T>| ops.broadcast_to(&mut self.cuda_data, target_shape))?;
+        let broadcasted = with_cuda_ops(|ops: &CudaOps<T>|{
+            ops.broadcast_to(&mut self.cuda_data, target_shape)?;
+            ops.materialize(&self.cuda_data)
+        }
+    )?;
+    // Ensure the tensor is materialized.
+    self.cuda_data = broadcasted;
         Ok(())
     }
 
@@ -786,7 +792,12 @@ where
         }
 
         // Use CUDA ops for reshape operation
-        with_cuda_ops(|ops: &CudaOps<T>| ops.reshape(&mut self.cuda_data, new_shape.to_vec()))?;
+        let reshaped = with_cuda_ops(|ops: &CudaOps<T>| {
+            ops.reshape(&mut self.cuda_data, new_shape.to_vec())?;
+            ops.materialize(&self.cuda_data)
+
+    })?;
+    self.cuda_data = reshaped;
         Ok(())
     }
 
@@ -804,14 +815,23 @@ where
 
                 // Use CUDA ops for custom transpose
 
-                with_cuda_ops(|ops: &CudaOps<T>| {
-                    ops.transpose(&mut self.cuda_data, Some(axes_order))
+                let transposed = with_cuda_ops(|ops: &CudaOps<T>| {
+                    ops.transpose(&mut self.cuda_data, Some(axes_order))?;
+                    ops.materialize(&self.cuda_data)
+
                 })?;
+                self.cuda_data = transposed;
                 Ok(())
             }
             None => {
                 // Default transpose using CUDA ops
-                with_cuda_ops(|ops: &CudaOps<T>| ops.transpose(&mut self.cuda_data, None))?;
+                let transposed = with_cuda_ops(|ops: &CudaOps<T>| {
+                    ops.transpose(&mut self.cuda_data, None)?;
+                    ops.materialize(&self.cuda_data)
+
+
+                })?;
+                self.cuda_data = transposed;
                 Ok(())
             }
         }
@@ -827,7 +847,11 @@ where
             ));
         }
 
-        with_cuda_ops(|op: &CudaOps<T>| op.unsqueeze(&mut self.cuda_data, axis))?;
+        let unsq = with_cuda_ops(|op: &CudaOps<T>| {
+            op.unsqueeze(&mut self.cuda_data, axis)?;
+            op.materialize(&self.cuda_data)
+        })?;
+        self.cuda_data = unsq;
         Ok(())
     }
 
@@ -852,7 +876,12 @@ where
                 }
 
                 // Use CUDA ops for single axis squeeze
-                with_cuda_ops(|ops: &CudaOps<T>| ops.squeeze(&mut self.cuda_data, Some(ax)))?;
+                let sq = with_cuda_ops(|ops: &CudaOps<T>| {
+                    ops.squeeze(&mut self.cuda_data, Some(ax))?;
+                    ops.materialize(&self.cuda_data)
+
+                })?;
+                self.cuda_data = sq;
                 Ok(())
             }
             None => {

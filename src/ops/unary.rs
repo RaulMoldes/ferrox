@@ -232,7 +232,7 @@ where
         inputs[0].softmax()
     }
 
-      fn gradient(
+    fn gradient(
         &self,
         grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
@@ -242,16 +242,51 @@ where
             return Err("Softmax gradient: shape mismatch".to_string());
         }
 
-        // dot = sum_i(grad_output_i * outputs_i)
-        let dot = grad_output.mul(outputs)?.sum(None)?.first()?; // scalar tensor
+        // FIXED: Correct softmax gradient for batched operations
+        // For softmax: grad_input = softmax_output * (grad_output - sum(grad_output * softmax_output))
 
-        // grad_input = outputs * (grad_output - dot)
-        let grad_sub = grad_output.sub(&outputs.mul_scalar(dot)?)?;
-        let grad_input = outputs.mul(&grad_sub)?;
+        // Step 1: Element-wise multiplication of grad_output and softmax output
+        let element_wise_prod = grad_output
+            .mul(outputs)
+            .map_err(|e| format!("Softmax gradient element-wise product failed: {}", e))?;
+
+        // Step 2: Sum along the class dimension (last dimension) keeping batch dimension
+        // This is critical - we need to sum per sample, not globally
+        let shape = outputs.shape();
+        let batch_size = if shape.len() > 1 { shape[0] } else { 1 };
+
+
+        // Reshape for proper reduction if needed
+        let mut sum_per_sample = if shape.len() > 1 {
+            // For batched data: sum across classes, keep batch dimension
+            element_wise_prod.sum(Some(&[1]))?
+        } else {
+            // For single sample: sum all elements to scalar
+            element_wise_prod.sum(None)?
+        };
+
+        // Step 3: Broadcast the sum back to original shape for subtraction
+        if shape.len() > 1 {
+            // Reshape sum to [batch_size, 1] then broadcast to [batch_size, num_classes]
+            sum_per_sample.reshape(&[batch_size, 1])?;
+            sum_per_sample.broadcast_to(shape)?
+
+        } else {
+            // For single sample, broadcast scalar to original shape
+            sum_per_sample.broadcast_to(shape)?
+        };
+
+        // Step 4: Compute final gradient: softmax * (grad_output - broadcasted_sum)
+        let grad_diff = grad_output
+            .sub(&sum_per_sample)
+            .map_err(|e| format!("Softmax gradient subtraction failed: {}", e))?;
+
+        let grad_input = outputs
+            .mul(&grad_diff)
+            .map_err(|e| format!("Softmax gradient final multiplication failed: {}", e))?;
 
         Ok(vec![grad_input])
     }
-
     fn clone_op(&self) -> Box<dyn Operator<T>> {
         Box::new(self.clone())
     }
@@ -260,9 +295,6 @@ where
         1
     }
 }
-
-
-
 
 /// Sigmoid activation: output = 1 / (1 + exp(-input))
 #[derive(Debug, Clone)]
@@ -308,7 +340,6 @@ where
         1
     }
 }
-
 
 /// Hyperbolic tangent activation: output = tanh(input)
 #[derive(Debug, Clone)]
@@ -448,5 +479,99 @@ where
 
     fn num_inputs(&self) -> usize {
         2
+    }
+}
+
+
+
+
+#[cfg(test)]
+mod softmax_tests {
+    use crate::backend::manager::best_f32_device;
+    use crate::backend::Tensor;
+    use crate::ops::unary::Softmax;
+    use crate::ops::Operator;
+    use crate::FerroxN;
+    use std::f32::consts::E;
+
+    #[test]
+    fn test_softmax_forward() {
+        let device = best_f32_device();
+
+        // Test simple 2-class logits that should produce known probabilities
+        let logits = Tensor::from_vec_with_device(
+            vec![2.0, 1.0], // exp(2)/sum = exp(2)/(exp(2)+exp(1)) ≈ 0.731, exp(1)/sum ≈ 0.269
+            &[2],
+            device,
+        ).unwrap();
+
+        let softmax_op = Softmax;
+        let mut inputs = [&logits];
+        let result = softmax_op.compute(&mut inputs).unwrap();
+
+        // Verify probabilities sum to 1
+        let sum: f32 = result.as_slice().unwrap().iter().sum();
+        assert!((sum - 1.0).abs() < 1e-6, "Softmax probabilities should sum to 1, got: {}", sum);
+
+        // Verify expected approximate values
+        let probs = result.as_slice().unwrap();
+        let expected_first = E.powi(2) / (E.powi(2) + E); // ≈ 0.731
+        assert!((probs[0] - expected_first).abs() < 0.01,
+            "First probability should be ~0.731, got: {}", probs[0]);
+
+        println!("✓ Softmax forward pass: input [{}, {}] -> output [{}, {}]",
+                 2.0, 1.0, probs[0], probs[1]);
+    }
+
+
+
+    #[test]
+    fn test_softmax_gradient() {
+        let device = best_f32_device();
+
+        // Simple 2-class case for manual verification
+        let logits = Tensor::from_vec_with_device(vec![1.0, 2.0], &[2], device).unwrap();
+
+        let softmax_op = Softmax;
+        let mut inputs = [&logits];
+
+        // Compute forward pass
+        let softmax_output = softmax_op.compute(&mut inputs).unwrap();
+        let prob_data = softmax_output.clone().into_data().unwrap();
+        let probs  = prob_data.as_slice().unwrap();
+        println!("Softmax output: [{:.4}, {:.4}]", probs[0], probs[1]);
+
+        // Gradient from next layer (simulating CCE loss gradient)
+        let grad_output = Tensor::from_vec_with_device(
+            vec![-1.0, 1.0], // Typical CCE gradient pattern
+            &[2],
+            device
+        ).unwrap();
+
+        // Compute gradient
+        let grad_result = softmax_op.gradient(grad_output, &mut inputs, &softmax_output).unwrap();
+        let grad_data = grad_result[0].clone().into_data().unwrap();
+        let grad_input = grad_data.as_slice().unwrap();
+
+        // Manual verification: for 2-class softmax gradient
+        // grad[0] = p0 * (grad_out[0] - (p0*grad_out[0] + p1*grad_out[1]))
+        // grad[1] = p1 * (grad_out[1] - (p0*grad_out[0] + p1*grad_out[1]))
+        let dot_product = -probs[0] + probs[1] * 1.0;
+        let expected_grad0 = probs[0] * (-1.0 - dot_product);
+        let expected_grad1 = probs[1] * (1.0 - dot_product);
+
+        println!("Expected gradient: [{:.4}, {:.4}]", expected_grad0, expected_grad1);
+        println!("Computed gradient: [{:.4}, {:.4}]", grad_input[0], grad_input[1]);
+
+        // Verify gradients match expected values
+        assert!(FerroxN::abs(grad_input[0] - expected_grad0) < 1e-5,
+            "Gradient[0] mismatch: expected {:.6}, got {:.6}", expected_grad0, grad_input[0]);
+        assert!(FerroxN::abs(grad_input[1] - expected_grad1) < 1e-5,
+            "Gradient[1] mismatch: expected {:.6}, got {:.6}", expected_grad1, grad_input[1]);
+
+        // Critical property: gradient should sum to zero for softmax
+        let grad_sum: f32 = grad_input.iter().sum();
+        assert!(grad_sum.abs() < 1e-5,
+            "Softmax gradient should sum to ~0, got: {:.6}", grad_sum);
     }
 }

@@ -1232,6 +1232,28 @@ where
 
 impl<T> Tensor<T>
 where
+T: FerroxCudaF
+{
+    pub fn to_vec(&self) -> Result<Vec<T>, String> {
+        Ok(self.clone().into_data()?.iter().copied().collect())
+    }
+
+    pub fn into_vec(self) -> Result<Vec<T>, String> {
+        Ok(self.into_data()?.iter().copied().collect())
+    }
+
+    // DEBUG UTILITY
+    pub fn debug(&self, name: &str){
+        let vec: Vec<T> = self.clone().into_data().unwrap().iter().copied().collect();
+        if vec.iter().any(|&x| x.is_nan()) {
+            panic!("{} has NaN: {:?}", name, vec);
+        }
+        println!("{}: {:?}", name, vec);
+    }
+}
+
+impl<T> Tensor<T>
+where
     T: FerroxCudaF,
 {
     /// Broadcasting for gradient computation and tensor operations
@@ -1266,6 +1288,8 @@ where
 
         Ok(())
     }
+
+
 
     /// Add dimension of size 1 at specified axis
     /// Similar to tf.expand_dims - axis can be 0..ndim (inclusive)

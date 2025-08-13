@@ -63,8 +63,20 @@ pub trait FerroxN:
     /// Power using an integer exponent
     fn powi(self, exp: i32) -> Self;
 
+    fn max(self, other: Self) -> Self{
+        if self >= other {
+            return self;
+        }
+        other
+    }
 
-    
+    fn min(self, other: Self) -> Self{
+        if self <= other {
+            return self;
+        }
+        other
+    }
+
     /// Converts to f64 for operations that require floating point
     fn to_f64(self) -> f64;
 
@@ -91,6 +103,8 @@ pub trait FerroxN:
 
     /// Maximum value representable by this type
     fn max_value() -> Self;
+
+
 }
 
 /// Additional trait for floating-point FerroxN types

@@ -2,6 +2,8 @@
 // Linear layer implementation using the computational graph engine
 // This is the fundamental building block for feedforward neural networks
 
+use rand_distr::weighted;
+
 use crate::backend::number::FerroxCudaF;
 use crate::backend::{Device, Tensor};
 use crate::graph::{AutoFerroxEngine, NodeId};
@@ -219,6 +221,7 @@ where
 
         let weight_node = self.get_parameter_node("weight")?;
 
+
         // Apply linear transformation: input @ weight^T
         // Since our weight is stored as [out_features, in_features], we need to transpose it
         // Use Transpose operation through the computational graph for proper gradient flow
@@ -226,6 +229,7 @@ where
         let weight_t_node = graph
             .apply_operation(transpose_op, vec![weight_node])
             .map_err(|e| format!("Weight transpose failed: {}", e))?;
+
 
         // Perform matrix multiplication: output = input @ weight^T
         let matmul_op = Box::new(MatMul);

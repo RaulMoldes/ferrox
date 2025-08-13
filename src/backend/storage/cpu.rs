@@ -373,6 +373,7 @@ where
     }
 }
 
+
 impl<T> StorageBackend<T> for CPUStorage<T>
 where
     T: FerroxCudaN,
@@ -470,46 +471,33 @@ where
     }
 
     fn transpose(&mut self, axes: Option<&[usize]>) -> Result<(), String> {
-        let current_ndim = self.ndim();
-
-        match axes {
-            Some(axes_order) => {
-                // Validate axes
-                if axes_order.len() != current_ndim {
-                    return Err(format!(
-                        "Axes length {} doesn't match tensor dimensions {}",
-                        axes_order.len(),
-                        current_ndim
-                    ));
-                }
-
-                // Validate permutation - check all axes are unique and in valid range
-                let mut sorted_axes = axes_order.to_vec();
-                sorted_axes.sort_unstable();
-                let expected: Vec<usize> = (0..current_ndim).collect();
-                if sorted_axes != expected {
-                    return Err(format!("Invalid axes permutation: {axes_order:?}"));
-                }
-
-                // Apply transpose with specified axes
-                let transposed_view = self.data.view().permuted_axes(axes_order);
-                self.data = transposed_view.to_owned();
+    match axes {
+        Some(order) => {
+            if order.len() != self.ndim() || {
+                let mut sorted = order.to_vec();
+                sorted.sort_unstable();
+                sorted != (0..self.ndim()).collect::<Vec<_>>()
+            } {
+                return Err("Invalid axes permutation".into());
             }
-            None => {
-                // Default transpose - reverse all axes
-                if current_ndim <= 1 {
-                    // No change needed for 0D or 1D tensors
-                    return Ok(());
-                }
-
-                let axes_order: Vec<usize> = (0..current_ndim).rev().collect();
-                let transposed_view = self.data.view().permuted_axes(axes_order);
-                self.data = transposed_view.to_owned();
-            }
+            self.data = self.data.view().permuted_axes(order).to_owned();
         }
+        None => {
+            if self.ndim() > 1 {
+                println!("CALL TO TRANSPOSE");
+                let orig: Vec<T> = self.data.iter().copied().collect();
+                println!("Original data {:?}", orig);
+                self.data = self.data.t().to_owned();
+                let fin: Vec<T> = self.data.iter().copied().collect();
+                println!("Final data {:?}",fin );
+            }
 
-        Ok(())
+
+        }
     }
+    Ok(())
+}
+
 
     fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
         let current_shape = self.shape();

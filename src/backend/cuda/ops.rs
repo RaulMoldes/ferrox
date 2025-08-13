@@ -1303,7 +1303,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
             let cfg = LaunchConfig {
                 grid_dim: (outer_size as u32, 1, 1),
-                block_dim: (inner_size.min(1024) as u32, 1, 1),
+                block_dim: (FerroxN::min(inner_size, 1024) as u32, 1, 1),
                 shared_mem_bytes: 0,
             };
 
@@ -1345,7 +1345,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
             let cfg = LaunchConfig {
                 grid_dim: (outer_size as u32, 1, 1),
-                block_dim: (inner_size.min(1024) as u32, 1, 1),
+                block_dim: (FerroxN::min(inner_size, 1024) as u32, 1, 1),
                 shared_mem_bytes: 0,
             };
 

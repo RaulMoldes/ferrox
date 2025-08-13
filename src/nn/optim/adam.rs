@@ -107,8 +107,14 @@ where
     fn compute_bias_corrections(&self) -> (T, T) {
         let step_f64 = <T as FerroxN>::from_f64(self.step_count as f64)
             .expect("Failed to cast step count to float");
-        let beta1_power = self.beta1.powf(step_f64);
-        let beta2_power = self.beta2.powf(step_f64);
+        let beta1_power = FerroxN::max(
+            self.beta1.powf(step_f64),
+            <T as FerroxN>::from_f64(1e-8).unwrap(),
+        );
+        let beta2_power = FerroxN::max(
+            self.beta2.powf(step_f64),
+            <T as FerroxN>::from_f64(1e-8).unwrap(),
+        );
 
         (
             <T as FerroxF>::one() - beta1_power,
@@ -145,9 +151,13 @@ where
                 let first_term = buffer
                     .mul_scalar(self.beta1)
                     .map_err(OptimizerError::TensorOperation)?;
+
                 let second_term = grad
                     .mul_scalar(one_minus_beta1)
                     .map_err(OptimizerError::TensorOperation)?;
+
+
+
                 *buffer = first_term
                     .add(&second_term)
                     .map_err(OptimizerError::TensorOperation)?;
@@ -161,12 +171,16 @@ where
                 // Update second moment: v = beta2 * v + (1 - beta2) * grad^2
                 let one_minus_beta2 = <T as FerroxF>::one() - self.beta2;
                 let grad_squared = grad.mul(grad).map_err(OptimizerError::TensorOperation)?;
+
                 let first_term = buffer
                     .mul_scalar(self.beta2)
                     .map_err(OptimizerError::TensorOperation)?;
+
                 let second_term = grad_squared
                     .mul_scalar(one_minus_beta2)
                     .map_err(OptimizerError::TensorOperation)?;
+
+
                 *buffer = first_term
                     .add(&second_term)
                     .map_err(OptimizerError::TensorOperation)?;
@@ -216,13 +230,12 @@ where
         bias_correction2: T,
         lr: T,
     ) -> Result<Tensor<T>, OptimizerError> {
+
         // Compute update: lr * m_hat / (sqrt(v_hat) + eps)
         let denominator = second_moment
             .div_scalar(bias_correction2)
-            .map_err(OptimizerError::TensorOperation)?
-            .sqrt()
-            .map_err(OptimizerError::TensorOperation)?
-            .add_scalar(self.eps)
+            .map_err(OptimizerError::TensorOperation)?.abs().map_err(OptimizerError::TensorOperation)?.sqrt()
+            .map_err(OptimizerError::TensorOperation)?.add_scalar(self.eps)
             .map_err(OptimizerError::TensorOperation)?;
 
         let scaled_update = self
@@ -233,6 +246,7 @@ where
             .map_err(OptimizerError::TensorOperation)?
             .mul_scalar(lr)
             .map_err(OptimizerError::TensorOperation)?;
+
         Ok(scaled_update)
     }
 
@@ -247,6 +261,7 @@ where
             let weight_decay_term = params
                 .mul_scalar(weight_decay * lr)
                 .map_err(OptimizerError::TensorOperation)?;
+      
             params
                 .sub(update)
                 .map_err(OptimizerError::TensorOperation)?
@@ -278,6 +293,8 @@ where
                         .get_tensor_data(param_node)
                         .ok_or(OptimizerError::ParameterNotFound(param_node))?
                         .clone();
+
+
                     let device = params.device();
                     let shape = params.shape();
                     // Initialize moment buffers with proper device placement
