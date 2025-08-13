@@ -26,7 +26,7 @@ pub mod backend;
 // Re-export commonly used types for convenience
 pub use backend::{cpu, default_device, Device, FerroxCudaF, FerroxCudaN, FerroxF, FerroxN};
 
+pub mod dataset;
 pub mod graph;
 pub mod nn;
 pub mod ops;
-pub mod dataset;

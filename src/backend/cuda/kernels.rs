@@ -99,6 +99,8 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "relu_f64",
             "sigmoid_f64",
             "hyperbolic_tangent_f64",
+            "softmax",
+            "softmax_f64",
         ],
     },
     KernelConfig {
@@ -145,10 +147,7 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         name: "materialize",
         ptx: MATERIALIZE_PTX,
         module: "materialize_module",
-        functions: &[
-            "materialize",
-            "materialize_f64",
-        ],
+        functions: &["materialize", "materialize_f64"],
     },
     KernelConfig {
         name: "comparison",
@@ -633,6 +632,19 @@ impl KernelManager {
         self.launch_unary_elementwise("sigmoid", cfg, input, output, size)
     }
 
+    pub fn launch_softmax<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_unary_elementwise("softmax", cfg, input, output, size)
+    }
+
     /// Launch hyperbolic tangent activation: result[i] = tanh(input[i])
     pub fn launch_tanh<T>(
         &self,
@@ -751,7 +763,6 @@ impl KernelManager {
             &total_elements  // int total_elements
         )
     }
-
 
     /// Launch min reduction for all elements (produces scalar)
     pub fn launch_min_all<T>(

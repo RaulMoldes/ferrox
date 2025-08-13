@@ -965,6 +965,25 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
+    fn softmax(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxF,
+    {
+        // Softmax function: exp(x_i - max(x)) / sum(exp(x_j - max(x)))
+        let max_val = self
+            .data
+            .fold(T::min_value(), |a, &b| if b > a { b } else { a });
+
+        // Substract the max value
+        let exp_shifted = self.data.mapv(|x| (x - max_val).exp());
+        // Sum all exponents
+        let sum_exp = exp_shifted.sum();
+
+        // Divide each value by the total sum.
+        let result_data = exp_shifted.mapv(|x| x / sum_exp);
+        Ok(Box::new(CPUStorage::new(result_data)))
+    }
+
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ReLU activation: max(0, x)
         let result_data = self.data.mapv(|x| {
@@ -1198,7 +1217,6 @@ where
         Ok(Some(self.data[ndarray::IxDyn(indices)]))
     }
 
-    
     /*  fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Execute custom operation with immutable access to ArrayD data
         // Operation creates new results following existing storage pattern

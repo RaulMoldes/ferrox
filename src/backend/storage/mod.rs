@@ -138,7 +138,6 @@ where
     /// Returns new storage with 1.0 for true, 0.0 for false
     fn less(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-
     fn less_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Element-wise equality comparison: self == other
@@ -164,6 +163,12 @@ where
     /// Sigmoid activation function: 1 / (1 + exp(-self))
     /// Returns new storage with sigmoid applied element-wise
     fn sigmoid(&self) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxF;
+
+    /// Softmax activation function.
+    /// Returns new storage with softmax applied element-wise
+    fn softmax(&self) -> Result<Box<dyn StorageBackend<T>>, String>
     where
         T: FerroxF;
 

@@ -1,0 +1,12 @@
+{
+  "files.associations": {
+    "*.cu": "cuda-cpp",
+    "*.cuh": "cuda-cpp",
+    "*.hpp": "cpp",
+    "*.tpp": "cpp",
+    "Dockerfile*": "dockerfile",
+    "*.toml": "toml",
+    "*.ron": "rust",
+    "__locale": "cpp"
+  }
+}

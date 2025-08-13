@@ -1,10 +1,6 @@
 // src/data/dataset.rs
 use crate::backend::{FerroxCudaF, Tensor};
 
-
-
-
-
 pub trait Dataset<T>
 where
     T: FerroxCudaF,
@@ -19,8 +15,6 @@ where
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-
 }
 
 /// Basic tensor dataset for supervised learning
@@ -46,7 +40,8 @@ where
         if inputs.shape()[0] != targets.shape()[0] {
             return Err(format!(
                 "Input batch size {} doesn't match target batch size {}",
-                inputs.shape()[0], targets.shape()[0]
+                inputs.shape()[0],
+                targets.shape()[0]
             ));
         }
 
@@ -66,13 +61,13 @@ where
         })
     }
 
-
-        // Create dataset from single tensor - for unsupervised learning
+    // Create dataset from single tensor - for unsupervised learning
     pub fn from_tensor(inputs: Tensor<T>, targets: Tensor<T>) -> Result<Self, String> {
         if inputs.shape()[0] != targets.shape()[0] {
             return Err(format!(
                 "Input batch size {} doesn't match target batch size {}",
-                inputs.shape()[0], targets.shape()[0]
+                inputs.shape()[0],
+                targets.shape()[0]
             ));
         }
 
@@ -93,9 +88,12 @@ where
         })
     }
 
-
-       // Create batched dataset using tensor's into_batches method
-    pub fn into_batches(self, batch_size: usize, drop_last: bool) -> Result<BatchedDataset<T>, String> {
+    // Create batched dataset using tensor's into_batches method
+    pub fn into_batches(
+        self,
+        batch_size: usize,
+        drop_last: bool,
+    ) -> Result<BatchedDataset<T>, String> {
         if batch_size == 0 {
             return Err("Batch size must be greater than 0".to_string());
         }
@@ -106,7 +104,6 @@ where
 
         Ok(BatchedDataset::new(input_batches, target_batches))
     }
-
 }
 
 impl<T> Dataset<T> for TensorDataset<T>
@@ -118,14 +115,10 @@ where
         Ok((self.inputs.clone(), self.targets.clone()))
     }
 
-
-
-
     fn len(&self) -> usize {
         self.num_samples
     }
 }
-
 
 #[derive(Debug)]
 pub struct BatchedDataset<T>
@@ -151,13 +144,11 @@ where
         }
     }
 
-
     // Check if empty
     pub fn is_empty(&self) -> bool {
         self.num_batches == 0
     }
 }
-
 
 impl<T> Dataset<T> for BatchedDataset<T>
 where
@@ -165,24 +156,20 @@ where
 {
     /// Extract single sample using tensor slicing operations
     fn get_item(&self, index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
-
-         if index < self.len(){
+        if index < self.len() {
             let target = self.target_batches[index].clone();
             let input = self.input_batches[index].clone();
             Ok((input, target))
-        }else {
+        } else {
             Err("Out of bounds error. Index is too big".to_string())
         }
     }
-
-
 
     // Get total number of batches
     fn len(&self) -> usize {
         self.num_batches
     }
 }
-
 
 impl<T> IntoIterator for BatchedDataset<T>
 where
@@ -201,16 +188,13 @@ where
     }
 }
 
-
 impl<'a, T> IntoIterator for &'a BatchedDataset<T>
 where
     T: FerroxCudaF + Clone,
 {
     type Item = (&'a Tensor<T>, &'a Tensor<T>);
-    type IntoIter = std::iter::Zip<
-        std::slice::Iter<'a, Tensor<T>>,
-        std::slice::Iter<'a, Tensor<T>>,
-    >;
+    type IntoIter =
+        std::iter::Zip<std::slice::Iter<'a, Tensor<T>>, std::slice::Iter<'a, Tensor<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.input_batches.iter().zip(self.target_batches.iter())

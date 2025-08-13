@@ -290,7 +290,6 @@ where
     /// Get CPU data reference for CPU tensors only
     /// For GPU tensors, use cpu_data_owned() to get a copy or cpu_data_mut() for in-place conversion
     pub fn cpu_data(&self) -> Result<&ArrayD<T>, String> {
-
         let storage = self
             .storage
             .as_ref()
@@ -1098,6 +1097,16 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
+    pub fn softmax(&self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.softmax()?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
     /// ReLU activation function using storage trait
     pub fn relu(&self) -> Result<Self, String> {
         let storage = self
@@ -1319,10 +1328,6 @@ where
     }
 }
 
-
-
-
-
 impl<T> Tensor<T>
 where
     T: FerroxCudaF + Clone,
@@ -1337,11 +1342,11 @@ where
     /// # Returns
     /// Vector of micro-tensors, each containing a slice of the original tensor
     ///
-    pub fn partition(&self, axis: usize, num_partitions: usize) -> Result<Vec<Self>, String>{
+    pub fn partition(&self, axis: usize, num_partitions: usize) -> Result<Vec<Self>, String> {
         self.clone().into_partitions(axis, num_partitions)
     }
 
-    pub fn batch(&self, batch_size: usize, drop_last: bool) -> Result<Vec<Self>, String>{
+    pub fn batch(&self, batch_size: usize, drop_last: bool) -> Result<Vec<Self>, String> {
         self.clone().into_batches(batch_size, drop_last)
     }
 
@@ -1353,7 +1358,8 @@ where
         if axis >= self.ndim() {
             return Err(format!(
                 "Partition axis {} out of bounds for tensor with {} dimensions",
-                axis, self.ndim()
+                axis,
+                self.ndim()
             ));
         }
 
@@ -1367,9 +1373,8 @@ where
 
         // Move to CPU if on CUDA - required for partitioning operations
         let cpu_tensor = if self.device() != Device::CPU {
-             println!("Moving to cpu");
+            println!("Moving to cpu");
             self.to_device(Device::CPU)?
-
         } else {
             self
         };
@@ -1383,7 +1388,7 @@ where
         // Create partitions - distribute remainder across first partitions
         for i in 0..num_partitions {
             let current_size = if i < remainder {
-                partition_size + 1  // First 'remainder' partitions get extra element
+                partition_size + 1 // First 'remainder' partitions get extra element
             } else {
                 partition_size
             };
@@ -1463,7 +1468,8 @@ where
         if axis >= self.ndim() {
             return Err(format!(
                 "Slice axis {} out of bounds for tensor with {} dimensions",
-                axis, self.ndim()
+                axis,
+                self.ndim()
             ));
         }
 
@@ -1474,7 +1480,8 @@ where
         if end_idx > self.shape()[axis] {
             return Err(format!(
                 "End index {} exceeds axis size {}",
-                end_idx, self.shape()[axis]
+                end_idx,
+                self.shape()[axis]
             ));
         }
 
@@ -1515,7 +1522,8 @@ where
         if axis >= self.ndim() {
             return Err(format!(
                 "Chunk axis {} out of bounds for tensor with {} dimensions",
-                axis, self.ndim()
+                axis,
+                self.ndim()
             ));
         }
 
@@ -1565,7 +1573,8 @@ where
             if tensor.shape() != first_shape {
                 return Err(format!(
                     "All tensors must have same shape for stacking. Expected {:?}, got {:?}",
-                    first_shape, tensor.shape()
+                    first_shape,
+                    tensor.shape()
                 ));
             }
 
@@ -1581,7 +1590,8 @@ where
         if axis > first_shape.len() {
             return Err(format!(
                 "Stack axis {} out of bounds. Maximum allowed: {}",
-                axis, first_shape.len()
+                axis,
+                first_shape.len()
             ));
         }
 
@@ -1738,8 +1748,6 @@ where
     type Output = T;
 
     fn index(&self, indices: &[usize]) -> &Self::Output {
-
-
         // Must use storage backend - data field is removed
         let cpu_data = self
             .cpu_data()
@@ -1975,6 +1983,27 @@ mod tensor_ops_tests {
     }
 
     #[test]
+    fn test_softmax_activation() {
+        let device = best_device::<f32>();
+        let tensor = Tensor::from_vec_with_device(vec![0.0f32, 1.0, 2.0], &[3], device).unwrap();
+
+        let result = tensor.softmax().unwrap();
+        let data = result.into_data().unwrap();
+
+        // Expected softmax values for [0.0, 1.0, 2.0]
+        let exp0 = (0.0f32).exp();
+        let exp1 = (1.0f32).exp();
+        let exp2 = (2.0f32).exp();
+        let sum_exp = exp0 + exp1 + exp2;
+
+        let expected = vec![exp0 / sum_exp, exp1 / sum_exp, exp2 / sum_exp];
+
+        for (a, b) in data.iter().zip(expected.iter()) {
+            assert!((a - b).abs() < 1e-6, "Expected {}, got {}", b, a);
+        }
+    }
+
+    #[test]
     fn test_tanh_activation() {
         let device = best_device::<f32>();
         let tensor =
@@ -2195,7 +2224,7 @@ mod tensor_ops_tests {
         assert_eq!(slice[1], 3.0);
     }
 
-   /// Helper to create test tensor with sequential data for easy verification
+    /// Helper to create test tensor with sequential data for easy verification
     fn create_test_tensor(data: Vec<f32>, shape: &[usize]) -> Tensor<f32> {
         let device = best_device::<f32>();
         Tensor::from_vec_with_device(data, shape, device).unwrap()
@@ -2203,15 +2232,16 @@ mod tensor_ops_tests {
 
     /// Helper to assert two tensors are approximately equal
     fn assert_tensor_equal(a: &Tensor<f32>, b: &Tensor<f32>, tolerance: f32) {
-
-
         let a_data = a.clone().into_data().unwrap();
         let b_data = b.clone().into_data().unwrap();
 
         for (a_val, b_val) in a_data.iter().zip(b_data.iter()) {
             assert!(
                 (a_val - b_val).abs() < tolerance,
-                "Values differ: {} vs {} (tolerance: {})", a_val, b_val, tolerance
+                "Values differ: {} vs {} (tolerance: {})",
+                a_val,
+                b_val,
+                tolerance
             );
         }
     }
@@ -2228,15 +2258,22 @@ mod tensor_ops_tests {
 
         // Each partition should have 2 elements
         for (i, partition) in partitions.iter().enumerate() {
-            assert_eq!(partition.shape(), &[2], "Each partition should have shape [2]");
+            assert_eq!(
+                partition.shape(),
+                &[2],
+                "Each partition should have shape [2]"
+            );
 
             let data = partition.clone().into_data().unwrap();
             assert_eq!(data[0] as usize, i * 2, "First element should be {}", i * 2);
-            assert_eq!(data[1] as usize, i * 2 + 1, "Second element should be {}", i * 2 + 1);
+            assert_eq!(
+                data[1] as usize,
+                i * 2 + 1,
+                "Second element should be {}",
+                i * 2 + 1
+            );
         }
     }
-
-
 
     #[test]
     fn test_partition_uneven_distribution() {
@@ -2248,9 +2285,21 @@ mod tensor_ops_tests {
         assert_eq!(partitions.len(), 3, "Should create 3 partitions");
 
         // First partition gets remainder: 4 elements (10/3 = 3 remainder 1)
-        assert_eq!(partitions[0].shape(), &[4], "First partition should have 4 elements");
-        assert_eq!(partitions[1].shape(), &[3], "Second partition should have 3 elements");
-        assert_eq!(partitions[2].shape(), &[3], "Third partition should have 3 elements");
+        assert_eq!(
+            partitions[0].shape(),
+            &[4],
+            "First partition should have 4 elements"
+        );
+        assert_eq!(
+            partitions[1].shape(),
+            &[3],
+            "Second partition should have 3 elements"
+        );
+        assert_eq!(
+            partitions[2].shape(),
+            &[3],
+            "Third partition should have 3 elements"
+        );
 
         // Verify data distribution
         let p0_data = partitions[0].clone().into_data().unwrap();
@@ -2274,9 +2323,24 @@ mod tensor_ops_tests {
 
         // First 3 batches should have size 3
 
-        assert_eq!(batches[0].shape(), &[3], "Batch {} should have shape [3]", 0);
-        assert_eq!(batches[1].shape(), &[3], "Batch {} should have shape [3]", 1);
-        assert_eq!(batches[2].shape(), &[3], "Batch {} should have shape [3]", 2);
+        assert_eq!(
+            batches[0].shape(),
+            &[3],
+            "Batch {} should have shape [3]",
+            0
+        );
+        assert_eq!(
+            batches[1].shape(),
+            &[3],
+            "Batch {} should have shape [3]",
+            1
+        );
+        assert_eq!(
+            batches[2].shape(),
+            &[3],
+            "Batch {} should have shape [3]",
+            2
+        );
         // Last batch should have size 1 (remainder)
         assert_eq!(batches[3].shape(), &[1], "Last batch should have shape [1]");
 
@@ -2320,13 +2384,20 @@ mod tensor_ops_tests {
 
         // Each batch should have shape [2, 4]
         for batch in &batches {
-            assert_eq!(batch.shape(), &[2, 4], "Each batch should have shape [2, 4]");
+            assert_eq!(
+                batch.shape(),
+                &[2, 4],
+                "Each batch should have shape [2, 4]"
+            );
         }
 
         // Verify first batch contains samples 0 and 1
         let first_batch_data = batches[0].clone().into_data().unwrap();
         let expected_first_batch = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
-        assert_eq!(first_batch_data.as_slice().unwrap(), &expected_first_batch[..]);
+        assert_eq!(
+            first_batch_data.as_slice().unwrap(),
+            &expected_first_batch[..]
+        );
     }
 
     #[test]
@@ -2355,9 +2426,6 @@ mod tensor_ops_tests {
         assert_eq!(chunk3_data.as_slice().unwrap(), &[9.0]);
     }
 
-
-
-
     // Test CPU to CUDA movement during partitioning (if CUDA available)
     #[cfg(feature = "cuda")]
     #[test]
@@ -2371,13 +2439,15 @@ mod tensor_ops_tests {
 
         // Create CUDA tensor
         let cuda_device = Device::CUDA(0);
-        let cuda_tensor = Tensor::from_vec_with_device(
-            (0..12).map(|x| x as f32).collect(),
-            &[12],
-            cuda_device
-        ).unwrap();
+        let cuda_tensor =
+            Tensor::from_vec_with_device((0..12).map(|x| x as f32).collect(), &[12], cuda_device)
+                .unwrap();
 
-        assert_eq!(cuda_tensor.device(), cuda_device, "Tensor should be on CUDA");
+        assert_eq!(
+            cuda_tensor.device(),
+            cuda_device,
+            "Tensor should be on CUDA"
+        );
 
         // Partition - should automatically move to CPU
         let partitions = cuda_tensor.into_partitions(0, 3).unwrap();
@@ -2386,13 +2456,26 @@ mod tensor_ops_tests {
 
         // All partitions should be on CPU
         for (i, partition) in partitions.iter().enumerate() {
-            assert_ne!(partition.device(), Device::CPU, "Partition {} should be back on CUDA", i);
-            assert_eq!(partition.shape(), &[4], "Partition {} should have shape [4]", i);
+            assert_ne!(
+                partition.device(),
+                Device::CPU,
+                "Partition {} should be back on CUDA",
+                i
+            );
+            assert_eq!(
+                partition.shape(),
+                &[4],
+                "Partition {} should have shape [4]",
+                i
+            );
         }
 
         // Verify data integrity
         let first_partition_data = partitions[0].clone().into_data().unwrap();
-        assert_eq!(first_partition_data.as_slice().unwrap(), &[0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(
+            first_partition_data.as_slice().unwrap(),
+            &[0.0, 1.0, 2.0, 3.0]
+        );
     }
 
     #[test]
@@ -2406,9 +2489,7 @@ mod tensor_ops_tests {
         // Stack back together
         let reconstructed = Tensor::stack(&partitions, 0).unwrap();
 
-
         // Data should match exactly
         assert_tensor_equal(&original, &reconstructed, 1e-6);
     }
-
 }

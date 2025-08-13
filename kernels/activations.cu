@@ -89,3 +89,181 @@ extern "C" __global__ void hyperbolic_tangent_f64(
         // output[idx] = (exp_pos - exp_neg) / (exp_pos + exp_neg);
     }
 }
+
+
+
+
+// =============================================================================
+// SOFTMAX KERNEL: WARP REDUCTION PRIMITIVES
+// =============================================================================
+
+template <typename T>
+__inline__ __device__ T warpReduceMax(T val) {
+#pragma unroll
+    for (int mask = 16; mask > 0; mask >>= 1) {
+        val = max(val, __shfl_xor_sync(0xffffffff, val, mask, 32));
+    }
+    return val;
+}
+
+template <typename T>
+__inline__ __device__ T warpReduceSum(T val) {
+#pragma unroll
+    for (int mask = 16; mask > 0; mask >>= 1) {
+        val += __shfl_xor_sync(0xffffffff, val, mask, 32);
+    }
+    return val;
+}
+
+// =============================================================================
+// BLOCK REDUCTION PRIMITIVES
+// =============================================================================
+
+template <typename T>
+__inline__ __device__ T blockReduceMax(T val) {
+    __shared__ T shared[33];
+
+    int lane = threadIdx.x & 0x1f;  // threadIdx.x % 32
+    int wid = threadIdx.x >> 5;     // threadIdx.x / 32
+
+    // Reduce inside the warp
+    val = warpReduceMax(val);
+
+    // Thread 0 of each warp stores on shmem
+    if (lane == 0) {
+        shared[wid] = val;
+    }
+    __syncthreads();
+
+    // First warp makes the final reduction
+    if (wid == 0) {
+        val = (threadIdx.x < (blockDim.x / 32)) ? shared[lane] : -FLT_MAX;
+        val = warpReduceMax(val);
+    }
+
+    return val;
+}
+
+template <typename T>
+__inline__ __device__ T blockReduceSum(T val) {
+    __shared__ T shared[33];
+
+    int lane = threadIdx.x & 0x1f;
+    int wid = threadIdx.x >> 5;
+
+    val = warpReduceSum(val);
+
+    if (lane == 0) {
+        shared[wid] = val;
+    }
+    __syncthreads();
+
+    if (wid == 0) {
+        val = (threadIdx.x < (blockDim.x / 32)) ? shared[lane] : 0.0f;
+        val = warpReduceSum(val);
+    }
+
+    return val;
+}
+
+// =============================================================================
+// SOFTMAX KERNEL
+// =============================================================================
+
+extern "C" __global__ void softmax(const float* input, float* output, int N) {
+
+
+    int tid = threadIdx.x;
+    int global_idx = get_global_idx();
+
+    // S1: Find global maxima using block reduction
+    float local_max = -FLT_MAX;
+
+    // Initialize local max values.
+    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
+        local_max = max(local_max, input[i]);
+    }
+
+    // Reduce the maximum
+    float block_max = blockReduceMax(local_max);
+
+    // Broadcast the maximum to all threads
+    __shared__ float s_max;
+    if (tid == 0) {
+        s_max = block_max;
+    }
+    __syncthreads();
+
+    // S2: Compute local sums
+    float local_sum = 0.0f;
+
+    // Each thread calculates its local sum value.
+    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
+        local_sum += expf(input[i] - s_max);
+    }
+
+    // Reduce sum between all blocks.
+    float block_sum = blockReduceSum(local_sum);
+
+    // Broadcast the sum to all threads.
+    __shared__ float s_sum;
+    if (tid == 0) {
+        s_sum = block_sum;
+    }
+    __syncthreads();
+
+    // S3: Compute final softmax and return the result.
+    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
+        output[i] = expf(input[i] - s_max) / s_sum;
+    }
+}
+
+
+
+
+extern "C" __global__ void softmax_f64(const double* input, double* output, int N) {
+
+    int tid = threadIdx.x;
+    int global_idx = get_global_idx();
+
+    // S1: Find global maxima using block reduction
+    double local_max = -(double) FLT_MAX;
+
+    // Initialize local max values.
+    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
+        local_max = max(local_max, input[i]);
+    }
+
+    // Reduce the maximum
+    double block_max = blockReduceMax(local_max);
+
+    // Broadcast the maximum to all threads
+    __shared__ double s_max;
+    if (tid == 0) {
+        s_max = block_max;
+    }
+    __syncthreads();
+
+    // S2: Compute local sums
+    double local_sum = 0.0f;
+
+    // Each thread calculates its local sum value.
+    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
+        local_sum += exp(input[i] - s_max);
+    }
+
+    // Reduce sum between all blocks.
+    double block_sum = blockReduceSum(local_sum);
+
+    // Broadcast the sum to all threads.
+    __shared__ double s_sum;
+    if (tid == 0) {
+        s_sum = block_sum;
+    }
+    __syncthreads();
+
+    // S3: Compute final softmax and return the result.
+    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
+        output[i] = exp(input[i] - s_max) / s_sum;
+    }
+}

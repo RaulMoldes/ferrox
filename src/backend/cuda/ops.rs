@@ -532,6 +532,17 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
+    // SOFTMAX ACTIVATION.
+    pub fn softmax(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
+        let size = input.size();
+        let mut result = self.create_tensor_from_pool(input.shape())?;
+        let cfg = self.get_launch_config(size);
+
+        self.kernels
+            .launch_softmax(cfg, input.data(), result.data_mut(), size as i32)?;
+        Ok(result)
+    }
+
     /// Hyperbolic tangent activation: result = tanh(input)
     pub fn tanh(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();
@@ -1213,16 +1224,14 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
-   pub fn debug_cuda_tensor(&self, tensor: &CudaTensor<T>, name: &str) -> Result<(), String> {
-    with_cuda_context(|ctx| {
-        let data = tensor.clone().to_vec(ctx)?;
-        println!("{}: {:?}", name, data);
+    pub fn debug_cuda_tensor(&self, tensor: &CudaTensor<T>, name: &str) -> Result<(), String> {
+        with_cuda_context(|ctx| {
+            let data = tensor.clone().to_vec(ctx)?;
+            println!("{}: {:?}", name, data);
+            Ok(())
+        })?;
         Ok(())
-    })?;
-    Ok(())
-}
-
-
+    }
 
     /// IN - PLACE OPS (THIS DO NOT HAVE AN ASSOCIATED KERNEL SO DO NOT ATTEMPT TO SEARCH FOR IT)
     pub fn squeeze(&self, input: &mut CudaTensor<T>, axis: Option<usize>) -> Result<(), String> {

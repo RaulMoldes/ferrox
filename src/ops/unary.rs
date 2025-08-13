@@ -218,6 +218,54 @@ where
 
 /// Sigmoid activation: output = 1 / (1 + exp(-input))
 #[derive(Debug, Clone)]
+pub struct Softmax;
+
+impl<T> Operator<T> for Softmax
+where
+    T: FerroxCudaF,
+{
+    fn compute(&self, inputs: &mut [&Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 1 {
+            return Err("Softmax operation requires exactly 1 input".to_string());
+        }
+
+        inputs[0].softmax()
+    }
+
+      fn gradient(
+        &self,
+        grad_output: Tensor<T>,
+        _inputs: &mut [&Tensor<T>],
+        outputs: &Tensor<T>,
+    ) -> Result<Vec<Tensor<T>>, String> {
+        if outputs.shape() != grad_output.shape() {
+            return Err("Softmax gradient: shape mismatch".to_string());
+        }
+
+        // dot = sum_i(grad_output_i * outputs_i)
+        let dot = grad_output.mul(outputs)?.sum(None)?.first()?; // scalar tensor
+
+        // grad_input = outputs * (grad_output - dot)
+        let grad_sub = grad_output.sub(&outputs.mul_scalar(dot)?)?;
+        let grad_input = outputs.mul(&grad_sub)?;
+
+        Ok(vec![grad_input])
+    }
+
+    fn clone_op(&self) -> Box<dyn Operator<T>> {
+        Box::new(self.clone())
+    }
+
+    fn num_inputs(&self) -> usize {
+        1
+    }
+}
+
+
+
+
+/// Sigmoid activation: output = 1 / (1 + exp(-input))
+#[derive(Debug, Clone)]
 pub struct Sigmoid;
 
 impl<T> Operator<T> for Sigmoid
@@ -260,6 +308,7 @@ where
         1
     }
 }
+
 
 /// Hyperbolic tangent activation: output = tanh(input)
 #[derive(Debug, Clone)]

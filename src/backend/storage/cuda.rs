@@ -569,6 +569,11 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
+    fn softmax(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.softmax(&self.cuda_data))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
+    }
+
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.relu(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda)))
@@ -896,9 +901,6 @@ where
     fn get_multi(&self, _indices: &[usize]) -> Result<Option<T>, String> {
         Err("Cannot index over a tensor in cuda. Move to cpu first.".to_string())
     }
-
-
-
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Executes custom operation through CUDA ops interface

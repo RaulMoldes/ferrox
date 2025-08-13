@@ -12,7 +12,6 @@
 #include "matmul.cu"
 #include "convolutions.cu"
 #include "globals.cuh"
-
 #define BLOCK_SIZE 256
 #define TILE_SIZE 16
 #define SIZE (1 << 26) // ~64 million elements
@@ -433,6 +432,7 @@ int main() {
     run_and_time_kernel_unary("relu", relu, d_a_f32, d_out_f32, SIZE);
     run_and_time_kernel_unary("sigmoid", sigmoid, d_a_f32, d_out_f32, SIZE);
     run_and_time_kernel_unary("hyperbolic_tangent", hyperbolic_tangent, d_a_f32, d_out_f32, SIZE);
+    run_and_time_kernel_unary("softmax", softmax, d_a_f32, d_out_f32, SIZE);
 
     printf("\n=== FLOAT32 REDUCTION OPERATIONS (FULL) ===\n");
     run_and_time_reduce_all("reduce_sum_all", reduce_sum_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
@@ -486,6 +486,7 @@ int main() {
     run_and_time_kernel_unary("relu_f64", relu_f64, d_a_f64, d_out_f64, SIZE);
     run_and_time_kernel_unary("sigmoid_f64", sigmoid_f64, d_a_f64, d_out_f64, SIZE);
     run_and_time_kernel_unary("hyperbolic_tangent_f64", hyperbolic_tangent_f64, d_a_f64, d_out_f64, SIZE);
+    run_and_time_kernel_unary("softmax_f64", softmax_f64, d_a_f64, d_out_f64, SIZE);
 
     printf("\n=== FLOAT64 REDUCTION OPERATIONS (FULL) ===\n");
     run_and_time_reduce_all("reduce_sum_all_f64", reduce_sum_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);

@@ -4,6 +4,7 @@
 
 use ferrox::backend::manager::best_f32_device;
 use ferrox::backend::{Device, FerroxCudaF, Tensor};
+use ferrox::dataset::{BatchedDataset, Dataset, TensorDataset};
 use ferrox::graph::{AutoFerroxEngine, NodeId};
 use ferrox::nn::{
     layers::{Linear, ReLU},
@@ -12,7 +13,6 @@ use ferrox::nn::{
     Module,
 };
 use ferrox::FerroxN;
-use ferrox::dataset::{BatchedDataset, Dataset, TensorDataset};
 use rand_distr::{Distribution, Normal};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -233,8 +233,8 @@ where
         target_data.push(<T as FerroxN>::from_f64(target).ok_or("Failed to convert target data")?);
     }
     // Initialize the data. It is recommended to initialize the data on CPU as it will be moved later by the batched dataset to the gpu.
-    let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size],device)?;
-    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, 1],device)?;
+    let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size], device)?;
+    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, 1], device)?;
 
     TensorDataset::from_tensor(inputs, targets)
 }
@@ -423,43 +423,38 @@ where
     // Pre-allocate loss history for better performance
     let mut loss_history: Vec<T> = Vec::with_capacity(config.num_epochs);
 
-
-
     // Training loop - iterate through epochs
     for ep in 0..config.num_epochs {
-
         for (inputs, targets) in &data {
             // Create variable nodes for inputs and targets (no gradients needed for data)
             let input_node = graph.create_variable(inputs.clone(), false);
             let target_node = graph.create_variable(targets.clone(), false);
 
-
-        // Execute single epoch with benchmarking wrapper
-        with_benchmark(|| {
-            epoch(
-                &mut graph,
-                &mut optimizer,
-                model,
-                loss_fn,
-                input_node,
-                target_node,
-                &mut loss_history,
-                ep,
-            )
-        })()?;
-
-        // Print progress at specified intervals
-        if ep % config.print_every == 0 {
-            if let Some(&current_loss) = loss_history.last() {
-                println!(
-                    "[EPOCH {}] Loss: {:.6}",
+            // Execute single epoch with benchmarking wrapper
+            with_benchmark(|| {
+                epoch(
+                    &mut graph,
+                    &mut optimizer,
+                    model,
+                    loss_fn,
+                    input_node,
+                    target_node,
+                    &mut loss_history,
                     ep,
-                    <T as FerroxN>::to_f64(current_loss)
-                );
+                )
+            })()?;
+
+            // Print progress at specified intervals
+            if ep % config.print_every == 0 {
+                if let Some(&current_loss) = loss_history.last() {
+                    println!(
+                        "[EPOCH {}] Loss: {:.6}",
+                        ep,
+                        <T as FerroxN>::to_f64(current_loss)
+                    );
+                }
             }
         }
-    }
-
     }
 
     Ok(graph)
@@ -519,10 +514,9 @@ fn main() -> Result<(), String> {
     let mut trained_autograd = train(
         &mut model,
         &loss_fn,
-        train_data.into_batches(1000,  false)?,
+        train_data.into_batches(1000, false)?,
         &training_config,
     )?;
-
 
     println!("Model trained finished");
     eval(&mut model, &mut trained_autograd, test_data)?;
