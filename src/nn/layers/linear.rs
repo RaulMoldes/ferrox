@@ -219,7 +219,6 @@ where
 
         let weight_node = self.get_parameter_node("weight")?;
 
-
         // Apply linear transformation: input @ weight^T
         // Since our weight is stored as [out_features, in_features], we need to transpose it
         // Use Transpose operation through the computational graph for proper gradient flow
@@ -227,7 +226,6 @@ where
         let weight_t_node = graph
             .apply_operation(transpose_op, vec![weight_node])
             .map_err(|e| format!("Weight transpose failed: {}", e))?;
-
 
         // Perform matrix multiplication: output = input @ weight^T
         let matmul_op = Box::new(MatMul);

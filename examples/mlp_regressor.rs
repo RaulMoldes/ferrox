@@ -463,7 +463,7 @@ where
 fn eval<T, M>(
     model: &mut M,
     graph: &mut AutoFerroxEngine<T>,
-    data: TensorDataset<T>,
+    dataset: TensorDataset<T>,
 ) -> Result<(), String>
 where
     T: FerroxCudaF,
@@ -471,7 +471,7 @@ where
 {
     // Switch model to evaluation mode (disables dropout, batch norm updates, etc.)
     model.eval();
-    let (test_inputs, test_targets) = data.get_item(0)?;
+    let (test_inputs, test_targets) = dataset.into_data();
     // Run forward pass through the model
 
     let (predictions, pred_shape, num_samples) = run_forward(model, graph, &test_inputs)?;

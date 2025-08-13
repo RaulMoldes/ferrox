@@ -5,7 +5,7 @@ use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::backend::{default_device, Device};
 use crate::ops::scalar;
-use ndarray::{Array, ArrayD, IxDyn};
+use ndarray::{concatenate, Array, ArrayD, ArrayViewD, Axis, IxDyn};
 use rand::distr::StandardUniform;
 use rand_distr::Distribution;
 use std::ops::{Index, IndexMut};
@@ -1232,7 +1232,7 @@ where
 
 impl<T> Tensor<T>
 where
-T: FerroxCudaF
+    T: FerroxCudaF,
 {
     pub fn to_vec(&self) -> Result<Vec<T>, String> {
         Ok(self.clone().into_data()?.iter().copied().collect())
@@ -1243,11 +1243,12 @@ T: FerroxCudaF
     }
 
     // DEBUG UTILITY
-    pub fn debug(&self, name: &str){
+    pub fn debug(&self, name: &str) {
         let vec: Vec<T> = self.clone().into_data().unwrap().iter().copied().collect();
         if vec.iter().any(|&x| x.is_nan()) {
             panic!("{} has NaN: {:?}", name, vec);
         }
+        println!("SHAPE: {:?}", self.shape());
         println!("{}: {:?}", name, vec);
     }
 }
@@ -1288,8 +1289,6 @@ where
 
         Ok(())
     }
-
-
 
     /// Add dimension of size 1 at specified axis
     /// Similar to tf.expand_dims - axis can be 0..ndim (inclusive)
@@ -1427,6 +1426,94 @@ where
         }
 
         Ok(result)
+    }
+
+    pub fn from_partitions(partitions: Vec<Self>, axis: usize) -> Result<Self, String> {
+         if partitions.is_empty() {
+        return Err("Cannot reconstruct from empty partitions".to_string());
+    }
+
+    // Single partition case - just return it
+    if partitions.len() == 1 {
+        return Ok(partitions.into_iter().next().unwrap());
+    }
+
+    // Validate that all partitions have compatible shapes except the concatenation axis
+    let base_shape = partitions[0].shape().to_vec();
+    for (i, part) in partitions.iter().enumerate().skip(1) {
+        let shape = part.shape();
+        if shape.len() != base_shape.len() {
+            return Err(format!(
+                "Partition {} has {} dimensions, expected {}",
+                i, shape.len(), base_shape.len()
+            ));
+        }
+        for (dim_idx, (&base_dim, &part_dim)) in base_shape.iter().zip(shape.iter()).enumerate() {
+            if dim_idx != axis && part_dim != base_dim {
+                return Err(format!(
+                    "Partition {} shape mismatch at dimension {}: expected {}, got {}",
+                    i, dim_idx, base_dim, part_dim
+                ));
+            }
+        }
+    }
+
+    // Get target device from first partition
+    let target_device = partitions[0].device();
+
+    // Move all partitions to CPU for concatenation
+    let mut cpu_partitions = Vec::with_capacity(partitions.len());
+    for partition in partitions {
+        let cpu_partition = if partition.device() != Device::CPU {
+            partition.to_device(Device::CPU)?
+        } else {
+            partition
+        };
+        cpu_partitions.push(cpu_partition);
+    }
+
+    // Extract ArrayD data from CPU partitions
+    let arrays_data: Vec<ArrayD<T>> = cpu_partitions.into_iter()
+        .enumerate()
+        .map(|(i, p)| {
+            p.into_data().unwrap_or_else(|e| {
+                panic!("Error on partition {}: {}", i, e)
+            })
+        })
+        .collect();
+
+ 
+
+    // Create views for concatenation
+    let arrays_view: Vec<ndarray::ArrayViewD<T>> = arrays_data.iter().map(|a| a.view()).collect();
+
+    // Debug info (optional - remove in production)
+    for (i, a) in arrays_view.iter().enumerate() {
+        println!("Partition {} shape: {:?}", i, a.shape());
+    }
+    println!("Concatenating along axis {}", axis);
+
+    // Perform concatenation using ndarray
+    let result: ArrayD<T> = ndarray::concatenate(ndarray::Axis(axis), &arrays_view)
+        .map_err(|e| format!("Concatenation failed: {}", e))?;
+
+    // Create CPU tensor using proper constructor that can handle errors
+    let cpu_tensor = match Self::from_vec_with_device(
+        result.iter().cloned().collect(),
+        result.shape(),
+        Device::CPU
+    ) {
+        Ok(tensor) => tensor,
+        Err(e) => return Err(format!("Failed to create tensor from concatenated data: {}", e)),
+    };
+
+    // Move back to original device if needed
+    if target_device != Device::CPU {
+        cpu_tensor.to_device(target_device)
+    } else {
+        Ok(cpu_tensor)
+    }
+
     }
 
     /// Creates batches from tensor by grouping along first dimension

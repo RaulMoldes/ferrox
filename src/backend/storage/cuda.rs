@@ -769,13 +769,12 @@ where
     }
 
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
-        let broadcasted = with_cuda_ops(|ops: &CudaOps<T>|{
+        let broadcasted = with_cuda_ops(|ops: &CudaOps<T>| {
             ops.broadcast_to(&mut self.cuda_data, target_shape)?;
             ops.materialize(&self.cuda_data)
-        }
-    )?;
-    // Ensure the tensor is materialized.
-    self.cuda_data = broadcasted;
+        })?;
+        // Ensure the tensor is materialized.
+        self.cuda_data = broadcasted;
         Ok(())
     }
 
@@ -795,9 +794,8 @@ where
         let reshaped = with_cuda_ops(|ops: &CudaOps<T>| {
             ops.reshape(&mut self.cuda_data, new_shape.to_vec())?;
             ops.materialize(&self.cuda_data)
-
-    })?;
-    self.cuda_data = reshaped;
+        })?;
+        self.cuda_data = reshaped;
         Ok(())
     }
 
@@ -818,7 +816,6 @@ where
                 let transposed = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.transpose(&mut self.cuda_data, Some(axes_order))?;
                     ops.materialize(&self.cuda_data)
-
                 })?;
                 self.cuda_data = transposed;
                 Ok(())
@@ -828,8 +825,6 @@ where
                 let transposed = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.transpose(&mut self.cuda_data, None)?;
                     ops.materialize(&self.cuda_data)
-
-
                 })?;
                 self.cuda_data = transposed;
                 Ok(())
@@ -879,7 +874,6 @@ where
                 let sq = with_cuda_ops(|ops: &CudaOps<T>| {
                     ops.squeeze(&mut self.cuda_data, Some(ax))?;
                     ops.materialize(&self.cuda_data)
-
                 })?;
                 self.cuda_data = sq;
                 Ok(())

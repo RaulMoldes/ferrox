@@ -104,6 +104,10 @@ where
 
         Ok(BatchedDataset::new(input_batches, target_batches))
     }
+
+    pub fn into_data(&self) -> (Tensor<T>, Tensor<T>) {
+        (self.inputs.clone(), self.targets.clone())
+    }
 }
 
 impl<T> Dataset<T> for TensorDataset<T>
@@ -111,8 +115,18 @@ where
     T: FerroxCudaF + Clone,
 {
     /// Extract single sample using tensor slicing operations
-    fn get_item(&self, _index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
-        Ok((self.inputs.clone(), self.targets.clone()))
+    fn get_item(&self, index: usize) -> Result<(Tensor<T>, Tensor<T>), String> {
+        if index < self.inputs.len() {
+            let value_target = self.targets.to_vec()?[index];
+            let value_input = self.inputs.to_vec()?[index];
+
+            let inp = Tensor::from_vec_with_device(vec![value_input], &[], self.inputs.device)?;
+            let tg = Tensor::from_vec_with_device(vec![value_target], &[], self.targets.device)?;
+
+            Ok((inp, tg))
+        } else {
+            Err("Out of bounds error. Index is too big".to_string())
+        }
     }
 
     fn len(&self) -> usize {

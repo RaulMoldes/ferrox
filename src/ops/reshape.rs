@@ -258,8 +258,6 @@ impl Default for Squeeze {
 /// Alias for Unsqueeze operation, following TensorFlow naming convention
 pub type ExpandDims = Unsqueeze;
 
-
-
 #[cfg(test)]
 mod reshape_ops_test {
     use crate::backend::manager::best_f32_device;
@@ -267,37 +265,44 @@ mod reshape_ops_test {
     use crate::ops::matrix::Transpose;
     use crate::ops::Operator;
 
-
     #[test]
     fn test_transpose() {
         let device = best_f32_device();
 
         // Create a weight matrix similar to what Linear layer uses: [out_features, in_features]
         let weight_data = vec![
-            -0.124830216, 0.22747543, 0.57083875, -0.19728178,
-            -0.1812076, 0.42339596, 0.37712204, 0.015537508,
-            -0.05177227, -0.4744638, 0.033790253, 0.39341143,
-            -0.18968286, -0.26776776, 0.16704325, 0.13673706,
+            -0.124830216,
+            0.22747543,
+            0.57083875,
+            -0.19728178,
+            -0.1812076,
+            0.42339596,
+            0.37712204,
+            0.015537508,
+            -0.05177227,
+            -0.4744638,
+            0.033790253,
+            0.39341143,
+            -0.18968286,
+            -0.26776776,
+            0.16704325,
+            0.13673706,
         ];
 
         let weights = Tensor::from_vec_with_device(
             weight_data.clone(),
             &[4, 4], // 4x4 matrix
             device,
-        ).unwrap();
-
-
+        )
+        .unwrap();
 
         // Test transpose operation
         let transpose_op = Transpose::new();
         let mut inputs = [&weights];
 
-        
-
         // Perform transpose
         let transposed = transpose_op.compute(&mut inputs).unwrap();
         let transposed_data = transposed.to_vec().unwrap();
-
 
         // Check for NaN values in result
         let has_nan = transposed_data.iter().any(|&x: &f32| x.is_nan());
@@ -322,13 +327,21 @@ mod reshape_ops_test {
                 let transposed_val: f32 = transposed_data[j * 4 + i];
 
                 if !original_val.is_nan() && !transposed_val.is_nan() {
-                    assert!((original_val - transposed_val).abs() < 1e-6,
+                    assert!(
+                        (original_val - transposed_val).abs() < 1e-6,
                         "Transpose error at ({},{}): expected {}, got {}",
-                        i, j, original_val, transposed_val);
+                        i,
+                        j,
+                        original_val,
+                        transposed_val
+                    );
                 }
             }
         }
 
-        assert!(!has_nan, "Transpose operation should not produce NaN values");
+        assert!(
+            !has_nan,
+            "Transpose operation should not produce NaN values"
+        );
     }
 }

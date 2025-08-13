@@ -51,7 +51,7 @@ where
 
     fn gradient(
         &self,
-        mut grad_output: Tensor<T>,
+        grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
         _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
@@ -59,20 +59,31 @@ where
             return Err("Sum operation requires exactly 1 input".to_string());
         }
 
-        // For sum: gradient is broadcasted grad_output to input shape
-        // Sum operation distributes gradient equally to all reduced elements
         let input_shape = inputs[0].shape();
 
-        let result = if grad_output.shape().is_empty() {
-            let scalar = grad_output.first()?;
-            Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?
-        } else {
-            // Broadcast gradient back to input shape
-            grad_output.broadcast_to(input_shape)?;
-            grad_output
-        };
+        // Handle different reduction cases properly
+        match &self.axes {
+            None => {
+                // Global reduction: broadcast scalar to input shape
+                let scalar = grad_output.first()?;
+                let result = Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?;
+                Ok(vec![result])
+            }
+            Some(axes) => {
+                // Axis-specific reduction: need to broadcast correctly
+                let mut result = grad_output.clone();
 
-        Ok(vec![result])
+                // For each reduced axis, we need to unsqueeze back to size 1
+                for &axis in axes.iter().rev() {
+                    // Reverse order for correct unsqueezing
+                    result.unsqueeze(axis)?;
+                }
+
+                // Now broadcast to original input shape
+                result.broadcast_to(input_shape)?;
+                Ok(vec![result])
+            }
+        }
     }
 
     fn num_inputs(&self) -> usize {

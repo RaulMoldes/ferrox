@@ -77,13 +77,8 @@ where
         graph: &mut AutoFerroxEngine<T>,
         input: ferrox::graph::NodeId,
     ) -> Result<ferrox::graph::NodeId, String> {
-
-
-
-
         // Layer 1: Linear -> ReLU
         let hidden1_out = self.hidden1.forward(graph, input)?;
-
 
         let activated1 = self.activation1.forward(graph, hidden1_out)?;
 
@@ -168,8 +163,8 @@ where
         Self {
             batch_size: 32,
             num_epochs: 100,
-            // CRITICAL: Much higher learning rate - your old 0.00001 was too small
-            learning_rate: Some(FerroxN::from_f32(0.001).unwrap()),
+
+            learning_rate: Some(FerroxN::from_f32(0.0001).unwrap()),
             print_every: 10,
             optimizer: "Adam",
 
@@ -197,38 +192,40 @@ fn generate_multiclass_data<T>(
 where
     T: FerroxCudaF,
 {
-    let mut rng = rand::rng();
-    let normal = Normal::new(0.0, 0.5).unwrap(); // Reduced variance for better separation
-
     let mut input_data = Vec::with_capacity(num_samples * input_size);
     let mut target_data = Vec::with_capacity(num_samples * num_classes);
 
     for i in 0..num_samples {
-        // Assign class based on sample index for balanced dataset
         let class = i % num_classes;
 
-        // Generate features with class-dependent bias for learnability
+        // Create EXTREMELY clear patterns - should be impossible to miss
         for j in 0..input_size {
-            // Add class-dependent bias to make patterns learnable
-            let class_bias = match class {
-                0 => if j == 0 { 1.0 } else { 0.0 }, // Class 0: positive bias on first feature
-                1 => if j == 1 { 1.0 } else { 0.0 }, // Class 1: positive bias on second feature
-                2 => if j == 2 { 1.0 } else { 0.0 }, // Class 2: positive bias on third feature
-                _ => if j % 2 == 0 { 1.0 } else { -1.0 }, // Other classes: alternating pattern
+            let value = match (class, j) {
+                // Class 0: first feature = +20, others = -10
+                (0, 0) => 20.0,
+                (0, _) => -10.0,
+
+                // Class 1: second feature = +20, others = -10
+                (1, 1) => 20.0,
+                (1, _) => -10.0,
+
+                // Class 2: third feature = +20, others = -10
+                (2, 2) => 20.0,
+                (2, _) => -10.0,
+
+                // Default fallback
+                _ => 0.0,
             };
 
-            let noise = normal.sample(&mut rng) as f64;
-            let value = class_bias + noise;
-            input_data.push(<T as FerroxN>::from_f64(value).ok_or("Failed to convert input data")?);
+            input_data.push(<T as FerroxN>::from_f64(value).ok_or("Input conversion failed")?);
         }
 
-        // Create one-hot target vector
+        // One-hot targets
         for c in 0..num_classes {
-            if c == class {
-                target_data.push(<T as FerroxN>::from_f64(1.0).ok_or("Failed to convert target data")?);
-            } else {
-                target_data.push(<T as FerroxN>::from_f64(0.0).ok_or("Failed to convert target data")?);
-            }
+            target_data.push(
+                <T as FerroxN>::from_f64(if c == class { 1.0 } else { 0.0 })
+                    .ok_or("Target conversion failed")?,
+            );
         }
     }
 
@@ -373,7 +370,7 @@ impl Default for MLPConfig {
     fn default() -> Self {
         Self {
             input_size: 4,
-            hidden_size: 8,
+            hidden_size: 16,
             output_size: 3, // 3 classes for multiclass demo
             num_samples: 1000,
         }
@@ -412,7 +409,10 @@ where
     // Check for NaN or inf early and stop training if detected
     if loss_value.is_nan() || loss_value.is_infinite() {
         println!("[WARNING]: Training became unstable at epoch {}", epoch + 1);
-        return Err(format!("Training unstable: loss = {}", <T as FerroxN>::to_f64(loss_value)));
+        return Err(format!(
+            "Training unstable: loss = {}",
+            <T as FerroxN>::to_f64(loss_value)
+        ));
     }
 
     loss_history.push(loss_value);
@@ -492,9 +492,16 @@ where
 
             // Handle potential training instability
             if let Err(e) = batch_result() {
-                println!("[ERROR] Training failed at epoch {}, batch {}: {}", ep + 1, batch_idx, e);
+                println!(
+                    "[ERROR] Training failed at epoch {}, batch {}: {}",
+                    ep + 1,
+                    batch_idx,
+                    e
+                );
                 return Err(e);
             }
+
+
         }
 
         // Calculate average loss for this epoch
@@ -529,7 +536,7 @@ where
 {
     // Switch model to evaluation mode
     model.eval();
-    let (test_inputs, test_targets) = data.get_item(0)?;
+    let (test_inputs, test_targets) = data.into_data();
 
     // Run forward pass through the model
     let (predictions, pred_shape, num_samples) = run_forward(model, graph, &test_inputs)?;
@@ -555,7 +562,7 @@ where
         // Multiclass classification - use CCE loss
         println!("=== Multiclass Classification Evaluation ===");
 
-        let cce_loss = CCELoss::from_logits(ReductionType::Mean);
+        let cce_loss = CCELoss::from_logits(ReductionType::Mean, Some(1));
         let cce_value = compute_loss(graph, cce_loss, predictions, &test_targets)?;
 
         println!("Evaluated on {} samples", num_samples);
@@ -582,7 +589,7 @@ fn main() -> Result<(), String> {
         device,
     );
 
-    let cce_loss = CCELoss::<f32>::from_logits(ReductionType::Mean);
+    let cce_loss = CCELoss::<f32>::from_logits(ReductionType::Mean, Some(1));
 
     let multiclass_train_data = generate_multiclass_data::<f32>(
         config.num_samples as usize,

@@ -618,7 +618,7 @@ where
     }
 
     // Utilities for removing nodes
-     /// Remove a node from the computational graph
+    /// Remove a node from the computational graph
     /// This is useful for cleaning up temporary data nodes to prevent memory growth
     /// WARNING: Only remove nodes that are no longer needed for computation or gradient flow
     pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
@@ -691,7 +691,9 @@ where
 
             // Check if this remaining node references any of the nodes being removed
             if let Some(inputs) = node.get_inputs() {
-                inputs.iter().any(|input_id| node_ids_set.contains(&input_id))
+                inputs
+                    .iter()
+                    .any(|input_id| node_ids_set.contains(&input_id))
             } else {
                 false
             }
@@ -699,7 +701,7 @@ where
 
         if is_any_referenced {
             return Err(
-                "Cannot remove nodes as some are still referenced by remaining nodes".to_string()
+                "Cannot remove nodes as some are still referenced by remaining nodes".to_string(),
             );
         }
 

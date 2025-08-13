@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::cmp::{PartialEq, PartialOrd};
 use std::default::Default;
 use std::fmt::{Debug, Display};
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
 use std::iter::Sum;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
 
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]

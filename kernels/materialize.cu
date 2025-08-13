@@ -22,6 +22,8 @@ __device__ int coords_to_strided_idx(const int* coords, const int* strides, int 
 /// Materialize strided/broadcast tensor into contiguous memory
 /// Each thread handles one output element
 
+
+
 extern "C" __global__ void materialize(
     const float* __restrict__ input,     // Original small data
     float* __restrict__ output,          // Expanded contiguous output
@@ -67,5 +69,4 @@ extern "C" __global__ void materialize_f64(
     // Copy data from input to output
     output[tid] = input[input_idx];
 }
-
 

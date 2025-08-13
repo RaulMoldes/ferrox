@@ -2,7 +2,7 @@
 use super::StorageBackend;
 use crate::backend::{FerroxCudaF, FerroxCudaN, FerroxF};
 use crate::FerroxN;
-use ndarray::{ArrayD, ArrayViewD, IxDyn, SliceInfoElem};
+use ndarray::{concatenate, ArrayD, ArrayViewD, Axis, IxDyn, SliceInfoElem};
 use rand::Rng;
 use rand_distr::StandardUniform;
 use std::any::Any;
@@ -373,7 +373,6 @@ where
     }
 }
 
-
 impl<T> StorageBackend<T> for CPUStorage<T>
 where
     T: FerroxCudaN,
@@ -471,32 +470,25 @@ where
     }
 
     fn transpose(&mut self, axes: Option<&[usize]>) -> Result<(), String> {
-    match axes {
-        Some(order) => {
-            if order.len() != self.ndim() || {
-                let mut sorted = order.to_vec();
-                sorted.sort_unstable();
-                sorted != (0..self.ndim()).collect::<Vec<_>>()
-            } {
-                return Err("Invalid axes permutation".into());
+        match axes {
+            Some(order) => {
+                if order.len() != self.ndim() || {
+                    let mut sorted = order.to_vec();
+                    sorted.sort_unstable();
+                    sorted != (0..self.ndim()).collect::<Vec<_>>()
+                } {
+                    return Err("Invalid axes permutation".into());
+                }
+                self.data = self.data.view().permuted_axes(order).to_owned();
             }
-            self.data = self.data.view().permuted_axes(order).to_owned();
-        }
-        None => {
-            if self.ndim() > 1 {
-
-
-                self.data = self.data.t().to_owned();
-           
-
+            None => {
+                if self.ndim() > 1 {
+                    self.data = self.data.t().to_owned();
+                }
             }
-
-
         }
+        Ok(())
     }
-    Ok(())
-}
-
 
     fn unsqueeze(&mut self, axis: usize) -> Result<(), String> {
         let current_shape = self.shape();
