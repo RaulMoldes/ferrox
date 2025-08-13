@@ -42,7 +42,7 @@ where
         default_group.lr = Some(lr);
         default_group.weight_decay = Some(weight_decay);
 
-        Self {
+        let mut opt = Self {
             lr,
             beta1,
             beta2,
@@ -54,7 +54,10 @@ where
             second_moments: RefCell::new(HashMap::new()),
             max_second_moments: RefCell::new(HashMap::new()),
             step_count: 0,
-        }
+        };
+
+        opt.reset_state();
+        opt
     }
 
     pub fn with_defaults(lr: T) -> Self {
@@ -148,6 +151,7 @@ where
 
                 // Update first moment: m = beta1 * m + (1 - beta1) * grad
                 let one_minus_beta1 = <T as FerroxF>::one() - self.beta1;
+
                 let first_term = buffer
                     .mul_scalar(self.beta1)
                     .map_err(OptimizerError::TensorOperation)?;
@@ -164,12 +168,17 @@ where
             }
             MomentBuffer::Second => {
                 let mut second = self.second_moments.borrow_mut();
+                //panic!("SECOND MOMENT ESTIMATES {:?}", second);
+
                 let buffer = second.entry(param_id).or_insert_with(|| {
                     Tensor::zeros_with_device(shape, device)
                         .expect("Failed to create device-aware first moment buffer")
                 });
+
+
                 // Update second moment: v = beta2 * v + (1 - beta2) * grad^2
                 let one_minus_beta2 = <T as FerroxF>::one() - self.beta2;
+
                 let grad_squared = grad.mul(grad).map_err(OptimizerError::TensorOperation)?;
 
                 let first_term = buffer
@@ -234,7 +243,7 @@ where
         // Compute update: lr * m_hat / (sqrt(v_hat) + eps)
         let denominator = second_moment
             .div_scalar(bias_correction2)
-            .map_err(OptimizerError::TensorOperation)?.abs().map_err(OptimizerError::TensorOperation)?.sqrt()
+            .map_err(OptimizerError::TensorOperation)?.sqrt()
             .map_err(OptimizerError::TensorOperation)?.add_scalar(self.eps)
             .map_err(OptimizerError::TensorOperation)?;
 
@@ -261,7 +270,7 @@ where
             let weight_decay_term = params
                 .mul_scalar(weight_decay * lr)
                 .map_err(OptimizerError::TensorOperation)?;
-      
+
             params
                 .sub(update)
                 .map_err(OptimizerError::TensorOperation)?
@@ -328,6 +337,8 @@ where
                     } else {
                         self.take_current_buffer(param_node, MomentBuffer::Second)
                     };
+
+              
 
                     // Compute update: lr * m_hat / (sqrt(v_hat) + eps)
                     let update = self.compute_update(

@@ -2,8 +2,6 @@
 // Linear layer implementation using the computational graph engine
 // This is the fundamental building block for feedforward neural networks
 
-use rand_distr::weighted;
-
 use crate::backend::number::FerroxCudaF;
 use crate::backend::{Device, Tensor};
 use crate::graph::{AutoFerroxEngine, NodeId};

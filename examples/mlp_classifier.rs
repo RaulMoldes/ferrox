@@ -305,6 +305,7 @@ where
     for (_, p) in param_map {
         opt.add_param(0, p);
     }
+  
     Ok(())
 }
 
@@ -398,7 +399,7 @@ where
 {
     // Forward pass through model
     let predictions = model.forward(graph, input_node)?;
-    
+
     // Compute loss using the loss function
     let loss_node = loss_fn.forward(graph, predictions, target_node)?;
 

@@ -130,7 +130,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Create zeros tensor - fundamental for initializing gradients and intermediate results
     pub fn zeros(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
-        self.create_tensor_from_pool(shape)
+        self.full(shape, FerroxN::zero())
     }
 
     /// Create ones tensor - useful for creating bias vectors and normalization

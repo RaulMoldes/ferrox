@@ -484,12 +484,11 @@ where
         }
         None => {
             if self.ndim() > 1 {
-                println!("CALL TO TRANSPOSE");
-                let orig: Vec<T> = self.data.iter().copied().collect();
-                println!("Original data {:?}", orig);
+
+
                 self.data = self.data.t().to_owned();
-                let fin: Vec<T> = self.data.iter().copied().collect();
-                println!("Final data {:?}",fin );
+           
+
             }
 
 
