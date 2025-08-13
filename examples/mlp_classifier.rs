@@ -52,7 +52,7 @@ where
             hidden2: Linear::new_with_device(hidden_size, hidden_size, true, device),
             activation2: ReLU::new(),
             // Output layer produces logits (no bias for stability)
-            output: Linear::new_with_device(hidden_size, num_classes, false, device),
+            output: Linear::new_with_device(hidden_size, num_classes, true, device), // Add bias to the last linear layer for classification to learn the decision boundary.
             training: true,
         }
     }
@@ -160,7 +160,6 @@ where
     pub eps: Option<T>,
     pub amsgrad: bool,
 }
-
 impl<T> Default for TrainingConfig<T>
 where
     T: FerroxCudaF + FerroxN,
@@ -169,14 +168,17 @@ where
         Self {
             batch_size: 32,
             num_epochs: 100,
-            learning_rate: Some(FerroxN::from_f32(0.00001).unwrap()), // Much lower learning rate for stability
-            print_every: 1,
-            optimizer: "Adam", // Adam works better for classification
-            // SGD defaults
+            // CRITICAL: Much higher learning rate - your old 0.00001 was too small
+            learning_rate: Some(FerroxN::from_f32(0.001).unwrap()),
+            print_every: 10,
+            optimizer: "Adam",
+
+            // SGD parameters
             momentum: Some(FerroxN::from_f32(0.9).unwrap()),
             nesterov: false,
             decay: Some(FerroxN::from_f32(0.0001).unwrap()),
-            // Adam defaults
+
+            // Adam parameters
             beta1: Some(FerroxN::from_f32(0.9).unwrap()),
             beta2: Some(FerroxN::from_f32(0.999).unwrap()),
             eps: Some(FerroxN::from_f32(1e-8).unwrap()),
@@ -184,51 +186,8 @@ where
         }
     }
 }
-
-/// Generate synthetic binary classification dataset for BCE loss
-/// Creates simple linearly separable binary classification: y = sign(0.5*x1 + 0.3*x2 - threshold)
-fn generate_binary_data<T>(
-    num_samples: usize,
-    input_size: usize,
-    device: Device,
-) -> Result<TensorDataset<T>, String>
-where
-    T: FerroxCudaF,
-{
-    let mut rng = rand::rng();
-    let normal = Normal::new(0.0, 1.0).unwrap();
-
-    // Generate random input features
-    let mut input_data = Vec::with_capacity(num_samples * input_size);
-    for _ in 0..(num_samples * input_size) {
-        let value = normal.sample(&mut rng) as f64;
-        input_data.push(<T as FerroxN>::from_f64(value).ok_or("Failed to convert input data")?);
-    }
-
-    // Generate binary targets using simple decision boundary
-    let mut target_data = Vec::with_capacity(num_samples);
-    for i in 0..num_samples {
-        let x1 = <T as FerroxN>::to_f64(input_data[i * input_size]);
-        let x2 = if input_size > 1 {
-            <T as FerroxN>::to_f64(input_data[i * input_size + 1])
-        } else {
-            0.0
-        };
-
-        // Simple binary classification boundary: 0.5*x1 + 0.3*x2 > 0
-        let decision_value = 0.5 * x1 + 0.3 * x2;
-        let target = if decision_value > 0.0 { 1.0 } else { 0.0 };
-        target_data.push(<T as FerroxN>::from_f64(target).ok_or("Failed to convert target data")?);
-    }
-
-    let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size], device)?;
-    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, 1], device)?;
-
-    TensorDataset::from_tensor(inputs, targets)
-}
-
-/// Generate synthetic multiclass classification dataset for CCE loss
-/// Creates simple multiclass problem with one-hot encoded targets
+/// Generate better synthetic multiclass classification dataset
+/// Creates more learnable patterns with proper class separation
 fn generate_multiclass_data<T>(
     num_samples: usize,
     input_size: usize,
@@ -239,40 +198,81 @@ where
     T: FerroxCudaF,
 {
     let mut rng = rand::rng();
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let normal = Normal::new(0.0, 0.5).unwrap(); // Reduced variance for better separation
 
-    // Generate random input features
     let mut input_data = Vec::with_capacity(num_samples * input_size);
-    for _ in 0..(num_samples * input_size) {
-        let value = normal.sample(&mut rng) as f64;
-        input_data.push(<T as FerroxN>::from_f64(value).ok_or("Failed to convert input data")?);
-    }
-
-    // Generate multiclass targets using simple decision regions
     let mut target_data = Vec::with_capacity(num_samples * num_classes);
+
     for i in 0..num_samples {
-        let x1 = <T as FerroxN>::to_f64(input_data[i * input_size]);
-        let x2 = if input_size > 1 {
-            <T as FerroxN>::to_f64(input_data[i * input_size + 1])
-        } else {
-            0.0
-        };
+        // Assign class based on sample index for balanced dataset
+        let class = i % num_classes;
 
-        // Simple multiclass decision based on input sum modulo num_classes
-        let sum = x1 + x2;
-        let class_idx = ((sum.abs() * 10.0) as usize) % num_classes;
+        // Generate features with class-dependent bias for learnability
+        for j in 0..input_size {
+            // Add class-dependent bias to make patterns learnable
+            let class_bias = match class {
+                0 => if j == 0 { 1.0 } else { 0.0 }, // Class 0: positive bias on first feature
+                1 => if j == 1 { 1.0 } else { 0.0 }, // Class 1: positive bias on second feature
+                2 => if j == 2 { 1.0 } else { 0.0 }, // Class 2: positive bias on third feature
+                _ => if j % 2 == 0 { 1.0 } else { -1.0 }, // Other classes: alternating pattern
+            };
 
-        // Create one-hot encoding
-        for j in 0..num_classes {
-            let target_value = if j == class_idx { 1.0 } else { 0.0 };
-            target_data.push(
-                <T as FerroxN>::from_f64(target_value).ok_or("Failed to convert target data")?,
-            );
+            let noise = normal.sample(&mut rng) as f64;
+            let value = class_bias + noise;
+            input_data.push(<T as FerroxN>::from_f64(value).ok_or("Failed to convert input data")?);
+        }
+
+        // Create one-hot target vector
+        for c in 0..num_classes {
+            if c == class {
+                target_data.push(<T as FerroxN>::from_f64(1.0).ok_or("Failed to convert target data")?);
+            } else {
+                target_data.push(<T as FerroxN>::from_f64(0.0).ok_or("Failed to convert target data")?);
+            }
         }
     }
 
     let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size], device)?;
     let targets = Tensor::from_vec_with_device(target_data, &[num_samples, num_classes], device)?;
+
+    TensorDataset::from_tensor(inputs, targets)
+}
+
+/// Generate better binary classification dataset
+fn generate_binary_data<T>(
+    num_samples: usize,
+    input_size: usize,
+    device: Device,
+) -> Result<TensorDataset<T>, String>
+where
+    T: FerroxCudaF,
+{
+    let mut rng = rand::rng();
+    let normal = Normal::new(0.0, 0.8).unwrap(); // Reasonable variance
+
+    let mut input_data = Vec::with_capacity(num_samples * input_size);
+    let mut target_data = Vec::with_capacity(num_samples);
+
+    for _ in 0..num_samples {
+        let mut features = Vec::new();
+
+        // Generate input features
+        for _ in 0..input_size {
+            let value = normal.sample(&mut rng) as f64;
+            features.push(value);
+            input_data.push(<T as FerroxN>::from_f64(value).ok_or("Failed to convert input data")?);
+        }
+
+        // Create simple linear decision boundary: y = sign(w1*x1 + w2*x2 + bias)
+        // Use first two features for decision boundary
+        let decision_value = 0.7 * features[0] + 0.5 * features.get(1).unwrap_or(&0.0) - 0.1;
+        let label = if decision_value > 0.0 { 1.0 } else { 0.0 };
+
+        target_data.push(<T as FerroxN>::from_f64(label).ok_or("Failed to convert target data")?);
+    }
+
+    let inputs = Tensor::from_vec_with_device(input_data, &[num_samples, input_size], device)?;
+    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, 1], device)?;
 
     TensorDataset::from_tensor(inputs, targets)
 }
@@ -305,7 +305,7 @@ where
     for (_, p) in param_map {
         opt.add_param(0, p);
     }
-  
+
     Ok(())
 }
 
@@ -379,7 +379,6 @@ impl Default for MLPConfig {
         }
     }
 }
-
 #[allow(clippy::too_many_arguments)]
 fn epoch<T, M, O, L>(
     graph: &mut AutoFerroxEngine<T>,
@@ -397,6 +396,9 @@ where
     O: Optimizer<T>,
     L: Loss<T>,
 {
+    // Clear gradients BEFORE forward pass - critical for proper training
+    graph.zero_gradients();
+
     // Forward pass through model
     let predictions = model.forward(graph, input_node)?;
 
@@ -405,13 +407,12 @@ where
 
     // Get loss value for tracking
     let loss_tensor = graph.get_tensor(loss_node).ok_or("Loss tensor not found")?;
-
-
     let loss_value = loss_tensor.clone().first()?;
 
     // Check for NaN or inf early and stop training if detected
     if loss_value.is_nan() || loss_value.is_infinite() {
         println!("[WARNING]: Training became unstable at epoch {}", epoch + 1);
+        return Err(format!("Training unstable: loss = {}", <T as FerroxN>::to_f64(loss_value)));
     }
 
     loss_history.push(loss_value);
@@ -422,8 +423,8 @@ where
     // Update parameters using optimizer
     optimizer.step(graph).map_err(|e| e.to_string())?;
 
-    // Clear gradients for next iteration
-    graph.zero_gradients();
+    // No node removal - let the graph handle its own memory for now
+
     Ok(())
 }
 
@@ -464,17 +465,19 @@ where
     initialize_model(model, &mut graph, &mut optimizer)?;
 
     // Pre-allocate loss history for better performance
-    let mut loss_history: Vec<T> = Vec::with_capacity(config.num_epochs);
+    let mut loss_history: Vec<T> = Vec::with_capacity(config.num_epochs * data.len());
 
     // Training loop - iterate through epochs
     for ep in 0..config.num_epochs {
-        for (inputs, targets) in &data {
+        let mut epoch_losses = Vec::new();
+
+        for (batch_idx, (inputs, targets)) in data.iter().enumerate() {
             // Create variable nodes for inputs and targets (no gradients needed for data)
             let input_node = graph.create_variable(inputs.clone(), false);
             let target_node = graph.create_variable(targets.clone(), false);
 
-            // Execute single epoch with benchmarking wrapper
-            with_benchmark(|| {
+            // Execute single batch training step
+            let batch_result = with_benchmark(|| {
                 epoch(
                     &mut graph,
                     &mut optimizer,
@@ -482,20 +485,32 @@ where
                     loss_fn,
                     input_node,
                     target_node,
-                    &mut loss_history,
+                    &mut epoch_losses,
                     ep,
                 )
-            })()?;
+            });
+
+            // Handle potential training instability
+            if let Err(e) = batch_result() {
+                println!("[ERROR] Training failed at epoch {}, batch {}: {}", ep + 1, batch_idx, e);
+                return Err(e);
+            }
+        }
+
+        // Calculate average loss for this epoch
+        if !epoch_losses.is_empty() {
+            let avg_loss = epoch_losses.iter().sum::<T>()
+                / FerroxN::from_f32(epoch_losses.len() as f32).unwrap();
+            loss_history.push(avg_loss);
 
             // Print progress at specified intervals
             if ep % config.print_every == 0 {
-                if let Some(&current_loss) = loss_history.last() {
-                    println!(
-                        "[EPOCH {}] Loss: {:.6}",
-                        ep,
-                        <T as FerroxN>::to_f64(current_loss)
-                    );
-                }
+                println!(
+                    "[EPOCH {}] Average Loss: {:.6} (batches: {})",
+                    ep,
+                    <T as FerroxN>::to_f64(avg_loss),
+                    epoch_losses.len()
+                );
             }
         }
     }

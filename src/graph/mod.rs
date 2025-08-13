@@ -616,6 +616,101 @@ where
         }
         Ok(())
     }
+
+    // Utilities for removing nodes
+     /// Remove a node from the computational graph
+    /// This is useful for cleaning up temporary data nodes to prevent memory growth
+    /// WARNING: Only remove nodes that are no longer needed for computation or gradient flow
+    pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
+        // Check if node exists
+        if !self.nodes.contains_key(&node_id) {
+            return Err(format!("Node {} does not exist in graph", node_id.0));
+        }
+
+        // Get the node to check if it's safe to remove
+        let node = self.nodes.get(&node_id).unwrap();
+
+        // Safety check: Don't remove parameter nodes (nodes with requires_grad = true)
+        // These are needed for gradient computation and parameter updates
+        if node.requires_grad {
+            return Err(format!(
+                "Cannot remove parameter node {} (requires_grad=true). This would break gradient flow.",
+                node_id.0
+            ));
+        }
+
+        // Check if any other nodes depend on this node
+        // This prevents removing nodes that are still referenced by other operations
+        let is_referenced = self.nodes.values().any(|other_node| {
+            if let Some(inputs) = other_node.get_inputs() {
+                inputs.contains(&node_id)
+            } else {
+                false
+            }
+        });
+
+        if is_referenced {
+            return Err(format!(
+                "Cannot remove node {} as it is still referenced by other nodes in the graph",
+                node_id.0
+            ));
+        }
+
+        // Safe to remove: remove from both nodes and gradients maps
+        self.nodes.remove(&node_id);
+        self.gradients.remove(&node_id);
+
+        Ok(())
+    }
+
+    /// Remove multiple nodes at once (batch removal)
+    /// More efficient than calling remove_node repeatedly
+    pub fn remove_nodes(&mut self, node_ids: &[NodeId]) -> Result<(), String> {
+        // First, validate all nodes can be safely removed
+        for &node_id in node_ids {
+            if !self.nodes.contains_key(&node_id) {
+                return Err(format!("Node {} does not exist in graph", node_id.0));
+            }
+
+            let node = self.nodes.get(&node_id).unwrap();
+            if node.requires_grad {
+                return Err(format!(
+                    "Cannot remove parameter node {} (requires_grad=true)",
+                    node_id.0
+                ));
+            }
+        }
+
+        // Check for any references between the nodes being removed and remaining nodes
+        let node_ids_set: std::collections::HashSet<_> = node_ids.iter().collect();
+        let is_any_referenced = self.nodes.iter().any(|(id, node)| {
+            // Skip nodes that are being removed
+            if node_ids_set.contains(id) {
+                return false;
+            }
+
+            // Check if this remaining node references any of the nodes being removed
+            if let Some(inputs) = node.get_inputs() {
+                inputs.iter().any(|input_id| node_ids_set.contains(&input_id))
+            } else {
+                false
+            }
+        });
+
+        if is_any_referenced {
+            return Err(
+                "Cannot remove nodes as some are still referenced by remaining nodes".to_string()
+            );
+        }
+
+        // Safe to remove all nodes
+        for &node_id in node_ids {
+            self.nodes.remove(&node_id);
+            self.gradients.remove(&node_id);
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

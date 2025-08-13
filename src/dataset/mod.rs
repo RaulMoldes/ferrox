@@ -144,6 +144,10 @@ where
         }
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&Tensor<T>, &Tensor<T>)> {
+        self.input_batches.iter().zip(self.target_batches.iter())
+    }
+
     // Check if empty
     pub fn is_empty(&self) -> bool {
         self.num_batches == 0

@@ -7,6 +7,7 @@ use std::cmp::{PartialEq, PartialOrd};
 use std::default::Default;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
+use std::iter::Sum;
 
 // Import cudarc traits only when cuda feature is enabled
 #[cfg(feature = "cuda")]
@@ -18,7 +19,8 @@ use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 /// due to lack of negative value support required for negation and signum operations.
 pub trait FerroxN:
     // Basic arithmetic operations
-    Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self> +
+    Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self>
+    + Sum<Self> + for<'a> Sum<&'a Self> +
     // Assignment operations
     AddAssign + SubAssign + MulAssign + DivAssign +
     // Remainder operation
@@ -30,6 +32,7 @@ pub trait FerroxN:
     // Essential traits
     Clone + Copy + Debug + Display + PartialOrd + PartialEq +
     Default +
+
     // Only conversions that always work without loss
     From<i8> +
     Sized
