@@ -1107,6 +1107,16 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
+     pub fn softmax_batched(&self, axis: usize) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.softmax_batched(axis)?;
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
     /// ReLU activation function using storage trait
     pub fn relu(&self) -> Result<Self, String> {
         let storage = self
@@ -1186,46 +1196,46 @@ where
     // Reduction operations.
     // Sum reduction along multiple axes using storage backend
     /// This replaces the old sum_axes method to use the storage backend
-    pub fn sum(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+    pub fn sum(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
-        let result_storage = storage.sum(axes)?;
+        let result_storage = storage.sum(axes, keep_dims)?;
         Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Mean reduction along multiple axes using storage backend
-    pub fn mean(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+    pub fn mean(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
-        let result_storage = storage.mean(axes)?;
+        let result_storage = storage.mean(axes, keep_dims)?;
         Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Maximum values reduction along multiple axes using storage backend
-    pub fn max_reduce(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+    pub fn max_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
-        let result_storage = storage.max_reduce(axes)?;
+        let result_storage = storage.max_reduce(axes, keep_dims)?;
         Self::from_storage_backend(result_storage, self.device)
     }
 
     /// Minimum values reduction along multiple axes using storage backend
-    pub fn min_reduce(&self, axes: Option<&[usize]>) -> Result<Self, String> {
+    pub fn min_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?;
 
-        let result_storage = storage.min_reduce(axes)?;
+        let result_storage = storage.min_reduce(axes, keep_dims)?;
         Self::from_storage_backend(result_storage, self.device)
     }
 }
@@ -1482,7 +1492,7 @@ where
         })
         .collect();
 
- 
+
 
     // Create views for concatenation
     let arrays_view: Vec<ndarray::ArrayViewD<T>> = arrays_data.iter().map(|a| a.view()).collect();
@@ -1910,6 +1920,7 @@ impl<T> Eq for Tensor<T> where T: FerroxCudaF + Clone + PartialEq {}
 #[cfg(test)]
 mod tensor_ops_tests {
     use super::*;
+    use crate::backend::manager::best_f32_device;
     use crate::backend::{best_device, Device};
 
     #[test]
@@ -2162,7 +2173,7 @@ mod tensor_ops_tests {
         let tensor =
             Tensor::from_vec_with_device(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2], device).unwrap();
 
-        let result = tensor.sum(None).unwrap();
+        let result = tensor.sum(None,false).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
 
         assert_eq!(data[0], 10.0); // 1 + 2 + 3 + 4
@@ -2174,7 +2185,7 @@ mod tensor_ops_tests {
         let tensor =
             Tensor::from_vec_with_device(vec![2.0f32, 4.0, 6.0, 8.0], &[2, 2], device).unwrap();
 
-        let result = tensor.mean(None).unwrap();
+        let result = tensor.mean(None, false).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
 
         // (2 + 4 + 6 + 8) / 4
@@ -2187,7 +2198,7 @@ mod tensor_ops_tests {
         let tensor =
             Tensor::from_vec_with_device(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2], device).unwrap();
 
-        let result = tensor.max_reduce(None).unwrap();
+        let result = tensor.max_reduce(None, false).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
 
         assert_eq!(data[0], 4.0); // Maximum value
@@ -2199,7 +2210,7 @@ mod tensor_ops_tests {
         let tensor =
             Tensor::from_vec_with_device(vec![3.0f32, 1.0, 4.0, 2.0], &[2, 2], device).unwrap();
 
-        let result = tensor.min_reduce(None).unwrap();
+        let result = tensor.min_reduce(None, false).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
 
         assert_eq!(data[0], 1.0); // Minimum value
@@ -2602,5 +2613,40 @@ mod tensor_ops_tests {
 
         // Data should match exactly
         assert_tensor_equal(&original, &reconstructed, 1e-6);
+    }
+
+
+    /// Test that softmax preserves tensor shape for various configurations
+    #[test]
+    fn test_softmax_shape_preservation_cpu() {
+        let device = best_f32_device();
+
+        // Test 1D tensor
+        let data_1d: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let tensor_1d = Tensor::from_vec_with_device(data_1d, &[4], device).unwrap();
+
+        let result_1d = tensor_1d.softmax().expect("1D softmax failed");
+        assert_eq!(result_1d.shape(), &[4], "1D softmax should preserve shape");
+
+        // Test 2D tensor (batch_size=2, features=3)
+        let data_2d: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let tensor_2d = Tensor::from_vec_with_device(data_2d, &[2, 3], device).unwrap();
+
+        let result_2d = tensor_2d.softmax().expect("2D softmax failed");
+        assert_eq!(result_2d.shape(), &[2, 3], "2D softmax should preserve shape");
+
+        // Test 3D tensor (batch_size=2, seq_len=4, features=3)
+        let data_3d: Vec<f32> = (0..24).map(|x| x as f32).collect();
+        let tensor_3d = Tensor::from_vec_with_device(data_3d, &[2, 4, 3], device).unwrap();
+
+        let result_3d = tensor_3d.softmax().expect("3D softmax failed");
+        assert_eq!(result_3d.shape(), &[2, 4, 3], "3D softmax should preserve shape");
+
+        // Test 4D tensor (batch_size=2, channels=3, height=2, width=2)
+        let data_4d: Vec<f32> = (0..24).map(|x| x as f32).collect();
+        let tensor_4d = Tensor::from_vec_with_device(data_4d, &[2, 3, 2, 2], device).unwrap();
+
+        let result_4d = tensor_4d.softmax().expect("4D softmax failed");
+        assert_eq!(result_4d.shape(), &[2, 3, 2, 2], "4D softmax should preserve shape");
     }
 }

@@ -61,7 +61,7 @@ where
                     let grad_squared = grad.mul(grad).map_err(OptimizerError::TensorOperation)?;
 
                     let norm_contrib = grad_squared
-                        .sum(None)
+                        .sum(None, false)
                         .map_err(OptimizerError::TensorOperation)?;
 
                     // Extract scalar from tensor

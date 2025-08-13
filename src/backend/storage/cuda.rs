@@ -574,6 +574,11 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
+    fn softmax_batched(&self, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.softmax_batched(&self.cuda_data, axis))?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
+    }
+
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.relu(&self.cuda_data))?;
         Ok(Box::new(CUDAStorage::new(result_cuda)))
@@ -624,7 +629,7 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
-    fn sum(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn sum(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -644,7 +649,7 @@ where
 
                 // Use CUDA ops sum_axes method for multiple axes
                 let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
-                    ops.sum_axes(&self.cuda_data, axes_list, false)
+                    ops.sum_axes(&self.cuda_data, axes_list, keep_dims)
                 })?;
                 Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
@@ -656,7 +661,7 @@ where
         }
     }
 
-    fn mean(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn mean(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -676,7 +681,7 @@ where
 
                 // For multiple axes, we compute sum then divide by product of axis sizes
                 let sum_result = with_cuda_ops(|ops: &CudaOps<T>| {
-                    ops.sum_axes(&self.cuda_data, axes_list, false)
+                    ops.sum_axes(&self.cuda_data, axes_list, keep_dims)
                 })?;
 
                 // Calculate divisor as product of reduced dimensions
@@ -704,7 +709,7 @@ where
         }
     }
 
-    fn max_reduce(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn max_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -724,7 +729,7 @@ where
 
                 // Use CUDA ops max_axes method for multiple axes reduction
                 let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
-                    ops.max_axes(&self.cuda_data, axes_list, false)
+                    ops.max_axes(&self.cuda_data, axes_list, keep_dims)
                 })?;
                 Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
@@ -736,7 +741,7 @@ where
         }
     }
 
-    fn min_reduce(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn min_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -756,7 +761,7 @@ where
 
                 // Use CUDA ops min_axes method for multiple axes reduction
                 let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
-                    ops.min_axes(&self.cuda_data, axes_list, false)
+                    ops.min_axes(&self.cuda_data, axes_list, keep_dims)
                 })?;
                 Ok(Box::new(CUDAStorage::new(result_cuda)))
             }

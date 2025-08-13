@@ -6,8 +6,6 @@ use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
 use crate::FerroxN;
 
-// Helper function to restore dimensions for reduction operations
-// This mimics PyTorch's behavior where gradients must match input shape
 fn expand_reduction<T>(
     mut grad_output: Tensor<T>,
     axes: &Option<Vec<usize>>,
@@ -18,26 +16,37 @@ where
 {
     match axes {
         Some(reduction_axes) => {
-            // Sort axes to unsqueeze in correct order (lowest to highest)
+            // Must unsqueeze to restore reduced dimensions as size 1
+            // Sort axes to process in correct order
             let mut sorted_axes = reduction_axes.clone();
             sorted_axes.sort_unstable();
 
-            // Unsqueeze each reduced axis one by one
+            if sorted_axes.is_empty(){
+                // No axes to process, return as is
+                return Ok(grad_output);
+            }
+
+            // Unsqueeze each reduced axis to add dimension of size 1
             for &axis in &sorted_axes {
                 grad_output.unsqueeze(axis)?;
             }
+
+            // Now grad_output should have same number of dims as input_shape
+            // with 1s where reduction occurred. Broadcast to expand those 1s.
+            if grad_output.shape() != input_shape {
+                grad_output.broadcast_to(input_shape)?;
+            }
+
+            println!("Reduccion expandda exitosamente");
+
             Ok(grad_output)
         }
         None => {
-            // All axes were reduced to scalar - create full tensor
-
-            if grad_output.shape().is_empty() {
-                let device = grad_output.device();
-                let scalar = grad_output.first()?;
-                Tensor::full_with_device(input_shape, device, scalar)
-            } else {
-                Ok(grad_output)
-            }
+            // All axes reduced to scalar - must create full tensor with scalar value
+            let device = grad_output.device();
+            let scalar = grad_output.first()?;
+            println!("Input shape: {:?}", input_shape);
+            Tensor::full_with_device(input_shape, device, scalar)
         }
     }
 }
@@ -61,24 +70,8 @@ where
             return Err("Sum operation requires exactly 1 input".to_string());
         }
 
-        let result = inputs[0].sum(self.axes.as_deref())?;
-
-        // Handle keep_dims if needed by reshaping result
-        if self.keep_dims && self.axes.is_some() {
-            let mut output = result;
-            let input_shape = inputs[0].shape();
-            let axes = self.axes.as_ref().unwrap();
-
-            // Create new shape with reduced dimensions as 1
-            let mut new_shape = input_shape.to_vec();
-            for &axis in axes {
-                new_shape[axis] = 1;
-            }
-            output.reshape(&new_shape)?;
-            Ok(output)
-        } else {
-            Ok(result)
-        }
+        // Backend now handles keep_dims properly
+        inputs[0].sum(self.axes.as_deref(), self.keep_dims)
     }
 
     fn clone_op(&self) -> Box<dyn Operator<T>> {
@@ -96,7 +89,18 @@ where
         }
 
         let input_shape = inputs[0].shape();
-        let exp = expand_reduction(grad_output, &self.axes, input_shape)?;
+
+        // If keep_dims=true, gradient already has correct shape, just broadcast
+        // If keep_dims=false, need to expand dimensions using unsqueeze
+        let mut exp = if self.keep_dims && self.axes.is_some() {
+            grad_output
+        } else {
+            expand_reduction(grad_output, &self.axes, input_shape)?
+        };
+
+        if exp.shape() != input_shape {
+            exp.broadcast_to(input_shape)?;
+        }
         Ok(vec![exp])
     }
 
@@ -107,15 +111,15 @@ where
 
 impl Default for Sum {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 impl Sum {
     /// Create sum operation that reduces all elements to scalar
-    pub fn new() -> Self {
+    pub fn new(keep_dims: bool) -> Self {
         Self {
             axes: None,
-            keep_dims: false,
+            keep_dims,
         }
     }
 
@@ -147,23 +151,8 @@ where
             return Err("Mean operation requires exactly 1 input".to_string());
         }
 
-        let result = inputs[0].mean(self.axes.as_deref())?;
-
-        // Handle keep_dims if needed
-        if self.keep_dims && self.axes.is_some() {
-            let mut output = result;
-            let input_shape = inputs[0].shape();
-            let axes = self.axes.as_ref().unwrap();
-
-            let mut new_shape = input_shape.to_vec();
-            for &axis in axes {
-                new_shape[axis] = 1;
-            }
-            output.reshape(&new_shape)?;
-            Ok(output)
-        } else {
-            Ok(result)
-        }
+        // Backend now handles keep_dims properly
+        inputs[0].mean(self.axes.as_deref(), self.keep_dims)
     }
 
     fn gradient(
@@ -192,18 +181,20 @@ where
             .ok_or("Failed to convert reduction scale to tensor type")?;
         // Scale the gradient first
         let scaled_grad = grad_output.mul_scalar(scale)?;
-        let mut result = expand_reduction(scaled_grad, &self.axes, input_shape)?;
 
-        let output = if result.shape().is_empty() {
-            let scalar = grad_output.first()?;
-            Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?
+        // If keep_dims=true, gradient already has correct shape, just broadcast
+        // If keep_dims=false, need to expand dimensions using unsqueeze
+        let mut result = if self.keep_dims && self.axes.is_some() {
+            scaled_grad
         } else {
-            // Broadcast gradient back to input shape
-            result.broadcast_to(input_shape)?;
-            result
+            expand_reduction(scaled_grad, &self.axes, input_shape)?
         };
 
-        Ok(vec![output])
+        if result.shape() != input_shape {
+            result.broadcast_to(input_shape)?;
+        }
+
+        Ok(vec![result])
     }
 
     fn clone_op(&self) -> Box<dyn Operator<T>> {
@@ -258,23 +249,8 @@ where
             return Err("Max operation requires exactly 1 input".to_string());
         }
 
-        let result = inputs[0].max_reduce(self.axes.as_deref())?;
-
-        // Handle keep_dims if needed
-        if self.keep_dims && self.axes.is_some() {
-            let mut output = result;
-            let input_shape = inputs[0].shape();
-            let axes = self.axes.as_ref().unwrap();
-
-            let mut new_shape = input_shape.to_vec();
-            for &axis in axes {
-                new_shape[axis] = 1;
-            }
-            output.reshape(&new_shape)?;
-            Ok(output)
-        } else {
-            Ok(result)
-        }
+        // Backend now handles keep_dims properly
+        inputs[0].max_reduce(self.axes.as_deref(), self.keep_dims)
     }
 
       fn gradient(
@@ -289,24 +265,27 @@ where
 
         let input_shape = inputs[0].shape();
 
-        // Create max values for comparison - need to restore dimensions first
-        let max_values = inputs[0].max_reduce(self.axes.as_deref())?;
-        let restored_max = expand_reduction(max_values, &self.axes, input_shape)?;
+        // Create max values for comparison - always use keep_dims=true for mask creation
+        let max_values = inputs[0].max_reduce(self.axes.as_deref(), true)?;
 
-        // Broadcast max values to input shape for element-wise comparison
-        let mut broadcasted_max = restored_max;
-        if broadcasted_max.shape() != input_shape {
-            broadcasted_max.broadcast_to(input_shape)?;
+        let mut restored_max = max_values;
+        if restored_max.shape() != input_shape {
+            restored_max.broadcast_to(input_shape)?;
         }
 
-        // Create mask where input equals max values (gradient flows here)
-        let mask = inputs[0].equal(&broadcasted_max)?;
+        println!("CALCULANDO GRADIENTE PARA MAX OP.");
 
-        // Restore gradient dimensions using unsqueeze
-        let restored_grad = expand_reduction(grad_output, &self.axes, input_shape)?;
+        // Create mask where input equals max values (gradient flows here)
+        let mask = inputs[0].equal(&restored_max)?;
+
+        // Handle gradient expansion based on keep_dims
+        let mut result_grad = if self.keep_dims && self.axes.is_some() {
+            grad_output
+        } else {
+            expand_reduction(grad_output, &self.axes, input_shape)?
+        };
 
         // Broadcast gradient to input shape and apply mask
-        let mut result_grad = restored_grad;
         if result_grad.shape() != input_shape {
             result_grad.broadcast_to(input_shape)?;
         }
@@ -366,22 +345,8 @@ where
             return Err("Min operation requires exactly 1 input".to_string());
         }
 
-        let mut result = inputs[0].min_reduce(self.axes.as_deref())?;
-
-        // Handle keep_dims if needed
-        if self.keep_dims && self.axes.is_some() {
-            let input_shape = inputs[0].shape();
-            let axes = self.axes.as_ref().unwrap();
-
-            let mut new_shape = input_shape.to_vec();
-            for &axis in axes {
-                new_shape[axis] = 1;
-            }
-            result.reshape(&new_shape)?;
-            Ok(result)
-        } else {
-            Ok(result)
-        }
+        // Backend now handles keep_dims properly
+        inputs[0].min_reduce(self.axes.as_deref(), self.keep_dims)
     }
 
      fn gradient(
@@ -396,24 +361,25 @@ where
 
         let input_shape = inputs[0].shape();
 
-        // Create min values for comparison - need to restore dimensions first
-        let min_values = inputs[0].min_reduce(self.axes.as_deref())?;
-        let restored_min = expand_reduction(min_values, &self.axes, input_shape)?;
+        // Create min values for comparison - always use keep_dims=true for mask creation
+        let min_values = inputs[0].min_reduce(self.axes.as_deref(), true)?;
 
-        // Broadcast min values to input shape for element-wise comparison
-        let mut broadcasted_min = restored_min;
-        if broadcasted_min.shape() != input_shape {
-            broadcasted_min.broadcast_to(input_shape)?;
+        let mut restored_min = min_values;
+        if restored_min.shape() != input_shape {
+            restored_min.broadcast_to(input_shape)?;
         }
 
         // Create mask where input equals min values (gradient flows here)
-        let mask = inputs[0].equal(&broadcasted_min)?;
+        let mask = inputs[0].equal(&restored_min)?;
 
-        // Restore gradient dimensions using unsqueeze
-        let restored_grad = expand_reduction(grad_output, &self.axes, input_shape)?;
+        // Handle gradient expansion based on keep_dims
+        let mut result_grad = if self.keep_dims && self.axes.is_some() {
+            grad_output
+        } else {
+            expand_reduction(grad_output, &self.axes, input_shape)?
+        };
 
         // Broadcast gradient to input shape and apply mask
-        let mut result_grad = restored_grad;
         if result_grad.shape() != input_shape {
             result_grad.broadcast_to(input_shape)?;
         }

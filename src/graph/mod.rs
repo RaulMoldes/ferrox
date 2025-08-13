@@ -505,7 +505,7 @@ where
 
                 // Compute input gradients.
                 let input_grads = match op {
-                    Some(o) => o.gradient(grad_output, &mut input_tensors, &tensor)?,
+                    Some(o) => o.gradient(grad_output.clone(), &mut input_tensors, &tensor)?,
                     None => {
                         panic!(
                             "Cannot compute gradient. Operation not defined for node: {}",
@@ -516,6 +516,7 @@ where
 
                 // Acumulate gradients
                 for (input_id, input_grad) in inputs.iter().zip(input_grads) {
+
                     self.accumulate_gradient(*input_id, input_grad)?;
                 }
             }
@@ -986,7 +987,7 @@ mod graph_tests {
     fn test_sum_operation() {
         // Test sum reduction: sum(input, axes)
         let inputs = vec![create_tensor_2x2([1.0, 2.0, 3.0, 4.0])];
-        test_operation_with_gradients(Sum::new(), inputs, &[], "Sum"); // Scalar result
+        test_operation_with_gradients(Sum::new(false), inputs, &[], "Sum"); // Scalar result
     }
 
     #[test]

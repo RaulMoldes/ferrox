@@ -543,6 +543,56 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
+
+    /// Batch-aware softmax along specified axis
+    /// More efficient than partitioning as it processes all batches in parallel
+    pub fn softmax_batched(
+        &self,
+        input: &CudaTensor<T>,
+        axis: usize
+    ) -> Result<CudaTensor<T>, String> {
+        // Validate axis
+        if axis >= input.shape.len() {
+            return Err(format!(
+                "Softmax axis {} out of bounds for tensor with {} dimensions",
+                axis, input.shape.len()
+            ));
+        }
+
+        let mut result = self.create_tensor_from_pool(input.shape())?;
+
+        // Calculate dimensions for the kernel
+        let batch_size = input.shape[..axis].iter().product::<usize>() as i32;
+        let seq_length = input.shape[axis] as i32;
+        let inner_size = input.shape[axis + 1..].iter().product::<usize>() as i32;
+        let total_elements = input.size() as i32;
+
+        // Each block processes one sequence (combination of batch and inner indices)
+        // Total number of sequences = batch_size * inner_size
+        let num_sequences = batch_size * inner_size;
+
+        // Launch configuration: one block per sequence
+        let cfg = LaunchConfig {
+            grid_dim: (num_sequences as u32, 1, 1),
+            block_dim: (256, 1, 1), // Optimize for sequence length up to 256*k
+            shared_mem_bytes: 0,
+        };
+
+        self.kernels.launch_softmax_batched(
+            cfg,
+            input.data(),
+            result.data_mut(),
+            batch_size,
+            seq_length,
+            inner_size,
+            total_elements,
+        )?;
+
+        Ok(result)
+    }
+
+
+
     /// Hyperbolic tangent activation: result = tanh(input)
     pub fn tanh(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
         let size = input.size();

@@ -10,7 +10,8 @@ use crate::ops::{
     comparison::Clamp,
     reduction::{Mean, Sum},
     scalar::AddScalar,
-    unary::{Log, Neg, Softmax},
+    unary::{Log, Neg},
+    batched::Softmax,
 };
 use crate::FerroxN;
 use std::marker::PhantomData;
@@ -123,6 +124,7 @@ where
             .apply_operation(neg_op3, vec![cross_entropy])
             .map_err(|e| format!("BCE final negation failed: {}", e))?;
 
+
         // Step 9: Apply reduction strategy
         match self.reduction {
             ReductionType::Mean => {
@@ -132,7 +134,7 @@ where
                     .map_err(|e| format!("BCE mean reduction failed: {}", e))
             }
             ReductionType::Sum => {
-                let sum_op = Box::new(Sum::new());
+                let sum_op = Box::new(Sum::new(true));
                 graph
                     .apply_operation(sum_op, vec![bce_loss])
                     .map_err(|e| format!("BCE sum reduction failed: {}", e))
@@ -203,16 +205,19 @@ where
                 .apply_operation(softmax_op, vec![predictions])
                 .map_err(|e| format!("CCE softmax failed: {}", e))?;
 
+
             // Clamp for numerical stability
             let epsilon = FerroxN::from_f64(1e-8).unwrap();
             let one_minus_eps = FerroxN::from_f64(1.0 - 1e-8).unwrap();
             let clamp_op = Box::new(Clamp::new(epsilon, one_minus_eps));
+
             graph
                 .apply_operation(clamp_op, vec![raw_probs])
                 .map_err(|e| format!("CCE clamping failed: {}", e))?
         } else {
             predictions
         };
+
 
         // Step 2: Compute log(probabilities)
         let log_op = Box::new(Log);
@@ -227,7 +232,8 @@ where
             .map_err(|e| format!("CCE element-wise multiply failed: {}", e))?;
 
         // Step 4: Sum across class dimension (axis=1)
-        let sum_op = Box::new(Sum::along_axes(vec![1], false));
+        let sum_op = Box::new(Sum::along_axes(vec![1], true));
+        // EL problema esta aqui, esto es [100] en lugar de [100,1]
         let cross_entropy_per_sample = graph
             .apply_operation(sum_op, vec![targets_log_prob])
             .map_err(|e| format!("CCE sum across classes failed: {}", e))?;
@@ -238,6 +244,8 @@ where
             .apply_operation(neg_op, vec![cross_entropy_per_sample])
             .map_err(|e| format!("CCE negation failed: {}", e))?;
 
+
+
         // Step 6: Apply final reduction
         match self.reduction {
             ReductionType::Mean => {
@@ -247,7 +255,7 @@ where
                     .map_err(|e| format!("CCE mean reduction failed: {}", e))
             }
             ReductionType::Sum => {
-                let sum_op = Box::new(Sum::new());
+                let sum_op = Box::new(Sum::new(true));
                 graph
                     .apply_operation(sum_op, vec![cce_per_sample])
                     .map_err(|e| format!("CCE sum reduction failed: {}", e))

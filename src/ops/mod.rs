@@ -81,6 +81,7 @@ pub mod reduction;
 pub mod reshape;
 pub mod scalar;
 pub mod unary;
+pub mod batched;
 
 // Re-export all operations for convenient importing
 pub use basic::*;
@@ -91,6 +92,8 @@ pub use reduction::*;
 pub use reshape::*;
 pub use scalar::*;
 pub use unary::*;
+pub use batched::*;
+
 
 /// Module containing all basic arithmetic operations
 /// These are the fundamental building blocks for most neural network computations
@@ -104,6 +107,7 @@ pub mod arithmetic {
 /// Essential for non-linear transformations in neural networks
 pub mod activations {
     pub use super::unary::{ReLU, Sigmoid, Tanh};
+    pub use super::batched::Softmax;
 }
 
 /// Module containing mathematical functions

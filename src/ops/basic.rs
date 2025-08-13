@@ -41,7 +41,7 @@ where
 
     // Reduce along identified axes
     if !axes_to_reduce.is_empty() {
-        *grad = grad.sum(Some(&axes_to_reduce))?;
+        *grad = grad.sum(Some(&axes_to_reduce), false)?;
     }
 
     // Reshape to match target if needed (handles trailing/leading 1s)

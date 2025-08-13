@@ -212,7 +212,12 @@ where
 {
     // Move the generic reduce method to the concrete implementation
     // This avoids making StorageBackend non-dyn-compatible
-    fn reduce<F>(&self, axes: Option<&[usize]>, reduction_fn: F) -> Result<CPUStorage<T>, String>
+      fn reduce<F>(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,  // Add keep_dims parameter
+        reduction_fn: F
+    ) -> Result<CPUStorage<T>, String>
     where
         F: Fn(&ndarray::ArrayD<T>, ndarray::Axis) -> ndarray::ArrayD<T>,
     {
@@ -230,6 +235,8 @@ where
                 }
 
                 let mut result = self.data.clone();
+                let original_shape = self.shape().to_vec();
+
                 // Sort in descending order to prevent index shifting during reduction
                 let mut sorted_axes = axes_list.to_vec();
                 sorted_axes.sort_unstable();
@@ -241,14 +248,34 @@ where
                     result = reduction_fn(&result, ndarray::Axis(ax));
                 }
 
+                // Handle keep_dims: restore reduced dimensions as size 1
+                if keep_dims {
+                    let mut final_shape = original_shape;
+                    for &ax in axes_list {
+                        final_shape[ax] = 1;
+                    }
+                    result = result.into_shape_with_order(final_shape)
+                        .map_err(|e| format!("Failed to reshape for keep_dims: {}", e))?;
+                }
+
                 Ok(CPUStorage::new(result))
             }
             None => {
                 // Reduce across all dimensions to get scalar result
                 let mut result = self.data.clone();
-                for dim in (0..result.ndim()).rev() {
+                let original_ndim = result.ndim();
+
+                for dim in (0..original_ndim).rev() {
                     result = reduction_fn(&result, ndarray::Axis(dim));
                 }
+
+                // Handle keep_dims for full reduction: create shape with all 1s
+                if keep_dims {
+                    let final_shape = vec![1; original_ndim];
+                    result = result.into_shape_with_order(final_shape)
+                        .map_err(|e| format!("Failed to reshape for keep_dims: {}", e))?;
+                }
+
                 Ok(CPUStorage::new(result))
             }
         }
@@ -370,6 +397,158 @@ where
             .map_err(|e| format!("Failed to create result: {e}"))?;
 
         Ok(Box::new(CPUStorage::new(result_array)))
+    }
+
+    fn partition(&self, axis: usize, num_partitions: usize) -> Result<Vec<Box<dyn StorageBackend<T>>>, String> {
+        if num_partitions == 0 {
+            return Err("Number of partitions must be greater than 0".to_string());
+        }
+
+        if axis >= self.data.ndim() {
+            return Err(format!(
+                "Partition axis {} out of bounds for storage with {} dimensions",
+                axis,
+                self.data.ndim()
+            ));
+        }
+
+        let axis_size = self.data.shape()[axis];
+        if axis_size < num_partitions {
+            return Err(format!(
+                "Cannot partition axis of size {} into {} partitions",
+                axis_size, num_partitions
+            ));
+        }
+
+        let partition_size = axis_size / num_partitions;
+        let remainder = axis_size % num_partitions;
+
+        let mut result = Vec::with_capacity(num_partitions);
+        let mut current_start = 0;
+
+        // Create partitions - distribute remainder across first partitions
+        for i in 0..num_partitions {
+            let current_size = if i < remainder {
+                partition_size + 1 // First 'remainder' partitions get extra element
+            } else {
+                partition_size
+            };
+
+            let current_end = current_start + current_size;
+
+            // Create slice using ndarray operations
+            let partition_data = self.slice_axis(axis, current_start, current_end)?;
+
+            result.push(Box::new(CPUStorage {
+                data: partition_data,
+            }) as Box<dyn StorageBackend<T>>);
+
+            current_start = current_end;
+        }
+
+        Ok(result)
+    }
+
+
+    fn concatenate(storages: Vec<Box<dyn StorageBackend<T>>>, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String> {
+        if storages.is_empty() {
+            return Err("Cannot concatenate empty storage list".to_string());
+        }
+
+        // Single storage case
+        if storages.len() == 1 {
+            // We need to clone the storage since we took ownership
+            let first_storage = &storages[0];
+            // Convert to CPU data by getting data from the storage
+            // This requires adding a method to extract data from storage
+            let cpu_data = Self::extract_cpu_data(first_storage.as_ref())?;
+
+            return Ok(Box::new(CPUStorage {
+                data: cpu_data,
+            }));
+        }
+
+        // Validate compatibility and extract CPU data
+        let base_shape = storages[0].shape().to_vec();
+        let mut cpu_arrays = Vec::with_capacity(storages.len());
+
+        for (i, storage) in storages.iter().enumerate() {
+            let shape = storage.shape();
+            if shape.len() != base_shape.len() {
+                return Err(format!(
+                    "Storage {} has {} dimensions, expected {}",
+                    i, shape.len(), base_shape.len()
+                ));
+            }
+
+            // Check dimensions except concatenation axis
+            for (dim_idx, (&base_dim, &storage_dim)) in base_shape.iter().zip(shape.iter()).enumerate() {
+                if dim_idx != axis && storage_dim != base_dim {
+                    return Err(format!(
+                        "Storage {} shape mismatch at dimension {}: expected {}, got {}",
+                        i, dim_idx, base_dim, storage_dim
+                    ));
+                }
+            }
+
+            // Extract CPU data from this storage
+            let cpu_data = Self::extract_cpu_data(storage.as_ref())?;
+            cpu_arrays.push(cpu_data);
+        }
+
+        // Perform concatenation using ndarray
+        let arrays_view: Vec<ndarray::ArrayViewD<T>> = cpu_arrays.iter().map(|a| a.view()).collect();
+        let result: ArrayD<T> = ndarray::concatenate(ndarray::Axis(axis), &arrays_view)
+            .map_err(|e| format!("Concatenation failed: {}", e))?;
+
+        Ok(Box::new(CPUStorage {
+            data: result,
+        }))
+    }
+
+
+    /// Helper method to slice storage along specified axis
+    fn slice_axis(&self, axis: usize, start_idx: usize, end_idx: usize) -> Result<ArrayD<T>, String> {
+        if axis >= self.data.ndim() {
+            return Err(format!(
+                "Slice axis {} out of bounds for storage with {} dimensions",
+                axis,
+                self.data.ndim()
+            ));
+        }
+
+        if start_idx >= end_idx {
+            return Err("Start index must be less than end index".to_string());
+        }
+
+        if end_idx > self.data.shape()[axis] {
+            return Err(format!(
+                "End index {} exceeds axis size {}",
+                end_idx,
+                self.data.shape()[axis]
+            ));
+        }
+
+        // Create slice indices for ndarray
+        let mut slice_indices = vec![ndarray::Slice::from(..)];
+        slice_indices.resize(self.data.ndim(), ndarray::Slice::from(..));
+        slice_indices[axis] = ndarray::Slice::from(start_idx..end_idx);
+
+        // Apply slice operation
+        let sliced_data = self.data.slice_each_axis(|ax| slice_indices[ax.axis.index()]);
+
+        // Convert to owned array
+        Ok(sliced_data.to_owned())
+    }
+
+
+    /// Extract CPU data from CPU storage backend
+    fn extract_cpu_data(storage: &dyn StorageBackend<T>) -> Result<ArrayD<T>, String> {
+        // Try to downcast to CpuStorage first
+        if let Some(cpu_storage) = storage.as_any().downcast_ref::<CPUStorage<T>>() {
+            return Ok(cpu_storage.data.clone());
+        }
+        Err("Cannot extract CPU data from non-CPU storage backend".to_string())
     }
 }
 
@@ -963,6 +1142,26 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
+
+     fn softmax_batched(&self, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF,
+    {
+        // Partition along the axis (each element becomes its own partition for softmax)
+        let axis_size = self.data.shape()[axis];
+        let partitions = self.partition(axis, axis_size)?;
+
+        // Apply softmax to each partition
+        let mut softmax_partitions = Vec::with_capacity(partitions.len());
+        for partition in partitions {
+            let softmax_result = partition.softmax()?;
+            softmax_partitions.push(softmax_result);
+        }
+
+        // Concatenate results back along the same axis
+        Self::concatenate(softmax_partitions, axis)
+    }
+
     fn relu(&self) -> Result<Box<dyn StorageBackend<T>>, String> {
         // ReLU activation: max(0, x)
         let result_data = self.data.mapv(|x| {
@@ -1076,15 +1275,15 @@ where
         Ok(Box::new(CPUStorage::new(result_data)))
     }
 
-    fn sum(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn sum(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Use reduce_axes with ndarray's sum_axis function
-        let result = self.reduce(axes, |array, ax| array.sum_axis(ax))?;
+        let result = self.reduce(axes, keep_dims, |array, ax| array.sum_axis(ax))?;
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
     }
 
-    fn mean(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn mean(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         // First compute sum using reduce_axes
-        let sum_result = self.sum(axes)?;
+        let sum_result = self.sum(axes, keep_dims)?;
 
         // Calculate the number of elements being averaged over
         let divisor = match axes {
@@ -1108,10 +1307,10 @@ where
         sum_result.mul_scalar(divisor_scalar)
     }
 
-    fn max_reduce(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn max_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Use reduce_axes with custom max reduction function
         // ndarray doesn't have a direct max_axis function, so we implement our own
-        let result = self.reduce(axes, |array, ax| {
+        let result = self.reduce(axes,keep_dims,  |array, ax| {
             let first = if let Some(f) = array.first() {
                 *f
             } else {
@@ -1125,10 +1324,10 @@ where
         Ok(Box::new(result) as Box<dyn StorageBackend<T>>)
     }
 
-    fn min_reduce(&self, axes: Option<&[usize]>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn min_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
         // Use reduce_axes with custom min reduction function
         // Similar to max_axes but finding minimum values
-        let result = self.reduce(axes, |array, ax| {
+        let result = self.reduce(axes, keep_dims, |array, ax| {
             let first = if let Some(f) = array.first() {
                 *f
             } else {

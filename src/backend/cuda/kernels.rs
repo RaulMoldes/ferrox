@@ -101,6 +101,8 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "hyperbolic_tangent_f64",
             "softmax",
             "softmax_f64",
+            "softmax_batch_axis",
+            "softmax_batch_axis_f64"
         ],
     },
     KernelConfig {
@@ -643,6 +645,37 @@ impl KernelManager {
         T: FerroxCudaN + 'static,
     {
         self.launch_unary_elementwise("softmax", cfg, input, output, size)
+    }
+
+
+    /// Launch batch-aware softmax kernel
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_softmax_batched<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        seq_length: i32,
+        inner_size: i32,
+        total_elements: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("softmax_batch_axis");
+
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,           // const T* input
+            output,          // T* output
+            &batch_size,     // int batch_size
+            &seq_length,     // int seq_length
+            &inner_size,     // int inner_size
+            &total_elements  // int total_elements
+        )
     }
 
     /// Launch hyperbolic tangent activation: result[i] = tanh(input[i])

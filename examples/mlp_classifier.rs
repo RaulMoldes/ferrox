@@ -416,7 +416,7 @@ where
     }
 
     loss_history.push(loss_value);
-
+    println!("Statting backward pass");
     // Backward pass - compute gradients
     graph.backward(loss_node)?;
 

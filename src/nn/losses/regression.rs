@@ -74,7 +74,7 @@ where
                     .map_err(|e| format!("MSE mean reduction failed: {}", e))
             }
             ReductionType::Sum => {
-                let sum_op = Box::new(Sum::new());
+                let sum_op = Box::new(Sum::new(true));
                 graph
                     .apply_operation(sum_op, vec![squared_diff])
                     .map_err(|e| format!("MSE sum reduction failed: {}", e))
@@ -150,7 +150,7 @@ where
                     .map_err(|e| format!("L1 mean reduction failed: {}", e))
             }
             ReductionType::Sum => {
-                let sum_op = Box::new(Sum::new());
+                let sum_op = Box::new(Sum::new(true));
                 graph
                     .apply_operation(sum_op, vec![abs_diff])
                     .map_err(|e| format!("L1 sum reduction failed: {}", e))
