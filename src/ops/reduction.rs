@@ -6,6 +6,42 @@ use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
 use crate::FerroxN;
 
+// Helper function to restore dimensions for reduction operations
+// This mimics PyTorch's behavior where gradients must match input shape
+fn expand_reduction<T>(
+    mut grad_output: Tensor<T>,
+    axes: &Option<Vec<usize>>,
+    input_shape: &[usize],
+) -> Result<Tensor<T>, String>
+where
+    T: FerroxCudaF,
+{
+    match axes {
+        Some(reduction_axes) => {
+            // Sort axes to unsqueeze in correct order (lowest to highest)
+            let mut sorted_axes = reduction_axes.clone();
+            sorted_axes.sort_unstable();
+
+            // Unsqueeze each reduced axis one by one
+            for &axis in &sorted_axes {
+                grad_output.unsqueeze(axis)?;
+            }
+            Ok(grad_output)
+        }
+        None => {
+            // All axes were reduced to scalar - create full tensor
+
+            if grad_output.shape().is_empty() {
+                let device = grad_output.device();
+                let scalar = grad_output.first()?;
+                Tensor::full_with_device(input_shape, device, scalar)
+            } else {
+                Ok(grad_output)
+            }
+        }
+    }
+}
+
 /// Sum reduction: output = sum(input, axes)
 /// Reduces tensor along specified axes or all elements if None
 #[derive(Debug, Clone)]
@@ -60,30 +96,8 @@ where
         }
 
         let input_shape = inputs[0].shape();
-
-        // Handle different reduction cases properly
-        match &self.axes {
-            None => {
-                // Global reduction: broadcast scalar to input shape
-                let scalar = grad_output.first()?;
-                let result = Tensor::full_with_device(input_shape, inputs[0].device(), scalar)?;
-                Ok(vec![result])
-            }
-            Some(axes) => {
-                // Axis-specific reduction: need to broadcast correctly
-                let mut result = grad_output.clone();
-
-                // For each reduced axis, we need to unsqueeze back to size 1
-                for &axis in axes.iter().rev() {
-                    // Reverse order for correct unsqueezing
-                    result.unsqueeze(axis)?;
-                }
-
-                // Now broadcast to original input shape
-                result.broadcast_to(input_shape)?;
-                Ok(vec![result])
-            }
-        }
+        let exp = expand_reduction(grad_output, &self.axes, input_shape)?;
+        Ok(vec![exp])
     }
 
     fn num_inputs(&self) -> usize {
@@ -176,9 +190,9 @@ where
 
         let scale = <T as FerroxN>::from_f64(1.0 / reduction_size)
             .ok_or("Failed to convert reduction scale to tensor type")?;
-
-        // Scale and broadcast gradient back to input shape
-        let mut result = grad_output.mul_scalar(scale)?;
+        // Scale the gradient first
+        let scaled_grad = grad_output.mul_scalar(scale)?;
+        let mut result = expand_reduction(scaled_grad, &self.axes, input_shape)?;
 
         let output = if result.shape().is_empty() {
             let scalar = grad_output.first()?;
@@ -263,9 +277,9 @@ where
         }
     }
 
-    fn gradient(
+      fn gradient(
         &self,
-        mut grad_output: Tensor<T>,
+        grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
         _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
@@ -273,31 +287,33 @@ where
             return Err("Max operation requires exactly 1 input".to_string());
         }
 
-        // For max: gradient flows only to the maximum elements
-        // Create a mask where input equals the max values
-        let mut broadcasted_max = inputs[0].max_reduce(self.axes.as_deref())?;
+        let input_shape = inputs[0].shape();
 
-        // Broadcast max result back to input shape for comparison
-        let out = if !broadcasted_max.shape().is_empty() {
-            broadcasted_max.broadcast_to(inputs[0].shape())?;
-            broadcasted_max
-        } else {
-            let item = broadcasted_max.first()?;
-            let device = inputs[0].device();
-            Tensor::full_with_device(inputs[0].shape(), device, item)?
-        };
+        // Create max values for comparison - need to restore dimensions first
+        let max_values = inputs[0].max_reduce(self.axes.as_deref())?;
+        let restored_max = expand_reduction(max_values, &self.axes, input_shape)?;
 
-        // Create mask where input == max (gets gradient of 1, others get 0)
-        let mask = inputs[0].equal(&out)?;
+        // Broadcast max values to input shape for element-wise comparison
+        let mut broadcasted_max = restored_max;
+        if broadcasted_max.shape() != input_shape {
+            broadcasted_max.broadcast_to(input_shape)?;
+        }
 
-        // Broadcast grad_output to input shape and apply mask
+        // Create mask where input equals max values (gradient flows here)
+        let mask = inputs[0].equal(&broadcasted_max)?;
 
-        grad_output.broadcast_to(inputs[0].shape())?;
-        let result = grad_output.mul(&mask)?;
+        // Restore gradient dimensions using unsqueeze
+        let restored_grad = expand_reduction(grad_output, &self.axes, input_shape)?;
 
+        // Broadcast gradient to input shape and apply mask
+        let mut result_grad = restored_grad;
+        if result_grad.shape() != input_shape {
+            result_grad.broadcast_to(input_shape)?;
+        }
+
+        let result = result_grad.mul(&mask)?;
         Ok(vec![result])
     }
-
     fn clone_op(&self) -> Box<dyn Operator<T>> {
         Box::new(self.clone())
     }
@@ -368,9 +384,9 @@ where
         }
     }
 
-    fn gradient(
+     fn gradient(
         &self,
-        mut grad_output: Tensor<T>,
+        grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
         _outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String> {
@@ -378,28 +394,31 @@ where
             return Err("Min operation requires exactly 1 input".to_string());
         }
 
-        // For min: gradient flows only to the minimum elements
-        // Create a mask where input equals the min values
-        let mut broadcasted_min = inputs[0].min_reduce(self.axes.as_deref())?;
+        let input_shape = inputs[0].shape();
 
-        // Broadcast min result back to input shape for comparison
+        // Create min values for comparison - need to restore dimensions first
+        let min_values = inputs[0].min_reduce(self.axes.as_deref())?;
+        let restored_min = expand_reduction(min_values, &self.axes, input_shape)?;
 
-        let out = if !broadcasted_min.shape().is_empty() {
-            broadcasted_min.broadcast_to(inputs[0].shape())?;
-            broadcasted_min
-        } else {
-            let item = broadcasted_min.first()?;
-            let device = inputs[0].device();
-            Tensor::full_with_device(inputs[0].shape(), device, item)?
-        };
+        // Broadcast min values to input shape for element-wise comparison
+        let mut broadcasted_min = restored_min;
+        if broadcasted_min.shape() != input_shape {
+            broadcasted_min.broadcast_to(input_shape)?;
+        }
 
-        // Create mask where input == min (gets gradient of 1, others get 0)
-        let mask = inputs[0].equal(&out)?;
+        // Create mask where input equals min values (gradient flows here)
+        let mask = inputs[0].equal(&broadcasted_min)?;
 
-        // Broadcast grad_output to input shape and apply mask
-        grad_output.broadcast_to(inputs[0].shape())?;
-        let result = grad_output.mul(&mask)?;
+        // Restore gradient dimensions using unsqueeze
+        let restored_grad = expand_reduction(grad_output, &self.axes, input_shape)?;
 
+        // Broadcast gradient to input shape and apply mask
+        let mut result_grad = restored_grad;
+        if result_grad.shape() != input_shape {
+            result_grad.broadcast_to(input_shape)?;
+        }
+
+        let result = result_grad.mul(&mask)?;
         Ok(vec![result])
     }
 

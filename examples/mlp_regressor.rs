@@ -4,7 +4,7 @@
 
 use ferrox::backend::manager::best_f32_device;
 use ferrox::backend::{Device, FerroxCudaF, Tensor};
-use ferrox::dataset::{BatchedDataset, Dataset, TensorDataset};
+use ferrox::dataset::{BatchedDataset, TensorDataset};
 use ferrox::graph::{AutoFerroxEngine, NodeId};
 use ferrox::nn::{
     layers::{Linear, ReLU},
