@@ -1996,7 +1996,7 @@ mod tensor_ops_tests {
         let exp2 = (2.0f32).exp();
         let sum_exp = exp0 + exp1 + exp2;
 
-        let expected = vec![exp0 / sum_exp, exp1 / sum_exp, exp2 / sum_exp];
+        let expected = [exp0 / sum_exp, exp1 / sum_exp, exp2 / sum_exp];
 
         for (a, b) in data.iter().zip(expected.iter()) {
             assert!((a - b).abs() < 1e-6, "Expected {}, got {}", b, a);

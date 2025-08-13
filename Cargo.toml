@@ -33,5 +33,15 @@ approx = "0.5"
 name = "graph_visualization"
 path = "examples/graph_visualization.rs"
 
+[[example]]
+name = "mlp_regressor"
+path = "examples/mlp_regressor.rs"
+
+
+[[example]]
+name = "mlp_classifier"
+path = "examples/mlp_classifier.rs"
+
+
 [lib]
 doctest = true
