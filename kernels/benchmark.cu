@@ -403,7 +403,7 @@ void run_and_time_conv1d(const char* name,
 
     // Calculate shared memory size to match ops.rs implementation
     size_t shared_mem_size = (input_size + filter_size + 1) * sizeof(T);
-    int grid_size = (total_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int grid_size = (input_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
     CHECK_CUDA(cudaEventRecord(start));
     kernel << <grid_size, BLOCK_SIZE, shared_mem_size >> > (
         d_input, d_filter, d_output,
@@ -415,12 +415,11 @@ void run_and_time_conv1d(const char* name,
     CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
 
     // Calculate GFLOPS
-    long long ops = (long long)batch_size * out_channels * out_height * out_width *
-        in_channels * kernel_height * kernel_width * 2; // 2 for MAC
+    long long ops = (long long)CONV_SIZE * filter_size * 2; // 2 for MAC
     double gflops = ops / (ms * 1e6);
 
-    printf("%-25s took %.3f ms (%.1f GFLOPS, %dx%dx%dx%d)\n",
-        name, ms, gflops, batch_size, out_channels, out_height, out_width);
+    printf("%-25s took %.3f ms (%.1f GFLOPS)\n",
+        name, ms, gflops);
 
     CHECK_CUDA(cudaEventDestroy(start));
     CHECK_CUDA(cudaEventDestroy(stop));

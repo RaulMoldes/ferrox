@@ -15,18 +15,6 @@ extern "C" __global__ void relu(
     }
 }
 
-__device__ __forceinline__ float sigmoid_fused(float x) {
-    // Clamp to prevent overflow - reduces branch divergence
-    x = __saturatef(x * 0.0113636f) * 88.0f; // Fast clamp to [-88, 88]
-
-    // Use intrinsic for fused reciprocal: 1.0 / (1.0 + exp(-x))
-    return __frcp_rn(__fmaf_rn(expf(-x), 1.0f, 1.0f));
-}
-
-__device__ __forceinline__ double sigmoid_fused_f64(double x) {
-    x = fmax(-709.0, fmin(709.0, x));
-    return __drcp_rn(__fma_rn(exp(-x), 1.0, 1.0));
-}
 
 
 extern "C" __global__ void sigmoid(const float* input, float* output, int size) {
@@ -188,14 +176,15 @@ __inline__ __device__ T blockReduceSum(T val) {
 // SOFTMAX KERNELS
 // =============================================================================
 
-extern "C" __global__ void softmax(const float* input, float* output, int N) {
+template <typename T>
+__device__ void softmax_kernel(const T* input, T* output, int N) {
 
 
     int tid = threadIdx.x;
     int global_idx = get_global_idx();
 
     // S1: Find global maxima using block reduction
-    float local_max = -FLT_MAX;
+    T local_max = -(T)FLT_MAX;
 
     // Initialize local max values.
     for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
@@ -203,17 +192,16 @@ extern "C" __global__ void softmax(const float* input, float* output, int N) {
     }
 
     // Reduce the maximum
-    float block_max = blockReduceMax(local_max);
+    T block_max = blockReduceMax(local_max);
 
     // Broadcast the maximum to all threads
-    __shared__ float s_max;
-    if (tid == 0) {
-        s_max = block_max;
-    }
+    __shared__ T s_max;
+    if (tid == 0) s_max = block_max;
     __syncthreads();
 
+
     // S2: Compute local sums
-    float local_sum = 0.0f;
+    T local_sum = 0.0;
 
     // Each thread calculates its local sum value.
     for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
@@ -221,14 +209,13 @@ extern "C" __global__ void softmax(const float* input, float* output, int N) {
     }
 
     // Reduce sum between all blocks.
-    float block_sum = blockReduceSum(local_sum);
+    T block_sum = blockReduceSum(local_sum);
 
     // Broadcast the sum to all threads.
-    __shared__ float s_sum;
-    if (tid == 0) {
-        s_sum = block_sum;
-    }
+    __shared__ T s_sum;
+    if (tid == 0) s_sum = block_sum;
     __syncthreads();
+
 
     // S3: Compute final softmax and return the result.
     for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
@@ -240,50 +227,13 @@ extern "C" __global__ void softmax(const float* input, float* output, int N) {
 
 
 extern "C" __global__ void softmax_f64(const double* input, double* output, int N) {
+    softmax_kernel<double>(input, output, N);
 
-    int tid = threadIdx.x;
-    int global_idx = get_global_idx();
+}
 
-    // S1: Find global maxima using block reduction
-    double local_max = -(double)FLT_MAX;
+extern "C" __global__ void softmax(const float* input, float* output, int N) {
+    softmax_kernel<float>(input, output, N);
 
-    // Initialize local max values.
-    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
-        local_max = max(local_max, input[i]);
-    }
-
-    // Reduce the maximum
-    double block_max = blockReduceMax(local_max);
-
-    // Broadcast the maximum to all threads
-    __shared__ double s_max;
-    if (tid == 0) {
-        s_max = block_max;
-    }
-    __syncthreads();
-
-    // S2: Compute local sums
-    double local_sum = 0.0f;
-
-    // Each thread calculates its local sum value.
-    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
-        local_sum += exp(input[i] - s_max);
-    }
-
-    // Reduce sum between all blocks.
-    double block_sum = blockReduceSum(local_sum);
-
-    // Broadcast the sum to all threads.
-    __shared__ double s_sum;
-    if (tid == 0) {
-        s_sum = block_sum;
-    }
-    __syncthreads();
-
-    // S3: Compute final softmax and return the result.
-    for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
-        output[i] = exp(input[i] - s_max) / s_sum;
-    }
 }
 
 
@@ -293,79 +243,10 @@ extern "C" __global__ void softmax_f64(const double* input, double* output, int 
 // This kernel processes multiple sequences in parallel, computing softmax
 // along the specified axis while maintaining batch efficiency
 // Each block processes one sequence from the batch
-
-extern "C" __global__ void softmax_batch_axis(
-    const float* input,
-    float* output,
-    int batch_size,
-    int seq_length,     // Size of the axis we're computing softmax over
-    int inner_size,     // Size of dimensions after the softmax axis
-    int total_elements
-) {
-    // Each block handles one sequence (batch_idx, inner_idx combination)
-    int block_id = blockIdx.x;
-    int tid = threadIdx.x;
-
-    // Calculate which batch and inner index this block handles
-    int inner_idx = block_id % inner_size;
-    int batch_idx = block_id / inner_size;
-
-    // Skip if this block is beyond our data
-    if (batch_idx >= batch_size) return;
-
-    // Calculate starting position for this sequence
-    // Layout: [batch_size, seq_length, inner_size]
-    int sequence_start = batch_idx * seq_length * inner_size + inner_idx;
-
-    // S1: Find maximum value in this sequence using block reduction
-    float local_max = -FLT_MAX;
-
-    // Each thread processes elements with stride inner_size
-    for (int i = tid; i < seq_length; i += blockDim.x) {
-        int global_idx = sequence_start + i * inner_size;
-        local_max = max(local_max, input[global_idx]);
-    }
-
-    // Reduce maximum across the block
-    float block_max = blockReduceMax(local_max);
-
-    // Broadcast maximum to all threads in this block
-    __shared__ float s_max;
-    if (tid == 0) {
-        s_max = block_max;
-    }
-    __syncthreads();
-
-    // S2: Compute sum of exponentials
-    float local_sum = 0.0f;
-
-    for (int i = tid; i < seq_length; i += blockDim.x) {
-        int global_idx = sequence_start + i * inner_size;
-        local_sum += expf(input[global_idx] - s_max);
-    }
-
-    // Reduce sum across the block
-    float block_sum = blockReduceSum(local_sum);
-
-    // Broadcast sum to all threads in this block
-    __shared__ float s_sum;
-    if (tid == 0) {
-        s_sum = block_sum;
-    }
-    __syncthreads();
-
-    // S3: Compute final softmax values
-    for (int i = tid; i < seq_length; i += blockDim.x) {
-        int global_idx = sequence_start + i * inner_size;
-        output[global_idx] = expf(input[global_idx] - s_max) / s_sum;
-    }
-}
-
-
-
-extern "C" __global__ void softmax_batch_axis_f64(
-    const double* input,
-    double* output,
+template <typename T>
+__device__ void softmax_batch_axis(
+    const T* input,
+    T* output,
     int batch_size,
     int seq_length,
     int inner_size,
@@ -382,40 +263,65 @@ extern "C" __global__ void softmax_batch_axis_f64(
     int sequence_start = batch_idx * seq_length * inner_size + inner_idx;
 
     // Find maximum
-    double local_max = -(double)FLT_MAX;
+    T local_max = -(T)FLT_MAX;
 
     for (int i = tid; i < seq_length; i += blockDim.x) {
         int global_idx = sequence_start + i * inner_size;
         local_max = max(local_max, input[global_idx]);
     }
 
-    double block_max = blockReduceMax(local_max);
+    T block_max = blockReduceMax(local_max);
 
-    __shared__ double s_max;
-    if (tid == 0) {
-        s_max = block_max;
-    }
+    __shared__ T s_max;
+    if (tid == 0) s_max = block_max;
     __syncthreads();
 
+
     // Compute sum
-    double local_sum = 0.0;
+    T local_sum = 0.0;
 
     for (int i = tid; i < seq_length; i += blockDim.x) {
         int global_idx = sequence_start + i * inner_size;
         local_sum += exp(input[global_idx] - s_max);
     }
 
-    double block_sum = blockReduceSum(local_sum);
+    T block_sum = blockReduceSum(local_sum);
 
-    __shared__ double s_sum;
-    if (tid == 0) {
-        s_sum = block_sum;
-    }
+    __shared__ T s_sum;
+    if (tid == 0) s_sum = block_sum;
     __syncthreads();
+
+
+
 
     // Final softmax computation
     for (int i = tid; i < seq_length; i += blockDim.x) {
         int global_idx = sequence_start + i * inner_size;
         output[global_idx] = exp(input[global_idx] - s_max) / s_sum;
     }
+}
+
+
+
+extern "C" __global__ void softmax_batch_axis(
+    const float* input,
+    float* output,
+    int batch_size,
+    int seq_length,     // Size of the axis we're computing softmax over
+    int inner_size,     // Size of dimensions after the softmax axis
+    int total_elements
+) {
+    softmax_batch_axis<float>(input, output, batch_size, seq_length, inner_size, total_elements);
+}
+
+
+extern "C" __global__ void softmax_batch_axis_f64(
+    const double* input,
+    double* output,
+    int batch_size,
+    int seq_length,     // Size of the axis we're computing softmax over
+    int inner_size,     // Size of dimensions after the softmax axis
+    int total_elements
+) {
+    softmax_batch_axis<double>(input, output, batch_size, seq_length, inner_size, total_elements);
 }
