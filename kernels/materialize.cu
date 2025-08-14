@@ -21,18 +21,16 @@ __device__ int coords_to_strided_idx(const int* coords, const int* strides, int 
 
 /// Materialize strided/broadcast tensor into contiguous memory
 /// Each thread handles one output element
-
-
-
-extern "C" __global__ void materialize(
-    const float* __restrict__ input,     // Original small data
-    float* __restrict__ output,          // Expanded contiguous output
+template <typename T>
+__device__ void materialize_kernel(
+    const T* __restrict__ input,     // Original small data
+    T* __restrict__ output,          // Expanded contiguous output
     const int* __restrict__ shape,   // Target shape dimensions
     const int* __restrict__ strides, // Input strides (0 for broadcast dims)
     int ndim,                        // Number of dimensions
     int total_elements               // Total output elements
 ) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = get_global_idx();
 
     if (tid >= total_elements) return;
 
@@ -55,18 +53,17 @@ extern "C" __global__ void materialize_f64(
     int ndim,                        // Number of dimensions
     int total_elements               // Total output elements
 ) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (tid >= total_elements) return;
-
-    // Convert linear output index to coordinates in target shape
-    int coords[8]; // Support up to 8D tensors
-    linear_to_coords(tid, shape, ndim, coords);
-
-    // Convert coordinates to input index using strides
-    int input_idx = coords_to_strided_idx(coords, strides, ndim);
-
-    // Copy data from input to output
-    output[tid] = input[input_idx];
+    materialize_kernel<double>(input, output, shape, strides, ndim, total_elements);
 }
 
+
+extern "C" __global__ void materialize(
+    const float* __restrict__ input,     // Original small data
+    float* __restrict__ output,          // Expanded contiguous output
+    const int* __restrict__ shape,   // Target shape dimensions
+    const int* __restrict__ strides, // Input strides (0 for broadcast dims)
+    int ndim,                        // Number of dimensions
+    int total_elements               // Total output elements
+) {
+    materialize_kernel<float>(input, output, shape, strides, ndim, total_elements);
+}

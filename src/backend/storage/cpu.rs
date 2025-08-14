@@ -981,7 +981,7 @@ where
         // Softmax function: exp(x_i - max(x)) / sum(exp(x_j - max(x)))
         let max_val = self
             .data
-            .fold(T::min_value(), |a, &b| if b > a { b } else { a });
+            .fold(FerroxN::min_value(), |a, &b| if b > a { b } else { a });
 
         // Substract the max value
         let exp_shifted = self.data.mapv(|x| (x - max_val).exp());
@@ -1005,7 +1005,7 @@ where
             ));
         }
 
-        
+
         let axis_obj = Axis(axis);
 
         let max_values = self

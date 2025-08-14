@@ -11,10 +11,10 @@
 .address_size 64
 
 	// .globl	matmul
-// _ZZ6matmulE6tile_A has been demoted
-// _ZZ6matmulE6tile_B has been demoted
-// _ZZ10matmul_f64E6tile_A has been demoted
-// _ZZ10matmul_f64E6tile_B has been demoted
+// _ZZ6matmulIfEvPKT_S2_PS0_iiiE6tile_A has been demoted
+// _ZZ6matmulIfEvPKT_S2_PS0_iiiE6tile_B has been demoted
+// _ZZ6matmulIdEvPKT_S2_PS0_iiiE6tile_A has been demoted
+// _ZZ6matmulIdEvPKT_S2_PS0_iiiE6tile_B has been demoted
 
 .visible .entry matmul(
 	.param .u64 matmul_param_0,
@@ -30,9 +30,9 @@
 	.reg .b32 	%r<59>;
 	.reg .b64 	%rd<18>;
 	// demoted variable
-	.shared .align 4 .b8 _ZZ6matmulE6tile_A[1088];
+	.shared .align 4 .b8 _ZZ6matmulIfEvPKT_S2_PS0_iiiE6tile_A[1088];
 	// demoted variable
-	.shared .align 4 .b8 _ZZ6matmulE6tile_B[1088];
+	.shared .align 4 .b8 _ZZ6matmulIfEvPKT_S2_PS0_iiiE6tile_B[1088];
 
 	ld.param.u64 	%rd8, [matmul_param_0];
 	ld.param.u64 	%rd9, [matmul_param_1];
@@ -59,11 +59,11 @@ $L__BB0_2:
 	shl.b32 	%r35, %r1, 1;
 	shl.b32 	%r36, %r4, 1;
 	mul.lo.s32 	%r37, %r1, 68;
-	mov.u32 	%r38, _ZZ6matmulE6tile_A;
+	mov.u32 	%r38, _ZZ6matmulIfEvPKT_S2_PS0_iiiE6tile_A;
 	add.s32 	%r39, %r38, %r37;
 	shl.b32 	%r40, %r4, 2;
 	add.s32 	%r8, %r39, %r40;
-	mov.u32 	%r41, _ZZ6matmulE6tile_B;
+	mov.u32 	%r41, _ZZ6matmulIfEvPKT_S2_PS0_iiiE6tile_B;
 	add.s32 	%r42, %r41, %r37;
 	add.s32 	%r9, %r42, %r40;
 	or.b32  	%r43, %r1, %r4;
@@ -660,9 +660,9 @@ $L__BB0_145:
 	.reg .f64 	%fd<359>;
 	.reg .b64 	%rd<18>;
 	// demoted variable
-	.shared .align 8 .b8 _ZZ10matmul_f64E6tile_A[2176];
+	.shared .align 8 .b8 _ZZ6matmulIdEvPKT_S2_PS0_iiiE6tile_A[2176];
 	// demoted variable
-	.shared .align 8 .b8 _ZZ10matmul_f64E6tile_B[2176];
+	.shared .align 8 .b8 _ZZ6matmulIdEvPKT_S2_PS0_iiiE6tile_B[2176];
 
 	ld.param.u64 	%rd8, [matmul_f64_param_0];
 	ld.param.u64 	%rd9, [matmul_f64_param_1];
@@ -689,11 +689,11 @@ $L__BB1_2:
 	shl.b32 	%r35, %r1, 1;
 	shl.b32 	%r36, %r4, 1;
 	mul.lo.s32 	%r37, %r1, 136;
-	mov.u32 	%r38, _ZZ10matmul_f64E6tile_A;
+	mov.u32 	%r38, _ZZ6matmulIdEvPKT_S2_PS0_iiiE6tile_A;
 	add.s32 	%r39, %r38, %r37;
 	shl.b32 	%r40, %r4, 3;
 	add.s32 	%r8, %r39, %r40;
-	mov.u32 	%r41, _ZZ10matmul_f64E6tile_B;
+	mov.u32 	%r41, _ZZ6matmulIdEvPKT_S2_PS0_iiiE6tile_B;
 	add.s32 	%r42, %r41, %r37;
 	add.s32 	%r9, %r42, %r40;
 	or.b32  	%r43, %r1, %r4;

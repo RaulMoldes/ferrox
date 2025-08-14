@@ -1,72 +1,49 @@
-// Helper function to get global thread index
+// kernels/elementwise.cu
 #include <cuda_runtime.h>
 #include <math.h>
 #include <float.h>
 #include "globals.cuh"
 
-// TESTED
-extern "C" __global__ void elementwise_add(
-    const float* a,
-    const float* b,
-    float* result,
+template<typename T>
+__device__ void elementwise_add_kernel(
+    const T* a,
+    const T* b,
+    T* result,
     int size
 ) {
     int idx = get_global_idx();
-
     if (idx < size) {
         result[idx] = a[idx] + b[idx];
     }
 }
 
-// TESTED
-// Element-wise absolute value: output[i] = |input[i]|
-extern "C" __global__ void elementwise_abs(
-    const float* input,
-    float* output,
+template<typename T>
+__device__ void elementwise_abs_kernel(
+    const T* input,
+    T* output,
     int size
 ) {
     int idx = get_global_idx();
-
     if (idx < size) {
-        output[idx] = fabsf(input[idx]);
+        output[idx] = abs(input[idx]);
     }
 }
 
-// TESTED
-// Element-wise muliplication: output[i] = a[i] x b[i]
-extern "C" __global__ void elementwise_mul(const float* a, const float* b, float* c, int size) {
+template<typename T>
+__device__ void elementwise_mul_kernel(const T* a, const T* b, T* c, int size) {
     int idx = get_global_idx();
     if (idx < size) {
         c[idx] = a[idx] * b[idx];
     }
 }
 
-
-
-// TESTED
-// Element-wise division: output[i] = a[i] / b[i]
-extern "C" __global__ void elementwise_div(const float* a, const float* b, float* c, int size) {
+template<typename T>
+__device__ void elementwise_div_kernel(const T* a, const T* b, T* c, int size) {
     int idx = get_global_idx();
-
     if (idx < size) {
         // Check for division by zero
-        if (b[idx] != 0.0f) {
+        if (b[idx] != T(0.0)) {
             c[idx] = a[idx] / b[idx];
-        } else {
-            // Handle division by zero - set to infinity
-            c[idx] = INFINITY; // or use CUDART_INF_F with proper include
-        }
-    }
-}
-
-
-extern "C" __global__ void elementwise_reciprocal(const float* a, float* c, int size) {
-    int idx = get_global_idx();
-
-    if (idx < size) {
-        // Check for division by zero
-        if (a[idx] != 0.0f) {
-            c[idx] = 1.0f / a[idx];
         }
         else {
             // Handle division by zero - set to infinity
@@ -75,15 +52,13 @@ extern "C" __global__ void elementwise_reciprocal(const float* a, float* c, int 
     }
 }
 
-
-
-extern "C" __global__ void elementwise_reciprocal_f64(const double* a, double* c, int size) {
+template<typename T>
+__device__ void elementwise_reciprocal_kernel(const T* a, T* c, int size) {
     int idx = get_global_idx();
-
     if (idx < size) {
         // Check for division by zero
-        if (a[idx] != 0.0) {
-            c[idx] = 1.0 / a[idx];
+        if (a[idx] != T(0.0)) {
+            c[idx] = T(1.0) / a[idx];
         }
         else {
             // Handle division by zero - set to infinity
@@ -92,19 +67,19 @@ extern "C" __global__ void elementwise_reciprocal_f64(const double* a, double* c
     }
 }
 
-// TESTED
-extern "C" __global__ void elementwise_exp(const float* input, float* output, int size) {
+template<typename T>
+__device__ void elementwise_exp_kernel(const T* input, T* output, int size) {
     int idx = get_global_idx();
-    // THis is a basic element-wise exponential kernel
+    // This is a basic element-wise exponential kernel
     if (idx < size) {
-        output[idx] = expf(input[idx]);
+        output[idx] = exp(input[idx]);
     }
 }
 
-// TESTED
-extern "C" __global__ void elementwise_log(
-    const float* input,
-    float* output,
+template<typename T>
+__device__ void elementwise_log_kernel(
+    const T* input,
+    T* output,
     int size
 ) {
     // Calculate thread index - standard CUDA indexing pattern
@@ -112,66 +87,70 @@ extern "C" __global__ void elementwise_log(
 
     // Boundary check to avoid out-of-bounds memory access
     if (idx < size) {
-        float x = input[idx];
+        T x = input[idx];
 
         // Handle edge cases appropriately
-        if (x <= 0.0f) {
+        if (x <= T(0.0)) {
             // For x <= 0, natural log is undefined or -infinity
             // Following standard conventions: ln(0) = -inf, ln(negative) = NaN
-            output[idx] = (x == 0.0f) ? -INFINITY : NAN;
-        } else {
+            output[idx] = (x == T(0.0)) ? -INFINITY : NAN;
+        }
+        else {
             // Standard natural logarithm for positive values
-            output[idx] = logf(x);
+            output[idx] = log(x);
         }
     }
 }
 
-
-// TESTED
-extern "C" __global__ void elementwise_pow(
-    const float* a,        // Base array
-    const float* b,        // Exponent array
-    float* output,         // Result array
-    int size               // Number of elements
+template<typename T>
+__device__ void elementwise_pow_kernel(
+    const T* a,        // Base array
+    const T* b,        // Exponent array
+    T* output,         // Result array
+    int size           // Number of elements
 ) {
     // Calculate thread index using standard CUDA pattern
-    int idx =get_global_idx();
+    int idx = get_global_idx();
 
     // Boundary check for thread safety
     if (idx < size) {
-        float base = a[idx];
-        float exponent = b[idx];
+        T base = a[idx];
+        T exponent = b[idx];
 
         // Handle special cases for numerical stability
-        if (base == 0.0f && exponent == 0.0f) {
+        if (base == T(0.0) && exponent == T(0.0)) {
             // Mathematical convention: 0^0 = 1
-            output[idx] = 1.0f;
-        } else if (base == 0.0f && exponent > 0.0f) {
+            output[idx] = T(1.0);
+        }
+        else if (base == T(0.0) && exponent > T(0.0)) {
             // 0^positive = 0
-            output[idx] = 0.0f;
-        } else if (base == 0.0f && exponent < 0.0f) {
+            output[idx] = T(0.0);
+        }
+        else if (base == T(0.0) && exponent < T(0.0)) {
             // 0^negative = infinity
             output[idx] = INFINITY;
-        } else if (base < 0.0f && floorf(exponent) != exponent) {
+        }
+        else if (base < T(0.0) && floor(exponent) != exponent) {
             // Negative base with non-integer exponent results in complex number
             // Return NaN following IEEE 754 standard
             output[idx] = NAN;
-        } else {
-            // Standard power computation using built-in powf
-            output[idx] = powf(base, exponent);
+        }
+        else {
+            // Standard power computation using built-in pow
+            output[idx] = pow(base, exponent);
         }
     }
 }
 
-// TESTED
-extern "C" __global__ void elementwise_max(
-    const float* a,
-    const float* b,
-    float* c,
+template<typename T>
+__device__ void elementwise_max_kernel(
+    const T* a,
+    const T* b,
+    T* c,
     int size
 ) {
-    __shared__ float shared_a[BLOCK_SIZE];
-    __shared__ float shared_b[BLOCK_SIZE];
+    __shared__ T shared_a[BLOCK_SIZE];
+    __shared__ T shared_b[BLOCK_SIZE];
 
     int tid = threadIdx.x;
     int idx = get_global_idx();
@@ -188,23 +167,22 @@ extern "C" __global__ void elementwise_max(
         __syncthreads();
 
         if (global_idx < size) {
-            c[global_idx] = fmaxf(shared_a[tid], shared_b[tid]);
+            c[global_idx] = max(shared_a[tid], shared_b[tid]);
         }
 
         __syncthreads();
     }
 }
 
-
-//TESTED
-extern "C" __global__ void elementwise_min(
-    const float* a,
-    const float* b,
-    float* c,
+template<typename T>
+__device__ void elementwise_min_kernel(
+    const T* a,
+    const T* b,
+    T* c,
     int size
 ) {
-    __shared__ float shared_a[BLOCK_SIZE];
-    __shared__ float shared_b[BLOCK_SIZE];
+    __shared__ T shared_a[BLOCK_SIZE];
+    __shared__ T shared_b[BLOCK_SIZE];
 
     int tid = threadIdx.x;
     int idx = get_global_idx();
@@ -221,17 +199,17 @@ extern "C" __global__ void elementwise_min(
             __syncthreads();
 
             // Compute and store result
-            c[global_idx] = fminf(shared_a[tid], shared_b[tid]);
+            c[global_idx] = min(shared_a[tid], shared_b[tid]);
         }
 
         __syncthreads();
     }
 }
 
-// TESTED
-extern "C" __global__ void elementwise_negate(
-    const float* input,
-    float* output,
+template<typename T>
+__device__ void elementwise_negate_kernel(
+    const T* input,
+    T* output,
     int size
 ) {
     int idx = get_global_idx();
@@ -240,31 +218,32 @@ extern "C" __global__ void elementwise_negate(
     }
 }
 
-
-// Element-wise square root: output[i] = sqrt(input[i])
-extern "C" __global__ void elementwise_sqrt(
-    const float* input,
-    float* output,
+template<typename T>
+__device__ void elementwise_sqrt_kernel(
+    const T* input,
+    T* output,
     int size
 ) {
     int idx = get_global_idx();
 
     if (idx < size) {
-        float val = input[idx];
+        T val = input[idx];
         // Check for negative values and handle them gracefully
-        if (val >= 0.0f) {
-            output[idx] = sqrtf(val);
-        } else {
-            // Set to NaN to indicate error - you could also set to 0.0f
-            output[idx] = nanf("");
+        if (val >= T(0.0)) {
+            output[idx] = sqrt(val);
+        }
+        else {
+            // Set to NaN to indicate error - you could also set to 0.0
+            output[idx] = NAN;
         }
     }
 }
 
-extern "C" __global__ void elementwise_sub(
-    const float* a,
-    const float* b,
-    float* c,
+template<typename T>
+__device__ void elementwise_sub_kernel(
+    const T* a,
+    const T* b,
+    T* c,
     int size
 ) {
     int idx = get_global_idx();
@@ -273,21 +252,108 @@ extern "C" __global__ void elementwise_sub(
     }
 }
 
+// Float32 wrapper functions
+extern "C" __global__ void elementwise_add(
+    const float* a,
+    const float* b,
+    float* result,
+    int size
+) {
+    elementwise_add_kernel<float>(a, b, result, size);
+}
 
-// ------------------------------------------------------
-// Double precision version of the elementwise operations
-// ------------------------------------------------------
+extern "C" __global__ void elementwise_abs(
+    const float* input,
+    float* output,
+    int size
+) {
+    elementwise_abs_kernel<float>(input, output, size);
+}
 
+extern "C" __global__ void elementwise_mul(const float* a, const float* b, float* c, int size) {
+    elementwise_mul_kernel<float>(a, b, c, size);
+}
+
+extern "C" __global__ void elementwise_div(const float* a, const float* b, float* c, int size) {
+    elementwise_div_kernel<float>(a, b, c, size);
+}
+
+extern "C" __global__ void elementwise_reciprocal(const float* a, float* c, int size) {
+    elementwise_reciprocal_kernel<float>(a, c, size);
+}
+
+extern "C" __global__ void elementwise_exp(const float* input, float* output, int size) {
+    elementwise_exp_kernel<float>(input, output, size);
+}
+
+extern "C" __global__ void elementwise_log(
+    const float* input,
+    float* output,
+    int size
+) {
+    elementwise_log_kernel<float>(input, output, size);
+}
+
+extern "C" __global__ void elementwise_pow(
+    const float* a,
+    const float* b,
+    float* output,
+    int size
+) {
+    elementwise_pow_kernel<float>(a, b, output, size);
+}
+
+extern "C" __global__ void elementwise_max(
+    const float* a,
+    const float* b,
+    float* c,
+    int size
+) {
+    elementwise_max_kernel<float>(a, b, c, size);
+}
+
+extern "C" __global__ void elementwise_min(
+    const float* a,
+    const float* b,
+    float* c,
+    int size
+) {
+    elementwise_min_kernel<float>(a, b, c, size);
+}
+
+extern "C" __global__ void elementwise_negate(
+    const float* input,
+    float* output,
+    int size
+) {
+    elementwise_negate_kernel<float>(input, output, size);
+}
+
+extern "C" __global__ void elementwise_sqrt(
+    const float* input,
+    float* output,
+    int size
+) {
+    elementwise_sqrt_kernel<float>(input, output, size);
+}
+
+extern "C" __global__ void elementwise_sub(
+    const float* a,
+    const float* b,
+    float* c,
+    int size
+) {
+    elementwise_sub_kernel<float>(a, b, c, size);
+}
+
+// Float64 wrapper functions
 extern "C" __global__ void elementwise_add_f64(
     const double* a,
     const double* b,
     double* result,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        result[idx] = a[idx] + b[idx];
-    }
+    elementwise_add_kernel<double>(a, b, result, size);
 }
 
 extern "C" __global__ void elementwise_abs_f64(
@@ -295,10 +361,7 @@ extern "C" __global__ void elementwise_abs_f64(
     double* output,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        output[idx] = fabs(input[idx]);
-    }
+    elementwise_abs_kernel<double>(input, output, size);
 }
 
 extern "C" __global__ void elementwise_mul_f64(
@@ -307,10 +370,7 @@ extern "C" __global__ void elementwise_mul_f64(
     double* c,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        c[idx] = a[idx] * b[idx];
-    }
+    elementwise_mul_kernel<double>(a, b, c, size);
 }
 
 extern "C" __global__ void elementwise_div_f64(
@@ -319,14 +379,11 @@ extern "C" __global__ void elementwise_div_f64(
     double* c,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        if (b[idx] != 0.0) {
-            c[idx] = a[idx] / b[idx];
-        } else {
-            c[idx] = CUDART_INF;
-        }
-    }
+    elementwise_div_kernel<double>(a, b, c, size);
+}
+
+extern "C" __global__ void elementwise_reciprocal_f64(const double* a, double* c, int size) {
+    elementwise_reciprocal_kernel<double>(a, c, size);
 }
 
 extern "C" __global__ void elementwise_exp_f64(
@@ -334,10 +391,7 @@ extern "C" __global__ void elementwise_exp_f64(
     double* output,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        output[idx] = exp(input[idx]);
-    }
+    elementwise_exp_kernel<double>(input, output, size);
 }
 
 extern "C" __global__ void elementwise_log_f64(
@@ -345,33 +399,10 @@ extern "C" __global__ void elementwise_log_f64(
     double* output,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        double x = input[idx];
-        if (x <= 0.0) {
-            output[idx] = (x == 0.0) ? -CUDART_INF : CUDART_NAN;
-        } else {
-            output[idx] = log(x);
-        }
-    }
+    elementwise_log_kernel<double>(input, output, size);
 }
 
-// Helper function to compute power with edge case handling
-__device__ __forceinline__ double safe_pow(double base, double exponent) {
-    if (base == 0.0 && exponent == 0.0) {
-        return 1.0;
-    } else if (base == 0.0 && exponent > 0.0) {
-        return 0.0;
-    } else if (base == 0.0 && exponent < 0.0) {
-        return CUDART_INF;
-    } else if (base < 0.0 && floor(exponent) != exponent) {
-        return CUDART_NAN;
-    } else {
-        return pow(base, exponent);
-    }
-}
-
-// Decided to change this kernel as L1TEX pipeline had become a limiter
+// Special handling for f64 pow to maintain the original vectorized optimization
 extern "C" __global__ void elementwise_pow_f64(
     const double* __restrict__ a,
     const double* __restrict__ b,
@@ -387,14 +418,47 @@ extern "C" __global__ void elementwise_pow_f64(
 
         // Compute both using helper function
         double2 result_data;
-        result_data.x = safe_pow(base_data.x, exp_data.x);
-        result_data.y = safe_pow(base_data.y, exp_data.y);
+
+        // Handle special cases for first element
+        if (base_data.x == 0.0 && exp_data.x == 0.0) {
+            result_data.x = 1.0;
+        }
+        else if (base_data.x == 0.0 && exp_data.x > 0.0) {
+            result_data.x = 0.0;
+        }
+        else if (base_data.x == 0.0 && exp_data.x < 0.0) {
+            result_data.x = INFINITY;
+        }
+        else if (base_data.x < 0.0 && floor(exp_data.x) != exp_data.x) {
+            result_data.x = NAN;
+        }
+        else {
+            result_data.x = pow(base_data.x, exp_data.x);
+        }
+
+        // Handle special cases for second element
+        if (base_data.y == 0.0 && exp_data.y == 0.0) {
+            result_data.y = 1.0;
+        }
+        else if (base_data.y == 0.0 && exp_data.y > 0.0) {
+            result_data.y = 0.0;
+        }
+        else if (base_data.y == 0.0 && exp_data.y < 0.0) {
+            result_data.y = INFINITY;
+        }
+        else if (base_data.y < 0.0 && floor(exp_data.y) != exp_data.y) {
+            result_data.y = NAN;
+        }
+        else {
+            result_data.y = pow(base_data.y, exp_data.y);
+        }
 
         // Store 2 doubles at once
         reinterpret_cast<double2*>(output)[idx >> 1] = result_data;
-    } else if (idx < size) {
+    }
+    else if (idx < size) {
         // Handle remaining element
-        output[idx] = safe_pow(a[idx], b[idx]);
+        elementwise_pow_kernel<double>(a, b, output, 1);
     }
 }
 
@@ -404,10 +468,7 @@ extern "C" __global__ void elementwise_max_f64(
     double* c,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        c[idx] = fmax(a[idx], b[idx]);
-    }
+    elementwise_max_kernel<double>(a, b, c, size);
 }
 
 extern "C" __global__ void elementwise_min_f64(
@@ -416,10 +477,7 @@ extern "C" __global__ void elementwise_min_f64(
     double* c,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        c[idx] = fmin(a[idx], b[idx]);
-    }
+    elementwise_min_kernel<double>(a, b, c, size);
 }
 
 extern "C" __global__ void elementwise_negate_f64(
@@ -427,10 +485,7 @@ extern "C" __global__ void elementwise_negate_f64(
     double* output,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        output[idx] = -input[idx];
-    }
+    elementwise_negate_kernel<double>(input, output, size);
 }
 
 extern "C" __global__ void elementwise_sqrt_f64(
@@ -438,15 +493,7 @@ extern "C" __global__ void elementwise_sqrt_f64(
     double* output,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        double val = input[idx];
-        if (val >= 0.0) {
-            output[idx] = sqrt(val);
-        } else {
-            output[idx] = CUDART_NAN;
-        }
-    }
+    elementwise_sqrt_kernel<double>(input, output, size);
 }
 
 extern "C" __global__ void elementwise_sub_f64(
@@ -455,8 +502,5 @@ extern "C" __global__ void elementwise_sub_f64(
     double* c,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        c[idx] = a[idx] - b[idx];
-    }
+    elementwise_sub_kernel<double>(a, b, c, size);
 }

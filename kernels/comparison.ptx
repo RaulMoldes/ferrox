@@ -54,49 +54,6 @@ $L__BB0_2:
 	ret;
 
 }
-	// .globl	clamp_f64
-.visible .entry clamp_f64(
-	.param .u64 clamp_f64_param_0,
-	.param .u64 clamp_f64_param_1,
-	.param .f64 clamp_f64_param_2,
-	.param .f64 clamp_f64_param_3,
-	.param .u32 clamp_f64_param_4
-)
-{
-	.reg .pred 	%p<4>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<6>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [clamp_f64_param_0];
-	ld.param.u64 	%rd2, [clamp_f64_param_1];
-	ld.param.f64 	%fd1, [clamp_f64_param_2];
-	ld.param.f64 	%fd2, [clamp_f64_param_3];
-	ld.param.u32 	%r2, [clamp_f64_param_4];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB1_2;
-
-	cvta.to.global.u64 	%rd3, %rd1;
-	mul.wide.s32 	%rd4, %r1, 8;
-	add.s64 	%rd5, %rd3, %rd4;
-	ld.global.f64 	%fd3, [%rd5];
-	setp.lt.f64 	%p2, %fd3, %fd1;
-	selp.f64 	%fd4, %fd1, %fd3, %p2;
-	setp.gt.f64 	%p3, %fd4, %fd2;
-	selp.f64 	%fd5, %fd2, %fd4, %p3;
-	cvta.to.global.u64 	%rd6, %rd2;
-	add.s64 	%rd7, %rd6, %rd4;
-	st.global.f64 	[%rd7], %fd5;
-
-$L__BB1_2:
-	ret;
-
-}
 	// .globl	greater_equal
 .visible .entry greater_equal(
 	.param .u64 greater_equal_param_0,
@@ -120,7 +77,7 @@ $L__BB1_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB2_2;
+	@%p1 bra 	$L__BB1_2;
 
 	cvta.to.global.u64 	%rd4, %rd1;
 	mul.wide.s32 	%rd5, %r1, 4;
@@ -135,7 +92,7 @@ $L__BB1_2:
 	add.s64 	%rd10, %rd9, %rd5;
 	st.global.f32 	[%rd10], %f3;
 
-$L__BB2_2:
+$L__BB1_2:
 	ret;
 
 }
@@ -162,7 +119,7 @@ $L__BB2_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB3_2;
+	@%p1 bra 	$L__BB2_2;
 
 	cvta.to.global.u64 	%rd3, %rd1;
 	mul.wide.s32 	%rd4, %r1, 4;
@@ -174,7 +131,7 @@ $L__BB2_2:
 	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f3;
 
-$L__BB3_2:
+$L__BB2_2:
 	ret;
 
 }
@@ -201,7 +158,7 @@ $L__BB3_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB4_2;
+	@%p1 bra 	$L__BB3_2;
 
 	cvta.to.global.u64 	%rd4, %rd1;
 	mul.wide.s32 	%rd5, %r1, 4;
@@ -216,7 +173,7 @@ $L__BB3_2:
 	add.s64 	%rd10, %rd9, %rd5;
 	st.global.f32 	[%rd10], %f3;
 
-$L__BB4_2:
+$L__BB3_2:
 	ret;
 
 }
@@ -243,7 +200,7 @@ $L__BB4_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB5_2;
+	@%p1 bra 	$L__BB4_2;
 
 	cvta.to.global.u64 	%rd3, %rd1;
 	mul.wide.s32 	%rd4, %r1, 4;
@@ -255,169 +212,7 @@ $L__BB4_2:
 	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f3;
 
-$L__BB5_2:
-	ret;
-
-}
-	// .globl	greater_equal_f64
-.visible .entry greater_equal_f64(
-	.param .u64 greater_equal_f64_param_0,
-	.param .u64 greater_equal_f64_param_1,
-	.param .u64 greater_equal_f64_param_2,
-	.param .u32 greater_equal_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<11>;
-
-
-	ld.param.u64 	%rd1, [greater_equal_f64_param_0];
-	ld.param.u64 	%rd2, [greater_equal_f64_param_1];
-	ld.param.u64 	%rd3, [greater_equal_f64_param_2];
-	ld.param.u32 	%r2, [greater_equal_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB6_2;
-
-	cvta.to.global.u64 	%rd4, %rd1;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	cvta.to.global.u64 	%rd7, %rd2;
-	add.s64 	%rd8, %rd7, %rd5;
-	ld.global.f64 	%fd1, [%rd8];
-	ld.global.f64 	%fd2, [%rd6];
-	setp.ge.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd9, %rd3;
-	add.s64 	%rd10, %rd9, %rd5;
-	st.global.f64 	[%rd10], %fd3;
-
-$L__BB6_2:
-	ret;
-
-}
-	// .globl	greater_f64
-.visible .entry greater_f64(
-	.param .u64 greater_f64_param_0,
-	.param .u64 greater_f64_param_1,
-	.param .u64 greater_f64_param_2,
-	.param .u32 greater_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<11>;
-
-
-	ld.param.u64 	%rd1, [greater_f64_param_0];
-	ld.param.u64 	%rd2, [greater_f64_param_1];
-	ld.param.u64 	%rd3, [greater_f64_param_2];
-	ld.param.u32 	%r2, [greater_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB7_2;
-
-	cvta.to.global.u64 	%rd4, %rd1;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	cvta.to.global.u64 	%rd7, %rd2;
-	add.s64 	%rd8, %rd7, %rd5;
-	ld.global.f64 	%fd1, [%rd8];
-	ld.global.f64 	%fd2, [%rd6];
-	setp.gt.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd9, %rd3;
-	add.s64 	%rd10, %rd9, %rd5;
-	st.global.f64 	[%rd10], %fd3;
-
-$L__BB7_2:
-	ret;
-
-}
-	// .globl	greater_equal_scalar_f64
-.visible .entry greater_equal_scalar_f64(
-	.param .u64 greater_equal_scalar_f64_param_0,
-	.param .f64 greater_equal_scalar_f64_param_1,
-	.param .u64 greater_equal_scalar_f64_param_2,
-	.param .u32 greater_equal_scalar_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [greater_equal_scalar_f64_param_0];
-	ld.param.f64 	%fd1, [greater_equal_scalar_f64_param_1];
-	ld.param.u64 	%rd2, [greater_equal_scalar_f64_param_2];
-	ld.param.u32 	%r2, [greater_equal_scalar_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB8_2;
-
-	cvta.to.global.u64 	%rd3, %rd1;
-	mul.wide.s32 	%rd4, %r1, 8;
-	add.s64 	%rd5, %rd3, %rd4;
-	ld.global.f64 	%fd2, [%rd5];
-	setp.ge.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd6, %rd2;
-	add.s64 	%rd7, %rd6, %rd4;
-	st.global.f64 	[%rd7], %fd3;
-
-$L__BB8_2:
-	ret;
-
-}
-	// .globl	greater_scalar_f64
-.visible .entry greater_scalar_f64(
-	.param .u64 greater_scalar_f64_param_0,
-	.param .f64 greater_scalar_f64_param_1,
-	.param .u64 greater_scalar_f64_param_2,
-	.param .u32 greater_scalar_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [greater_scalar_f64_param_0];
-	ld.param.f64 	%fd1, [greater_scalar_f64_param_1];
-	ld.param.u64 	%rd2, [greater_scalar_f64_param_2];
-	ld.param.u32 	%r2, [greater_scalar_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB9_2;
-
-	cvta.to.global.u64 	%rd3, %rd1;
-	mul.wide.s32 	%rd4, %r1, 8;
-	add.s64 	%rd5, %rd3, %rd4;
-	ld.global.f64 	%fd2, [%rd5];
-	setp.gt.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd6, %rd2;
-	add.s64 	%rd7, %rd6, %rd4;
-	st.global.f64 	[%rd7], %fd3;
-
-$L__BB9_2:
+$L__BB4_2:
 	ret;
 
 }
@@ -444,7 +239,7 @@ $L__BB9_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB10_2;
+	@%p1 bra 	$L__BB5_2;
 
 	cvta.to.global.u64 	%rd4, %rd1;
 	mul.wide.s32 	%rd5, %r1, 4;
@@ -459,49 +254,7 @@ $L__BB9_2:
 	add.s64 	%rd10, %rd9, %rd5;
 	st.global.f32 	[%rd10], %f3;
 
-$L__BB10_2:
-	ret;
-
-}
-	// .globl	less_equal_f64
-.visible .entry less_equal_f64(
-	.param .u64 less_equal_f64_param_0,
-	.param .u64 less_equal_f64_param_1,
-	.param .u64 less_equal_f64_param_2,
-	.param .u32 less_equal_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<11>;
-
-
-	ld.param.u64 	%rd1, [less_equal_f64_param_0];
-	ld.param.u64 	%rd2, [less_equal_f64_param_1];
-	ld.param.u64 	%rd3, [less_equal_f64_param_2];
-	ld.param.u32 	%r2, [less_equal_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB11_2;
-
-	cvta.to.global.u64 	%rd4, %rd1;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	cvta.to.global.u64 	%rd7, %rd2;
-	add.s64 	%rd8, %rd7, %rd5;
-	ld.global.f64 	%fd1, [%rd8];
-	ld.global.f64 	%fd2, [%rd6];
-	setp.le.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd9, %rd3;
-	add.s64 	%rd10, %rd9, %rd5;
-	st.global.f64 	[%rd10], %fd3;
-
-$L__BB11_2:
+$L__BB5_2:
 	ret;
 
 }
@@ -528,7 +281,7 @@ $L__BB11_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB12_2;
+	@%p1 bra 	$L__BB6_2;
 
 	cvta.to.global.u64 	%rd3, %rd1;
 	mul.wide.s32 	%rd4, %r1, 4;
@@ -540,46 +293,7 @@ $L__BB11_2:
 	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f3;
 
-$L__BB12_2:
-	ret;
-
-}
-	// .globl	less_equal_scalar_f64
-.visible .entry less_equal_scalar_f64(
-	.param .u64 less_equal_scalar_f64_param_0,
-	.param .f64 less_equal_scalar_f64_param_1,
-	.param .u64 less_equal_scalar_f64_param_2,
-	.param .u32 less_equal_scalar_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [less_equal_scalar_f64_param_0];
-	ld.param.f64 	%fd1, [less_equal_scalar_f64_param_1];
-	ld.param.u64 	%rd2, [less_equal_scalar_f64_param_2];
-	ld.param.u32 	%r2, [less_equal_scalar_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB13_2;
-
-	cvta.to.global.u64 	%rd3, %rd1;
-	mul.wide.s32 	%rd4, %r1, 8;
-	add.s64 	%rd5, %rd3, %rd4;
-	ld.global.f64 	%fd2, [%rd5];
-	setp.le.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd6, %rd2;
-	add.s64 	%rd7, %rd6, %rd4;
-	st.global.f64 	[%rd7], %fd3;
-
-$L__BB13_2:
+$L__BB6_2:
 	ret;
 
 }
@@ -606,7 +320,7 @@ $L__BB13_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB14_2;
+	@%p1 bra 	$L__BB7_2;
 
 	cvta.to.global.u64 	%rd4, %rd1;
 	mul.wide.s32 	%rd5, %r1, 4;
@@ -621,49 +335,7 @@ $L__BB13_2:
 	add.s64 	%rd10, %rd9, %rd5;
 	st.global.f32 	[%rd10], %f3;
 
-$L__BB14_2:
-	ret;
-
-}
-	// .globl	less_f64
-.visible .entry less_f64(
-	.param .u64 less_f64_param_0,
-	.param .u64 less_f64_param_1,
-	.param .u64 less_f64_param_2,
-	.param .u32 less_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<11>;
-
-
-	ld.param.u64 	%rd1, [less_f64_param_0];
-	ld.param.u64 	%rd2, [less_f64_param_1];
-	ld.param.u64 	%rd3, [less_f64_param_2];
-	ld.param.u32 	%r2, [less_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB15_2;
-
-	cvta.to.global.u64 	%rd4, %rd1;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	cvta.to.global.u64 	%rd7, %rd2;
-	add.s64 	%rd8, %rd7, %rd5;
-	ld.global.f64 	%fd1, [%rd8];
-	ld.global.f64 	%fd2, [%rd6];
-	setp.lt.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd9, %rd3;
-	add.s64 	%rd10, %rd9, %rd5;
-	st.global.f64 	[%rd10], %fd3;
-
-$L__BB15_2:
+$L__BB7_2:
 	ret;
 
 }
@@ -690,7 +362,7 @@ $L__BB15_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB16_2;
+	@%p1 bra 	$L__BB8_2;
 
 	cvta.to.global.u64 	%rd3, %rd1;
 	mul.wide.s32 	%rd4, %r1, 4;
@@ -702,46 +374,7 @@ $L__BB15_2:
 	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f3;
 
-$L__BB16_2:
-	ret;
-
-}
-	// .globl	less_scalar_f64
-.visible .entry less_scalar_f64(
-	.param .u64 less_scalar_f64_param_0,
-	.param .f64 less_scalar_f64_param_1,
-	.param .u64 less_scalar_f64_param_2,
-	.param .u32 less_scalar_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [less_scalar_f64_param_0];
-	ld.param.f64 	%fd1, [less_scalar_f64_param_1];
-	ld.param.u64 	%rd2, [less_scalar_f64_param_2];
-	ld.param.u32 	%r2, [less_scalar_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB17_2;
-
-	cvta.to.global.u64 	%rd3, %rd1;
-	mul.wide.s32 	%rd4, %r1, 8;
-	add.s64 	%rd5, %rd3, %rd4;
-	ld.global.f64 	%fd2, [%rd5];
-	setp.lt.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd6, %rd2;
-	add.s64 	%rd7, %rd6, %rd4;
-	st.global.f64 	[%rd7], %fd3;
-
-$L__BB17_2:
+$L__BB8_2:
 	ret;
 
 }
@@ -768,7 +401,7 @@ $L__BB17_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB18_2;
+	@%p1 bra 	$L__BB9_2;
 
 	cvta.to.global.u64 	%rd4, %rd1;
 	mul.wide.s32 	%rd5, %r1, 4;
@@ -783,49 +416,7 @@ $L__BB17_2:
 	add.s64 	%rd10, %rd9, %rd5;
 	st.global.f32 	[%rd10], %f3;
 
-$L__BB18_2:
-	ret;
-
-}
-	// .globl	equal_f64
-.visible .entry equal_f64(
-	.param .u64 equal_f64_param_0,
-	.param .u64 equal_f64_param_1,
-	.param .u64 equal_f64_param_2,
-	.param .u32 equal_f64_param_3
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<4>;
-	.reg .b64 	%rd<11>;
-
-
-	ld.param.u64 	%rd1, [equal_f64_param_0];
-	ld.param.u64 	%rd2, [equal_f64_param_1];
-	ld.param.u64 	%rd3, [equal_f64_param_2];
-	ld.param.u32 	%r2, [equal_f64_param_3];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB19_2;
-
-	cvta.to.global.u64 	%rd4, %rd1;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	cvta.to.global.u64 	%rd7, %rd2;
-	add.s64 	%rd8, %rd7, %rd5;
-	ld.global.f64 	%fd1, [%rd8];
-	ld.global.f64 	%fd2, [%rd6];
-	setp.eq.f64 	%p2, %fd2, %fd1;
-	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd9, %rd3;
-	add.s64 	%rd10, %rd9, %rd5;
-	st.global.f64 	[%rd10], %fd3;
-
-$L__BB19_2:
+$L__BB9_2:
 	ret;
 
 }
@@ -850,7 +441,7 @@ $L__BB19_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB20_2;
+	@%p1 bra 	$L__BB10_2;
 
 	cvta.to.global.u64 	%rd3, %rd1;
 	mul.wide.s32 	%rd4, %r1, 4;
@@ -862,44 +453,7 @@ $L__BB19_2:
 	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f2;
 
-$L__BB20_2:
-	ret;
-
-}
-	// .globl	logical_not_f64
-.visible .entry logical_not_f64(
-	.param .u64 logical_not_f64_param_0,
-	.param .u64 logical_not_f64_param_1,
-	.param .u32 logical_not_f64_param_2
-)
-{
-	.reg .pred 	%p<3>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<3>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [logical_not_f64_param_0];
-	ld.param.u64 	%rd2, [logical_not_f64_param_1];
-	ld.param.u32 	%r2, [logical_not_f64_param_2];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB21_2;
-
-	cvta.to.global.u64 	%rd3, %rd1;
-	mul.wide.s32 	%rd4, %r1, 8;
-	add.s64 	%rd5, %rd3, %rd4;
-	ld.global.f64 	%fd1, [%rd5];
-	setp.eq.f64 	%p2, %fd1, 0d0000000000000000;
-	selp.f64 	%fd2, 0d3FF0000000000000, 0d0000000000000000, %p2;
-	cvta.to.global.u64 	%rd6, %rd2;
-	add.s64 	%rd7, %rd6, %rd4;
-	st.global.f64 	[%rd7], %fd2;
-
-$L__BB21_2:
+$L__BB10_2:
 	ret;
 
 }
@@ -928,7 +482,7 @@ $L__BB21_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB22_2;
+	@%p1 bra 	$L__BB11_2;
 
 	cvta.to.global.u64 	%rd3, %rd2;
 	cvta.to.global.u64 	%rd4, %rd1;
@@ -942,50 +496,7 @@ $L__BB21_2:
 	add.s64 	%rd7, %rd3, %rd5;
 	st.global.f32 	[%rd7], %f4;
 
-$L__BB22_2:
-	ret;
-
-}
-	// .globl	in_range_f64
-.visible .entry in_range_f64(
-	.param .u64 in_range_f64_param_0,
-	.param .f64 in_range_f64_param_1,
-	.param .f64 in_range_f64_param_2,
-	.param .u64 in_range_f64_param_3,
-	.param .u32 in_range_f64_param_4
-)
-{
-	.reg .pred 	%p<5>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<5>;
-	.reg .b64 	%rd<8>;
-
-
-	ld.param.u64 	%rd1, [in_range_f64_param_0];
-	ld.param.f64 	%fd1, [in_range_f64_param_1];
-	ld.param.f64 	%fd2, [in_range_f64_param_2];
-	ld.param.u64 	%rd2, [in_range_f64_param_3];
-	ld.param.u32 	%r2, [in_range_f64_param_4];
-	mov.u32 	%r3, %ctaid.x;
-	mov.u32 	%r4, %ntid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r3, %r4, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB23_2;
-
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f64 	%fd3, [%rd6];
-	setp.ge.f64 	%p2, %fd3, %fd1;
-	setp.le.f64 	%p3, %fd3, %fd2;
-	and.pred  	%p4, %p3, %p2;
-	selp.f64 	%fd4, 0d3FF0000000000000, 0d0000000000000000, %p4;
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.f64 	[%rd7], %fd4;
-
-$L__BB23_2:
+$L__BB11_2:
 	ret;
 
 }
@@ -1010,7 +521,7 @@ $L__BB23_2:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r4, %r3, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB24_6;
+	@%p1 bra 	$L__BB12_6;
 
 	cvta.to.global.u64 	%rd4, %rd2;
 	mul.wide.s32 	%rd5, %r1, 4;
@@ -1019,85 +530,29 @@ $L__BB23_2:
 	setp.gt.f32 	%p2, %f1, 0f00000000;
 	cvta.to.global.u64 	%rd7, %rd3;
 	add.s64 	%rd1, %rd7, %rd5;
-	@%p2 bra 	$L__BB24_5;
-	bra.uni 	$L__BB24_2;
+	@%p2 bra 	$L__BB12_5;
+	bra.uni 	$L__BB12_2;
 
-$L__BB24_5:
+$L__BB12_5:
 	mov.u32 	%r8, 1065353216;
 	st.global.u32 	[%rd1], %r8;
-	bra.uni 	$L__BB24_6;
+	bra.uni 	$L__BB12_6;
 
-$L__BB24_2:
+$L__BB12_2:
 	setp.lt.f32 	%p3, %f1, 0f00000000;
-	@%p3 bra 	$L__BB24_4;
-	bra.uni 	$L__BB24_3;
+	@%p3 bra 	$L__BB12_4;
+	bra.uni 	$L__BB12_3;
 
-$L__BB24_4:
+$L__BB12_4:
 	mov.u32 	%r7, -1082130432;
 	st.global.u32 	[%rd1], %r7;
-	bra.uni 	$L__BB24_6;
+	bra.uni 	$L__BB12_6;
 
-$L__BB24_3:
+$L__BB12_3:
 	mov.u32 	%r6, 0;
 	st.global.u32 	[%rd1], %r6;
 
-$L__BB24_6:
-	ret;
-
-}
-	// .globl	sign_f64
-.visible .entry sign_f64(
-	.param .u64 sign_f64_param_0,
-	.param .u64 sign_f64_param_1,
-	.param .u32 sign_f64_param_2
-)
-{
-	.reg .pred 	%p<4>;
-	.reg .b32 	%r<6>;
-	.reg .f64 	%fd<2>;
-	.reg .b64 	%rd<11>;
-
-
-	ld.param.u64 	%rd2, [sign_f64_param_0];
-	ld.param.u64 	%rd3, [sign_f64_param_1];
-	ld.param.u32 	%r2, [sign_f64_param_2];
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %ctaid.x;
-	mov.u32 	%r5, %tid.x;
-	mad.lo.s32 	%r1, %r4, %r3, %r5;
-	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB25_6;
-
-	cvta.to.global.u64 	%rd4, %rd2;
-	mul.wide.s32 	%rd5, %r1, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f64 	%fd1, [%rd6];
-	setp.gt.f64 	%p2, %fd1, 0d0000000000000000;
-	cvta.to.global.u64 	%rd7, %rd3;
-	add.s64 	%rd1, %rd7, %rd5;
-	@%p2 bra 	$L__BB25_5;
-	bra.uni 	$L__BB25_2;
-
-$L__BB25_5:
-	mov.u64 	%rd10, 4607182418800017408;
-	st.global.u64 	[%rd1], %rd10;
-	bra.uni 	$L__BB25_6;
-
-$L__BB25_2:
-	setp.lt.f64 	%p3, %fd1, 0d0000000000000000;
-	@%p3 bra 	$L__BB25_4;
-	bra.uni 	$L__BB25_3;
-
-$L__BB25_4:
-	mov.u64 	%rd9, -4616189618054758400;
-	st.global.u64 	[%rd1], %rd9;
-	bra.uni 	$L__BB25_6;
-
-$L__BB25_3:
-	mov.u64 	%rd8, 0;
-	st.global.u64 	[%rd1], %rd8;
-
-$L__BB25_6:
+$L__BB12_6:
 	ret;
 
 }
@@ -1126,7 +581,7 @@ $L__BB25_6:
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB26_2;
+	@%p1 bra 	$L__BB13_2;
 
 	cvta.to.global.u64 	%rd5, %rd4;
 	cvta.to.global.u64 	%rd6, %rd1;
@@ -1141,7 +596,552 @@ $L__BB25_6:
 	add.s64 	%rd12, %rd5, %rd7;
 	st.global.f32 	[%rd12], %f2;
 
+$L__BB13_2:
+	ret;
+
+}
+	// .globl	clamp_f64
+.visible .entry clamp_f64(
+	.param .u64 clamp_f64_param_0,
+	.param .u64 clamp_f64_param_1,
+	.param .f64 clamp_f64_param_2,
+	.param .f64 clamp_f64_param_3,
+	.param .u32 clamp_f64_param_4
+)
+{
+	.reg .pred 	%p<4>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<6>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [clamp_f64_param_0];
+	ld.param.u64 	%rd2, [clamp_f64_param_1];
+	ld.param.f64 	%fd1, [clamp_f64_param_2];
+	ld.param.f64 	%fd2, [clamp_f64_param_3];
+	ld.param.u32 	%r2, [clamp_f64_param_4];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB14_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd3, [%rd5];
+	setp.lt.f64 	%p2, %fd3, %fd1;
+	selp.f64 	%fd4, %fd1, %fd3, %p2;
+	setp.gt.f64 	%p3, %fd4, %fd2;
+	selp.f64 	%fd5, %fd2, %fd4, %p3;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd5;
+
+$L__BB14_2:
+	ret;
+
+}
+	// .globl	greater_equal_f64
+.visible .entry greater_equal_f64(
+	.param .u64 greater_equal_f64_param_0,
+	.param .u64 greater_equal_f64_param_1,
+	.param .u64 greater_equal_f64_param_2,
+	.param .u32 greater_equal_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<11>;
+
+
+	ld.param.u64 	%rd1, [greater_equal_f64_param_0];
+	ld.param.u64 	%rd2, [greater_equal_f64_param_1];
+	ld.param.u64 	%rd3, [greater_equal_f64_param_2];
+	ld.param.u32 	%r2, [greater_equal_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB15_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd5;
+	ld.global.f64 	%fd1, [%rd8];
+	ld.global.f64 	%fd2, [%rd6];
+	setp.ge.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd9, %rd3;
+	add.s64 	%rd10, %rd9, %rd5;
+	st.global.f64 	[%rd10], %fd3;
+
+$L__BB15_2:
+	ret;
+
+}
+	// .globl	greater_f64
+.visible .entry greater_f64(
+	.param .u64 greater_f64_param_0,
+	.param .u64 greater_f64_param_1,
+	.param .u64 greater_f64_param_2,
+	.param .u32 greater_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<11>;
+
+
+	ld.param.u64 	%rd1, [greater_f64_param_0];
+	ld.param.u64 	%rd2, [greater_f64_param_1];
+	ld.param.u64 	%rd3, [greater_f64_param_2];
+	ld.param.u32 	%r2, [greater_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB16_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd5;
+	ld.global.f64 	%fd1, [%rd8];
+	ld.global.f64 	%fd2, [%rd6];
+	setp.gt.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd9, %rd3;
+	add.s64 	%rd10, %rd9, %rd5;
+	st.global.f64 	[%rd10], %fd3;
+
+$L__BB16_2:
+	ret;
+
+}
+	// .globl	greater_equal_scalar_f64
+.visible .entry greater_equal_scalar_f64(
+	.param .u64 greater_equal_scalar_f64_param_0,
+	.param .f64 greater_equal_scalar_f64_param_1,
+	.param .u64 greater_equal_scalar_f64_param_2,
+	.param .u32 greater_equal_scalar_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [greater_equal_scalar_f64_param_0];
+	ld.param.f64 	%fd1, [greater_equal_scalar_f64_param_1];
+	ld.param.u64 	%rd2, [greater_equal_scalar_f64_param_2];
+	ld.param.u32 	%r2, [greater_equal_scalar_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB17_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd2, [%rd5];
+	setp.ge.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd3;
+
+$L__BB17_2:
+	ret;
+
+}
+	// .globl	greater_scalar_f64
+.visible .entry greater_scalar_f64(
+	.param .u64 greater_scalar_f64_param_0,
+	.param .f64 greater_scalar_f64_param_1,
+	.param .u64 greater_scalar_f64_param_2,
+	.param .u32 greater_scalar_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [greater_scalar_f64_param_0];
+	ld.param.f64 	%fd1, [greater_scalar_f64_param_1];
+	ld.param.u64 	%rd2, [greater_scalar_f64_param_2];
+	ld.param.u32 	%r2, [greater_scalar_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB18_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd2, [%rd5];
+	setp.gt.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd3;
+
+$L__BB18_2:
+	ret;
+
+}
+	// .globl	less_equal_f64
+.visible .entry less_equal_f64(
+	.param .u64 less_equal_f64_param_0,
+	.param .u64 less_equal_f64_param_1,
+	.param .u64 less_equal_f64_param_2,
+	.param .u32 less_equal_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<11>;
+
+
+	ld.param.u64 	%rd1, [less_equal_f64_param_0];
+	ld.param.u64 	%rd2, [less_equal_f64_param_1];
+	ld.param.u64 	%rd3, [less_equal_f64_param_2];
+	ld.param.u32 	%r2, [less_equal_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB19_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd5;
+	ld.global.f64 	%fd1, [%rd8];
+	ld.global.f64 	%fd2, [%rd6];
+	setp.le.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd9, %rd3;
+	add.s64 	%rd10, %rd9, %rd5;
+	st.global.f64 	[%rd10], %fd3;
+
+$L__BB19_2:
+	ret;
+
+}
+	// .globl	less_equal_scalar_f64
+.visible .entry less_equal_scalar_f64(
+	.param .u64 less_equal_scalar_f64_param_0,
+	.param .f64 less_equal_scalar_f64_param_1,
+	.param .u64 less_equal_scalar_f64_param_2,
+	.param .u32 less_equal_scalar_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [less_equal_scalar_f64_param_0];
+	ld.param.f64 	%fd1, [less_equal_scalar_f64_param_1];
+	ld.param.u64 	%rd2, [less_equal_scalar_f64_param_2];
+	ld.param.u32 	%r2, [less_equal_scalar_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB20_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd2, [%rd5];
+	setp.le.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd3;
+
+$L__BB20_2:
+	ret;
+
+}
+	// .globl	less_f64
+.visible .entry less_f64(
+	.param .u64 less_f64_param_0,
+	.param .u64 less_f64_param_1,
+	.param .u64 less_f64_param_2,
+	.param .u32 less_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<11>;
+
+
+	ld.param.u64 	%rd1, [less_f64_param_0];
+	ld.param.u64 	%rd2, [less_f64_param_1];
+	ld.param.u64 	%rd3, [less_f64_param_2];
+	ld.param.u32 	%r2, [less_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB21_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd5;
+	ld.global.f64 	%fd1, [%rd8];
+	ld.global.f64 	%fd2, [%rd6];
+	setp.lt.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd9, %rd3;
+	add.s64 	%rd10, %rd9, %rd5;
+	st.global.f64 	[%rd10], %fd3;
+
+$L__BB21_2:
+	ret;
+
+}
+	// .globl	less_scalar_f64
+.visible .entry less_scalar_f64(
+	.param .u64 less_scalar_f64_param_0,
+	.param .f64 less_scalar_f64_param_1,
+	.param .u64 less_scalar_f64_param_2,
+	.param .u32 less_scalar_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [less_scalar_f64_param_0];
+	ld.param.f64 	%fd1, [less_scalar_f64_param_1];
+	ld.param.u64 	%rd2, [less_scalar_f64_param_2];
+	ld.param.u32 	%r2, [less_scalar_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB22_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd2, [%rd5];
+	setp.lt.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd3;
+
+$L__BB22_2:
+	ret;
+
+}
+	// .globl	equal_f64
+.visible .entry equal_f64(
+	.param .u64 equal_f64_param_0,
+	.param .u64 equal_f64_param_1,
+	.param .u64 equal_f64_param_2,
+	.param .u32 equal_f64_param_3
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<4>;
+	.reg .b64 	%rd<11>;
+
+
+	ld.param.u64 	%rd1, [equal_f64_param_0];
+	ld.param.u64 	%rd2, [equal_f64_param_1];
+	ld.param.u64 	%rd3, [equal_f64_param_2];
+	ld.param.u32 	%r2, [equal_f64_param_3];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB23_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd5;
+	ld.global.f64 	%fd1, [%rd8];
+	ld.global.f64 	%fd2, [%rd6];
+	setp.eq.f64 	%p2, %fd2, %fd1;
+	selp.f64 	%fd3, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd9, %rd3;
+	add.s64 	%rd10, %rd9, %rd5;
+	st.global.f64 	[%rd10], %fd3;
+
+$L__BB23_2:
+	ret;
+
+}
+	// .globl	logical_not_f64
+.visible .entry logical_not_f64(
+	.param .u64 logical_not_f64_param_0,
+	.param .u64 logical_not_f64_param_1,
+	.param .u32 logical_not_f64_param_2
+)
+{
+	.reg .pred 	%p<3>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<3>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [logical_not_f64_param_0];
+	ld.param.u64 	%rd2, [logical_not_f64_param_1];
+	ld.param.u32 	%r2, [logical_not_f64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB24_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f64 	%fd1, [%rd5];
+	setp.eq.f64 	%p2, %fd1, 0d0000000000000000;
+	selp.f64 	%fd2, 0d3FF0000000000000, 0d0000000000000000, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f64 	[%rd7], %fd2;
+
+$L__BB24_2:
+	ret;
+
+}
+	// .globl	in_range_f64
+.visible .entry in_range_f64(
+	.param .u64 in_range_f64_param_0,
+	.param .f64 in_range_f64_param_1,
+	.param .f64 in_range_f64_param_2,
+	.param .u64 in_range_f64_param_3,
+	.param .u32 in_range_f64_param_4
+)
+{
+	.reg .pred 	%p<5>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<5>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [in_range_f64_param_0];
+	ld.param.f64 	%fd1, [in_range_f64_param_1];
+	ld.param.f64 	%fd2, [in_range_f64_param_2];
+	ld.param.u64 	%rd2, [in_range_f64_param_3];
+	ld.param.u32 	%r2, [in_range_f64_param_4];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB25_2;
+
+	cvta.to.global.u64 	%rd3, %rd2;
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.f64 	%fd3, [%rd6];
+	setp.ge.f64 	%p2, %fd3, %fd1;
+	setp.le.f64 	%p3, %fd3, %fd2;
+	and.pred  	%p4, %p3, %p2;
+	selp.f64 	%fd4, 0d3FF0000000000000, 0d0000000000000000, %p4;
+	add.s64 	%rd7, %rd3, %rd5;
+	st.global.f64 	[%rd7], %fd4;
+
+$L__BB25_2:
+	ret;
+
+}
+	// .globl	sign_f64
+.visible .entry sign_f64(
+	.param .u64 sign_f64_param_0,
+	.param .u64 sign_f64_param_1,
+	.param .u32 sign_f64_param_2
+)
+{
+	.reg .pred 	%p<4>;
+	.reg .b32 	%r<6>;
+	.reg .f64 	%fd<2>;
+	.reg .b64 	%rd<11>;
+
+
+	ld.param.u64 	%rd2, [sign_f64_param_0];
+	ld.param.u64 	%rd3, [sign_f64_param_1];
+	ld.param.u32 	%r2, [sign_f64_param_2];
+	mov.u32 	%r3, %ntid.x;
+	mov.u32 	%r4, %ctaid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r4, %r3, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB26_6;
+
+	cvta.to.global.u64 	%rd4, %rd2;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.f64 	%fd1, [%rd6];
+	setp.gt.f64 	%p2, %fd1, 0d0000000000000000;
+	cvta.to.global.u64 	%rd7, %rd3;
+	add.s64 	%rd1, %rd7, %rd5;
+	@%p2 bra 	$L__BB26_5;
+	bra.uni 	$L__BB26_2;
+
+$L__BB26_5:
+	mov.u64 	%rd10, 4607182418800017408;
+	st.global.u64 	[%rd1], %rd10;
+	bra.uni 	$L__BB26_6;
+
 $L__BB26_2:
+	setp.lt.f64 	%p3, %fd1, 0d0000000000000000;
+	@%p3 bra 	$L__BB26_4;
+	bra.uni 	$L__BB26_3;
+
+$L__BB26_4:
+	mov.u64 	%rd9, -4616189618054758400;
+	st.global.u64 	[%rd1], %rd9;
+	bra.uni 	$L__BB26_6;
+
+$L__BB26_3:
+	mov.u64 	%rd8, 0;
+	st.global.u64 	[%rd1], %rd8;
+
+$L__BB26_6:
 	ret;
 
 }

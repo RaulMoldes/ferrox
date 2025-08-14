@@ -10,33 +10,33 @@
 .target sm_86
 .address_size 64
 
-	// .globl	materialize
+	// .globl	materialize_f64
 
-.visible .entry materialize(
-	.param .u64 materialize_param_0,
-	.param .u64 materialize_param_1,
-	.param .u64 materialize_param_2,
-	.param .u64 materialize_param_3,
-	.param .u32 materialize_param_4,
-	.param .u32 materialize_param_5
+.visible .entry materialize_f64(
+	.param .u64 materialize_f64_param_0,
+	.param .u64 materialize_f64_param_1,
+	.param .u64 materialize_f64_param_2,
+	.param .u64 materialize_f64_param_3,
+	.param .u32 materialize_f64_param_4,
+	.param .u32 materialize_f64_param_5
 )
 {
 	.local .align 16 .b8 	__local_depot0[32];
 	.reg .b64 	%SP;
 	.reg .b64 	%SPL;
 	.reg .pred 	%p<11>;
-	.reg .f32 	%f<2>;
 	.reg .b32 	%r<99>;
+	.reg .f64 	%fd<2>;
 	.reg .b64 	%rd<54>;
 
 
 	mov.u64 	%SPL, __local_depot0;
-	ld.param.u64 	%rd28, [materialize_param_0];
-	ld.param.u64 	%rd29, [materialize_param_1];
-	ld.param.u64 	%rd30, [materialize_param_2];
-	ld.param.u64 	%rd31, [materialize_param_3];
-	ld.param.u32 	%r33, [materialize_param_4];
-	ld.param.u32 	%r34, [materialize_param_5];
+	ld.param.u64 	%rd28, [materialize_f64_param_0];
+	ld.param.u64 	%rd29, [materialize_f64_param_1];
+	ld.param.u64 	%rd30, [materialize_f64_param_2];
+	ld.param.u64 	%rd31, [materialize_f64_param_3];
+	ld.param.u32 	%r33, [materialize_f64_param_4];
+	ld.param.u32 	%r34, [materialize_f64_param_5];
 	cvta.to.global.u64 	%rd1, %rd30;
 	cvta.to.global.u64 	%rd2, %rd31;
 	add.u64 	%rd3, %SPL, 0;
@@ -174,44 +174,44 @@ $L__BB0_14:
 
 $L__BB0_15:
 	cvta.to.global.u64 	%rd39, %rd28;
-	shl.b64 	%rd40, %rd53, 2;
+	shl.b64 	%rd40, %rd53, 3;
 	add.s64 	%rd41, %rd39, %rd40;
-	ld.global.nc.f32 	%f1, [%rd41];
+	ld.global.nc.f64 	%fd1, [%rd41];
 	cvta.to.global.u64 	%rd42, %rd29;
-	mul.wide.s32 	%rd43, %r1, 4;
+	mul.wide.s32 	%rd43, %r1, 8;
 	add.s64 	%rd44, %rd42, %rd43;
-	st.global.f32 	[%rd44], %f1;
+	st.global.f64 	[%rd44], %fd1;
 
 $L__BB0_16:
 	ret;
 
 }
-	// .globl	materialize_f64
-.visible .entry materialize_f64(
-	.param .u64 materialize_f64_param_0,
-	.param .u64 materialize_f64_param_1,
-	.param .u64 materialize_f64_param_2,
-	.param .u64 materialize_f64_param_3,
-	.param .u32 materialize_f64_param_4,
-	.param .u32 materialize_f64_param_5
+	// .globl	materialize
+.visible .entry materialize(
+	.param .u64 materialize_param_0,
+	.param .u64 materialize_param_1,
+	.param .u64 materialize_param_2,
+	.param .u64 materialize_param_3,
+	.param .u32 materialize_param_4,
+	.param .u32 materialize_param_5
 )
 {
 	.local .align 16 .b8 	__local_depot1[32];
 	.reg .b64 	%SP;
 	.reg .b64 	%SPL;
 	.reg .pred 	%p<11>;
+	.reg .f32 	%f<2>;
 	.reg .b32 	%r<99>;
-	.reg .f64 	%fd<2>;
 	.reg .b64 	%rd<54>;
 
 
 	mov.u64 	%SPL, __local_depot1;
-	ld.param.u64 	%rd28, [materialize_f64_param_0];
-	ld.param.u64 	%rd29, [materialize_f64_param_1];
-	ld.param.u64 	%rd30, [materialize_f64_param_2];
-	ld.param.u64 	%rd31, [materialize_f64_param_3];
-	ld.param.u32 	%r33, [materialize_f64_param_4];
-	ld.param.u32 	%r34, [materialize_f64_param_5];
+	ld.param.u64 	%rd28, [materialize_param_0];
+	ld.param.u64 	%rd29, [materialize_param_1];
+	ld.param.u64 	%rd30, [materialize_param_2];
+	ld.param.u64 	%rd31, [materialize_param_3];
+	ld.param.u32 	%r33, [materialize_param_4];
+	ld.param.u32 	%r34, [materialize_param_5];
 	cvta.to.global.u64 	%rd1, %rd30;
 	cvta.to.global.u64 	%rd2, %rd31;
 	add.u64 	%rd3, %SPL, 0;
@@ -349,13 +349,13 @@ $L__BB1_14:
 
 $L__BB1_15:
 	cvta.to.global.u64 	%rd39, %rd28;
-	shl.b64 	%rd40, %rd53, 3;
+	shl.b64 	%rd40, %rd53, 2;
 	add.s64 	%rd41, %rd39, %rd40;
-	ld.global.nc.f64 	%fd1, [%rd41];
+	ld.global.nc.f32 	%f1, [%rd41];
 	cvta.to.global.u64 	%rd42, %rd29;
-	mul.wide.s32 	%rd43, %r1, 8;
+	mul.wide.s32 	%rd43, %r1, 4;
 	add.s64 	%rd44, %rd42, %rd43;
-	st.global.f64 	[%rd44], %fd1;
+	st.global.f32 	[%rd44], %f1;
 
 $L__BB1_16:
 	ret;
