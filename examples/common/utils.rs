@@ -1,4 +1,3 @@
-
 use ferrox::backend::{FerroxCudaF, Tensor};
 use ferrox::graph::{AutoFerroxEngine, NodeId};
 use ferrox::nn::{losses::Loss, Module};

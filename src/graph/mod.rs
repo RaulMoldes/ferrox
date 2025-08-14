@@ -516,7 +516,6 @@ where
 
                 // Acumulate gradients
                 for (input_id, input_grad) in inputs.iter().zip(input_grads) {
-
                     self.accumulate_gradient(*input_id, input_grad)?;
                 }
             }

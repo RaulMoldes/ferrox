@@ -28,29 +28,28 @@ __device__ __forceinline__ double sigmoid_fused_f64(double x) {
     return __drcp_rn(__fma_rn(exp(-x), 1.0, 1.0));
 }
 
-extern "C" __global__ void sigmoid(
-    const float* __restrict__ input,
-    float* __restrict__ output,
-    int size
-) {
-    for (int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        idx < size;
-        idx += blockDim.x * gridDim.x) {
-        output[idx] = sigmoid_fused(input[idx]);
+
+extern "C" __global__ void sigmoid(const float* input, float* output, int size) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        // Element-wise sigmoid function: output = 1 / (1 + exp(-input))
+        float x = input[idx];
+        output[idx] = 1.0f / (1.0f + expf(-x));
     }
 }
 
-extern "C" __global__ void sigmoid_f64(
-    const double* __restrict__ input,
-    double* __restrict__ output,
-    int size
-) {
-    for (int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        idx < size;
-        idx += blockDim.x * gridDim.x) {
-        output[idx] = sigmoid_fused_f64(input[idx]);
+
+
+extern "C" __global__ void sigmoid_f64(const double* input, double* output, int size) {
+    int idx = get_global_idx();
+    if (idx < size) {
+        // Element-wise sigmoid function: output = 1 / (1 + exp(-input))
+        double x = input[idx];
+        output[idx] = 1.0f / (1.0f + expf(-x));
     }
 }
+
+
 extern "C" __global__ void hyperbolic_tangent(
     const float* input,
     float* output,
@@ -186,7 +185,7 @@ __inline__ __device__ T blockReduceSum(T val) {
 }
 
 // =============================================================================
-// SOFTMAX KERNEL
+// SOFTMAX KERNELS
 // =============================================================================
 
 extern "C" __global__ void softmax(const float* input, float* output, int N) {
@@ -289,7 +288,7 @@ extern "C" __global__ void softmax_f64(const double* input, double* output, int 
 
 
 
-// BATCH-AWARE SOFTMAX KERNEL
+// BATCH-AWARE SOFTMAX KERNELS
 // =============================================================================
 // This kernel processes multiple sequences in parallel, computing softmax
 // along the specified axis while maintaining batch efficiency
@@ -361,6 +360,8 @@ extern "C" __global__ void softmax_batch_axis(
         output[global_idx] = expf(input[global_idx] - s_max) / s_sum;
     }
 }
+
+
 
 extern "C" __global__ void softmax_batch_axis_f64(
     const double* input,

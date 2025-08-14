@@ -6,6 +6,8 @@ use crate::backend::manager::{
     return_cuda_slice, with_cuda_context, with_cuda_ops, with_cuda_pool,
 };
 use crate::backend::{FerroxCudaN, FerroxF, FerroxN};
+#[cfg(feature = "cuda")]
+use crate::FerroxCudaF;
 use cudarc::driver::DeviceRepr;
 use ndarray::ArrayD;
 
@@ -574,8 +576,12 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
-    fn softmax_batched(&self, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String> {
-        let result_cuda = with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.softmax_batched(&self.cuda_data, axis))?;
+    fn softmax_batched(&self, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String>
+    where
+        T: FerroxCudaF,
+    {
+        let result_cuda =
+            with_cuda_ops(|cuda_ops: &CudaOps<T>| cuda_ops.softmax_batched(&self.cuda_data, axis))?;
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
@@ -629,7 +635,11 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
-    fn sum(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn sum(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -661,7 +671,11 @@ where
         }
     }
 
-    fn mean(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn mean(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -690,14 +704,11 @@ where
                     .map(|&ax| self.shape()[ax])
                     .product::<usize>() as f64;
 
-                let divisor_scalar = FerroxN::from_f64(1.0 / divisor)
-                    .ok_or("Failed to convert divisor to tensor type")?;
+                let divisor_scalar =
+                    FerroxN::from_f64(divisor).ok_or("Failed to convert divisor to tensor type")?;
 
-                // Create scalar tensor and divide
-                let divisor_tensor =
-                    with_cuda_ops(|ops: &CudaOps<T>| ops.full(&[], divisor_scalar))?;
                 let result_cuda =
-                    with_cuda_ops(|ops: &CudaOps<T>| ops.div(&sum_result, &divisor_tensor))?;
+                    with_cuda_ops(|ops: &CudaOps<T>| ops.div_scalar(&sum_result, divisor_scalar))?;
 
                 Ok(Box::new(CUDAStorage::new(result_cuda)))
             }
@@ -709,7 +720,11 @@ where
         }
     }
 
-    fn max_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn max_reduce(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {
@@ -741,7 +756,11 @@ where
         }
     }
 
-    fn min_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn min_reduce(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         match axes {
             Some(axes_list) => {
                 if axes_list.is_empty() {

@@ -12,8 +12,12 @@ pub struct MLPConfig {
 }
 #[allow(dead_code)]
 impl MLPConfig {
-
-    pub fn new(input_size: usize, hidden_size: usize, output_size: usize, num_samples: usize) -> Self {
+    pub fn new(
+        input_size: usize,
+        hidden_size: usize,
+        output_size: usize,
+        num_samples: usize,
+    ) -> Self {
         Self {
             input_size,
             hidden_size,

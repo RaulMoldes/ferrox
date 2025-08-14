@@ -88,7 +88,11 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
     /// Get optimized launch configuration for reduction operations
     /// This minimizes warp stalls by ensuring proper occupancy and memory coalescing
-    fn get_reduction_launch_config(&self, total_output_elements: usize, axis_size: usize) -> LaunchConfig {
+    fn get_reduction_launch_config(
+        &self,
+        total_output_elements: usize,
+        axis_size: usize,
+    ) -> LaunchConfig {
         // Calculate optimal block size based on axis size and GPU occupancy
         let optimal_block_size = if axis_size <= 32 {
             // For small reductions, use smaller blocks to increase occupancy
@@ -354,7 +358,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
         let size = a.size();
         let mut result = self.create_tensor_from_pool(a.shape())?;
 
-
         let cfg = if std::mem::size_of::<T>() == 8 {
             // f64: Use vectorization (2 elements per thread) to reduce L1TEX stalls
             LaunchConfig {
@@ -582,19 +585,19 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
-
     /// Batch-aware softmax along specified axis
     /// More efficient than partitioning as it processes all batches in parallel
     pub fn softmax_batched(
         &self,
         input: &CudaTensor<T>,
-        axis: usize
+        axis: usize,
     ) -> Result<CudaTensor<T>, String> {
         // Validate axis
         if axis >= input.shape.len() {
             return Err(format!(
                 "Softmax axis {} out of bounds for tensor with {} dimensions",
-                axis, input.shape.len()
+                axis,
+                input.shape.len()
             ));
         }
 
@@ -629,8 +632,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
         Ok(result)
     }
-
-
 
     /// Hyperbolic tangent activation: result = tanh(input)
     pub fn tanh(&self, input: &CudaTensor<T>) -> Result<CudaTensor<T>, String> {
@@ -1391,7 +1392,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
             let mut result = self.create_tensor_from_pool(&output_shape)?;
 
             let total_output_elements = (outer_size * inner_size) as usize;
-
 
             let cfg = self.get_reduction_launch_config(total_output_elements, axis_size as usize);
 

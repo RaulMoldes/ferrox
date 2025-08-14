@@ -696,8 +696,6 @@ pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
 
 /// Check if shapes can be broadcasted
 pub fn can_broadcast_to(from_shape: &[usize], to_shape: &[usize]) -> bool {
-
-
     if from_shape.len() > to_shape.len() {
         return false;
     }

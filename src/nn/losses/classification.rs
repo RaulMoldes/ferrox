@@ -7,11 +7,11 @@ use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::losses::{Loss, ReductionType};
 use crate::ops::{
     basic::{Add, Mul},
+    batched::Softmax,
     comparison::Clamp,
     reduction::{Mean, Sum},
     scalar::AddScalar,
     unary::{Log, Neg},
-    batched::Softmax,
 };
 use crate::FerroxN;
 use std::marker::PhantomData;
@@ -124,7 +124,6 @@ where
             .apply_operation(neg_op3, vec![cross_entropy])
             .map_err(|e| format!("BCE final negation failed: {}", e))?;
 
-
         // Step 9: Apply reduction strategy
         match self.reduction {
             ReductionType::Mean => {
@@ -185,7 +184,6 @@ where
     }
 }
 
-
 impl<T> Loss<T> for CCELoss<T>
 where
     T: FerroxCudaF,
@@ -198,13 +196,10 @@ where
     ) -> Result<NodeId, String> {
         // Step 1: Apply softmax to logits if needed
         let probabilities = if self.apply_softmax {
-
-
             let softmax_op = Box::new(Softmax::new(self.class_axis));
             let raw_probs = graph
                 .apply_operation(softmax_op, vec![predictions])
                 .map_err(|e| format!("CCE softmax failed: {}", e))?;
-
 
             // Clamp for numerical stability
             let epsilon = FerroxN::from_f64(1e-8).unwrap();
@@ -217,7 +212,6 @@ where
         } else {
             predictions
         };
-
 
         // Step 2: Compute log(probabilities)
         let log_op = Box::new(Log);
@@ -243,8 +237,6 @@ where
         let cce_per_sample = graph
             .apply_operation(neg_op, vec![cross_entropy_per_sample])
             .map_err(|e| format!("CCE negation failed: {}", e))?;
-
-
 
         // Step 6: Apply final reduction
         match self.reduction {

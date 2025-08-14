@@ -102,7 +102,9 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "softmax",
             "softmax_f64",
             "softmax_batch_axis",
-            "softmax_batch_axis_f64"
+            "softmax_batch_axis_f64",
+            "softmax_last_axis",
+            "softmax_last_axis_f64",
         ],
     },
     KernelConfig {
@@ -647,7 +649,6 @@ impl KernelManager {
         self.launch_unary_elementwise("softmax", cfg, input, output, size)
     }
 
-
     /// Launch batch-aware softmax kernel
     #[allow(clippy::too_many_arguments)]
     pub fn launch_softmax_batched<T>(
@@ -655,6 +656,7 @@ impl KernelManager {
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         output: &mut CudaSlice<T>,
+
         batch_size: i32,
         seq_length: i32,
         inner_size: i32,
@@ -664,6 +666,8 @@ impl KernelManager {
         T: FerroxCudaN + 'static,
     {
         let kernel_name = self.get_kernel_name::<T>("softmax_batch_axis");
+
+        println!("CALL TO {}", kernel_name);
 
         launch_kernel!(
             self,

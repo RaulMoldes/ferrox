@@ -1,6 +1,9 @@
 use ferrox::backend::{Device, FerroxCudaF};
 use ferrox::graph::{AutoFerroxEngine, NodeId};
-use ferrox::nn::{layers::{Linear, ReLU}, Module};
+use ferrox::nn::{
+    layers::{Linear, ReLU},
+    Module,
+};
 use std::collections::HashMap;
 
 /// Multi-Layer Perceptron for regression tasks
@@ -55,7 +58,10 @@ where
         Ok(output)
     }
 
-    fn create_parameters_in_graph(&self, engine: &mut AutoFerroxEngine<T>) -> HashMap<String, NodeId> {
+    fn create_parameters_in_graph(
+        &self,
+        engine: &mut AutoFerroxEngine<T>,
+    ) -> HashMap<String, NodeId> {
         let mut param_map = HashMap::new();
 
         let hidden1_params = self.hidden1.create_parameters_in_graph(engine);
@@ -158,7 +164,10 @@ where
         Ok(logits)
     }
 
-    fn create_parameters_in_graph(&self, engine: &mut AutoFerroxEngine<T>) -> HashMap<String, NodeId> {
+    fn create_parameters_in_graph(
+        &self,
+        engine: &mut AutoFerroxEngine<T>,
+    ) -> HashMap<String, NodeId> {
         let mut param_map = HashMap::new();
 
         let hidden1_params = self.hidden1.create_parameters_in_graph(engine);

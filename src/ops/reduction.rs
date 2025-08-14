@@ -21,7 +21,7 @@ where
             let mut sorted_axes = reduction_axes.clone();
             sorted_axes.sort_unstable();
 
-            if sorted_axes.is_empty(){
+            if sorted_axes.is_empty() {
                 // No axes to process, return as is
                 return Ok(grad_output);
             }
@@ -253,7 +253,7 @@ where
         inputs[0].max_reduce(self.axes.as_deref(), self.keep_dims)
     }
 
-      fn gradient(
+    fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
@@ -349,7 +349,7 @@ where
         inputs[0].min_reduce(self.axes.as_deref(), self.keep_dims)
     }
 
-     fn gradient(
+    fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],

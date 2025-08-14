@@ -1107,7 +1107,7 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
-     pub fn softmax_batched(&self, axis: usize) -> Result<Self, String> {
+    pub fn softmax_batched(&self, axis: usize) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
@@ -1439,91 +1439,97 @@ where
     }
 
     pub fn from_partitions(partitions: Vec<Self>, axis: usize) -> Result<Self, String> {
-         if partitions.is_empty() {
-        return Err("Cannot reconstruct from empty partitions".to_string());
-    }
-
-    // Single partition case - just return it
-    if partitions.len() == 1 {
-        return Ok(partitions.into_iter().next().unwrap());
-    }
-
-    // Validate that all partitions have compatible shapes except the concatenation axis
-    let base_shape = partitions[0].shape().to_vec();
-    for (i, part) in partitions.iter().enumerate().skip(1) {
-        let shape = part.shape();
-        if shape.len() != base_shape.len() {
-            return Err(format!(
-                "Partition {} has {} dimensions, expected {}",
-                i, shape.len(), base_shape.len()
-            ));
+        if partitions.is_empty() {
+            return Err("Cannot reconstruct from empty partitions".to_string());
         }
-        for (dim_idx, (&base_dim, &part_dim)) in base_shape.iter().zip(shape.iter()).enumerate() {
-            if dim_idx != axis && part_dim != base_dim {
+
+        // Single partition case - just return it
+        if partitions.len() == 1 {
+            return Ok(partitions.into_iter().next().unwrap());
+        }
+
+        // Validate that all partitions have compatible shapes except the concatenation axis
+        let base_shape = partitions[0].shape().to_vec();
+        for (i, part) in partitions.iter().enumerate().skip(1) {
+            let shape = part.shape();
+            if shape.len() != base_shape.len() {
                 return Err(format!(
-                    "Partition {} shape mismatch at dimension {}: expected {}, got {}",
-                    i, dim_idx, base_dim, part_dim
+                    "Partition {} has {} dimensions, expected {}",
+                    i,
+                    shape.len(),
+                    base_shape.len()
                 ));
             }
+            for (dim_idx, (&base_dim, &part_dim)) in base_shape.iter().zip(shape.iter()).enumerate()
+            {
+                if dim_idx != axis && part_dim != base_dim {
+                    return Err(format!(
+                        "Partition {} shape mismatch at dimension {}: expected {}, got {}",
+                        i, dim_idx, base_dim, part_dim
+                    ));
+                }
+            }
         }
-    }
 
-    // Get target device from first partition
-    let target_device = partitions[0].device();
+        // Get target device from first partition
+        let target_device = partitions[0].device();
 
-    // Move all partitions to CPU for concatenation
-    let mut cpu_partitions = Vec::with_capacity(partitions.len());
-    for partition in partitions {
-        let cpu_partition = if partition.device() != Device::CPU {
-            partition.to_device(Device::CPU)?
-        } else {
-            partition
-        };
-        cpu_partitions.push(cpu_partition);
-    }
+        // Move all partitions to CPU for concatenation
+        let mut cpu_partitions = Vec::with_capacity(partitions.len());
+        for partition in partitions {
+            let cpu_partition = if partition.device() != Device::CPU {
+                partition.to_device(Device::CPU)?
+            } else {
+                partition
+            };
+            cpu_partitions.push(cpu_partition);
+        }
 
-    // Extract ArrayD data from CPU partitions
-    let arrays_data: Vec<ArrayD<T>> = cpu_partitions.into_iter()
-        .enumerate()
-        .map(|(i, p)| {
-            p.into_data().unwrap_or_else(|e| {
-                panic!("Error on partition {}: {}", i, e)
+        // Extract ArrayD data from CPU partitions
+        let arrays_data: Vec<ArrayD<T>> = cpu_partitions
+            .into_iter()
+            .enumerate()
+            .map(|(i, p)| {
+                p.into_data()
+                    .unwrap_or_else(|e| panic!("Error on partition {}: {}", i, e))
             })
-        })
-        .collect();
+            .collect();
 
+        // Create views for concatenation
+        let arrays_view: Vec<ndarray::ArrayViewD<T>> =
+            arrays_data.iter().map(|a| a.view()).collect();
 
+        // Debug info (optional - remove in production)
+        for (i, a) in arrays_view.iter().enumerate() {
+            println!("Partition {} shape: {:?}", i, a.shape());
+        }
+        println!("Concatenating along axis {}", axis);
 
-    // Create views for concatenation
-    let arrays_view: Vec<ndarray::ArrayViewD<T>> = arrays_data.iter().map(|a| a.view()).collect();
+        // Perform concatenation using ndarray
+        let result: ArrayD<T> = ndarray::concatenate(ndarray::Axis(axis), &arrays_view)
+            .map_err(|e| format!("Concatenation failed: {}", e))?;
 
-    // Debug info (optional - remove in production)
-    for (i, a) in arrays_view.iter().enumerate() {
-        println!("Partition {} shape: {:?}", i, a.shape());
-    }
-    println!("Concatenating along axis {}", axis);
+        // Create CPU tensor using proper constructor that can handle errors
+        let cpu_tensor = match Self::from_vec_with_device(
+            result.iter().cloned().collect(),
+            result.shape(),
+            Device::CPU,
+        ) {
+            Ok(tensor) => tensor,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to create tensor from concatenated data: {}",
+                    e
+                ))
+            }
+        };
 
-    // Perform concatenation using ndarray
-    let result: ArrayD<T> = ndarray::concatenate(ndarray::Axis(axis), &arrays_view)
-        .map_err(|e| format!("Concatenation failed: {}", e))?;
-
-    // Create CPU tensor using proper constructor that can handle errors
-    let cpu_tensor = match Self::from_vec_with_device(
-        result.iter().cloned().collect(),
-        result.shape(),
-        Device::CPU
-    ) {
-        Ok(tensor) => tensor,
-        Err(e) => return Err(format!("Failed to create tensor from concatenated data: {}", e)),
-    };
-
-    // Move back to original device if needed
-    if target_device != Device::CPU {
-        cpu_tensor.to_device(target_device)
-    } else {
-        Ok(cpu_tensor)
-    }
-
+        // Move back to original device if needed
+        if target_device != Device::CPU {
+            cpu_tensor.to_device(target_device)
+        } else {
+            Ok(cpu_tensor)
+        }
     }
 
     /// Creates batches from tensor by grouping along first dimension
@@ -2173,7 +2179,7 @@ mod tensor_ops_tests {
         let tensor =
             Tensor::from_vec_with_device(vec![1.0f32, 2.0, 3.0, 4.0], &[2, 2], device).unwrap();
 
-        let result = tensor.sum(None,false).unwrap();
+        let result = tensor.sum(None, false).unwrap();
         let data: Vec<f32> = result.into_data().unwrap().iter().cloned().collect();
 
         assert_eq!(data[0], 10.0); // 1 + 2 + 3 + 4
@@ -2615,7 +2621,6 @@ mod tensor_ops_tests {
         assert_tensor_equal(&original, &reconstructed, 1e-6);
     }
 
-
     /// Test that softmax preserves tensor shape for various configurations
     #[test]
     fn test_softmax_shape_preservation_cpu() {
@@ -2633,20 +2638,32 @@ mod tensor_ops_tests {
         let tensor_2d = Tensor::from_vec_with_device(data_2d, &[2, 3], device).unwrap();
 
         let result_2d = tensor_2d.softmax().expect("2D softmax failed");
-        assert_eq!(result_2d.shape(), &[2, 3], "2D softmax should preserve shape");
+        assert_eq!(
+            result_2d.shape(),
+            &[2, 3],
+            "2D softmax should preserve shape"
+        );
 
         // Test 3D tensor (batch_size=2, seq_len=4, features=3)
         let data_3d: Vec<f32> = (0..24).map(|x| x as f32).collect();
         let tensor_3d = Tensor::from_vec_with_device(data_3d, &[2, 4, 3], device).unwrap();
 
         let result_3d = tensor_3d.softmax().expect("3D softmax failed");
-        assert_eq!(result_3d.shape(), &[2, 4, 3], "3D softmax should preserve shape");
+        assert_eq!(
+            result_3d.shape(),
+            &[2, 4, 3],
+            "3D softmax should preserve shape"
+        );
 
         // Test 4D tensor (batch_size=2, channels=3, height=2, width=2)
         let data_4d: Vec<f32> = (0..24).map(|x| x as f32).collect();
         let tensor_4d = Tensor::from_vec_with_device(data_4d, &[2, 3, 2, 2], device).unwrap();
 
         let result_4d = tensor_4d.softmax().expect("4D softmax failed");
-        assert_eq!(result_4d.shape(), &[2, 3, 2, 2], "4D softmax should preserve shape");
+        assert_eq!(
+            result_4d.shape(),
+            &[2, 3, 2, 2],
+            "4D softmax should preserve shape"
+        );
     }
 }

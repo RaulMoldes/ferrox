@@ -1,8 +1,5 @@
-
 use crate::backend::{FerroxCudaF, Tensor};
 use crate::ops::Operator;
-
-
 
 #[derive(Debug, Clone)]
 pub struct Softmax {
@@ -24,7 +21,6 @@ where
             None => {
                 // Fallback to existing whole-tensor softmax implementation
                 input_tensor.softmax()
-
             }
             Some(axis) => {
                 // Use optimized batch-aware kernel instead of partitioning
@@ -38,7 +34,6 @@ where
 
                 // Call the batch-aware softmax method
                 input_tensor.softmax_batched(axis)
-
             }
         }
     }
@@ -74,25 +69,20 @@ where
     }
 }
 
-
 impl Softmax {
-    pub fn new(axis: Option<usize>) -> Self{
-        Self {
-            axis
-        }
+    pub fn new(axis: Option<usize>) -> Self {
+        Self { axis }
     }
 
-
-
-     // Helper method for global gradient computation
+    // Helper method for global gradient computation
     fn compute_global_gradient<T>(
         &self,
         grad_output: Tensor<T>,
         outputs: &Tensor<T>,
     ) -> Result<Vec<Tensor<T>>, String>
-    where T: FerroxCudaF
+    where
+        T: FerroxCudaF,
     {
-
         let element_wise_prod = grad_output.mul(outputs)?;
         let mut sum_prod = element_wise_prod.sum(None, false)?;
         sum_prod.broadcast_to(outputs.shape())?;
@@ -100,7 +90,6 @@ impl Softmax {
         let grad_input = outputs.mul(&grad_diff)?;
         Ok(vec![grad_input])
     }
-
 
     /// Optimized gradient computation for batch softmax
     /// Uses the mathematical property: ∇softmax = softmax * (∇L - Σ(softmax * ∇L))
@@ -112,7 +101,7 @@ impl Softmax {
         axis: usize,
     ) -> Result<Vec<Tensor<T>>, String>
     where
-        T: FerroxCudaF
+        T: FerroxCudaF,
     {
         // Element-wise product: softmax * grad_output
         let element_wise_prod = grad_output.mul(outputs)?;
@@ -122,7 +111,6 @@ impl Softmax {
 
         // Broadcast sum back to original shape for subtraction
         sum_prod.broadcast_to(outputs.shape())?;
-
 
         // Compute: grad_output - broadcasted_sum
         let grad_diff = grad_output.sub(&sum_prod)?;

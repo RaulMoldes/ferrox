@@ -1,15 +1,14 @@
 mod common;
 
+use common::{
+    compute_loss, generate_binary_classification_data, generate_multiclass_classification_data,
+    run_forward, train, MLPClassifier, MLPConfig, TrainingConfig,
+};
 use ferrox::backend::manager::best_f32_device;
 use ferrox::backend::Device;
 use ferrox::nn::losses::{BCELoss, CCELoss, ReductionType};
-use ferrox::ops::unary::Sigmoid;
 use ferrox::nn::Module;
-use common::{
-    generate_binary_classification_data, generate_multiclass_classification_data,
-    train, run_forward, compute_loss,
-    MLPConfig, MLPClassifier, TrainingConfig
-};
+use ferrox::ops::unary::Sigmoid;
 
 /// Evaluate classification model on test data
 fn evaluate_classification<T>(
@@ -83,11 +82,7 @@ fn main() -> Result<(), String> {
             Device::CPU,
         )?;
 
-        let test_data = generate_binary_classification_data::<f32>(
-            200,
-            config.input_size,
-            device,
-        )?;
+        let test_data = generate_binary_classification_data::<f32>(200, config.input_size, device)?;
 
         let loss_fn = BCELoss::<f32>::new(ReductionType::Mean);
 

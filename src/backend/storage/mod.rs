@@ -172,7 +172,7 @@ where
     where
         T: FerroxF;
 
-        /// Batch-aware softmax along specified axis
+    /// Batch-aware softmax along specified axis
     /// More efficient than element-wise softmax for batched data
     fn softmax_batched(&self, axis: usize) -> Result<Box<dyn StorageBackend<T>>, String>
     where
@@ -213,16 +213,32 @@ where
         T: FerroxCudaF;
 
     /// Sum reduction along multiple axes
-    fn sum(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn sum(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Mean reduction along multiple axes
-    fn mean(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn mean(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Maximum values along multiple axes
-    fn max_reduce(&self, axes: Option<&[usize]>, keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn max_reduce(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Minimum values along multiple axes
-    fn min_reduce(&self, axes: Option<&[usize]>,keep_dims: bool) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn min_reduce(
+        &self,
+        axes: Option<&[usize]>,
+        keep_dims: bool,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /// Broadcasting operation - expands tensor to target shape following broadcasting rules
     /// In-place operation that only changes the view, not the underlying data

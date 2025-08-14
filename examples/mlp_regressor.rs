@@ -1,13 +1,13 @@
 mod common;
 
+use common::{
+    compute_loss, generate_regression_data, run_forward, train, MLPConfig, MLPRegressor,
+    TrainingConfig,
+};
 use ferrox::backend::manager::best_f32_device;
 use ferrox::backend::Device;
 use ferrox::nn::losses::{L1Loss, MSELoss, ReductionType};
 use ferrox::nn::Module;
-use common::{
-    generate_regression_data, train, run_forward, compute_loss,
-    MLPConfig, MLPRegressor, TrainingConfig
-};
 
 /// Evaluate regression model on test data
 fn evaluate_regression<T>(
@@ -65,11 +65,7 @@ fn main() -> Result<(), String> {
         Device::CPU, // Generate on CPU, transfer automatically during batching
     )?;
 
-    let test_data = generate_regression_data::<f32>(
-        100,
-        model_config.input_size,
-        device,
-    )?;
+    let test_data = generate_regression_data::<f32>(100, model_config.input_size, device)?;
 
     // Create loss function
     let loss_fn = L1Loss::<f32>::new(ReductionType::Mean);

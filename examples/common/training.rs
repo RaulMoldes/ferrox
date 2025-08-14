@@ -1,3 +1,4 @@
+use super::configs::TrainingConfig;
 use ferrox::backend::FerroxCudaF;
 use ferrox::dataset::BatchedDataset;
 use ferrox::graph::{AutoFerroxEngine, NodeId};
@@ -7,7 +8,6 @@ use ferrox::nn::{
     Module,
 };
 use ferrox::FerroxN;
-use super::configs::TrainingConfig;
 
 /// Initialize model parameters in the computational graph
 pub fn initialize_model<M, T, O>(
