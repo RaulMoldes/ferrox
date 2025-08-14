@@ -274,3 +274,307 @@ void conv2d_forward_f64(
         pad_h,
         pad_w);
 }
+
+/// Gradient w.r.t. input
+/// TESTED AGAINST PYTORCH
+template<typename T>
+__device__ void deconv2d_kernel(
+    const T* input,
+    const T* filter,
+    T* output,
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int out_channels,
+    int out_height,
+    int out_width,
+    int kernel_height,
+    int kernel_width,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w
+) {
+    extern __shared__ unsigned char smem[];
+    T* shared_filter = reinterpret_cast<T*>(smem);
+
+    int in_x = blockIdx.x * TILE_SIZE + threadIdx.x;
+    int in_y = blockIdx.y * TILE_SIZE + threadIdx.y;
+    int in_c = blockIdx.z % in_channels;
+    int batch_idx = blockIdx.z / in_channels;
+
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int thread_id = ty * blockDim.x + tx;
+    int threads_per_block = blockDim.x * blockDim.y;
+
+    bool valid_input = (in_x < in_width && in_y < in_height &&
+        in_c < in_channels && batch_idx < batch_size);
+
+    T result = 0.0;
+
+    for (int out_c = 0; out_c < out_channels; out_c++) {
+        int filter_size = kernel_height * kernel_width;
+        for (int i = thread_id; i < filter_size; i += threads_per_block) {
+            int ky = i / kernel_width;
+            int kx = i % kernel_width;
+            int filter_idx = out_c * (in_channels * kernel_height * kernel_width) +
+                in_c * (kernel_height * kernel_width) +
+                ky * kernel_width + kx;
+            shared_filter[i] = filter[filter_idx];
+        }
+        __syncthreads();
+
+        if (valid_input) {
+            for (int ky = 0; ky < kernel_height; ky++) {
+                for (int kx = 0; kx < kernel_width; kx++) {
+                    int out_y = (in_y + pad_h - ky);
+                    int out_x = (in_x + pad_w - kx);
+
+                    if (out_y >= 0 && out_x >= 0 &&
+                        out_y % stride_h == 0 && out_x % stride_w == 0) {
+                        out_y /= stride_h;
+                        out_x /= stride_w;
+                        if (out_y < out_height && out_x < out_width) {
+                            int grad_out_idx = batch_idx * (out_channels * out_height * out_width) +
+                                out_c * (out_height * out_width) +
+                                out_y * out_width + out_x;
+                            int filter_idx = ky * kernel_width + kx;
+                            result += input[grad_out_idx] * shared_filter[filter_idx];
+                        }
+                    }
+                }
+            }
+        }
+        __syncthreads();
+    }
+
+    if (valid_input) {
+        int grad_input_idx = batch_idx * (in_channels * in_height * in_width) +
+            in_c * (in_height * in_width) +
+            in_y * in_width + in_x;
+        output[grad_input_idx] = result;
+    }
+}
+
+
+extern "C" __global__ void  deconv2d(
+    const float* input,
+    const float* filter,
+    float* output,
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int out_channels,
+    int out_height,
+    int out_width,
+    int kernel_height,
+    int kernel_width,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w) {
+
+    deconv2d_kernel<float>(input,
+        filter,
+        output,
+        batch_size,
+        in_channels,
+        in_height,
+        in_width,
+        out_channels,
+        out_height,
+        out_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w);
+}
+
+
+
+extern "C" __global__ void deconv2d_f64(
+    const double* input,
+    const double* filter,
+    double* output,
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int out_channels,
+    int out_height,
+    int out_width,
+    int kernel_height,
+    int kernel_width,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w) {
+
+    deconv2d_kernel<double>(
+        input,
+        filter,
+        output,
+        batch_size,
+        in_channels,
+        in_height,
+        in_width,
+        out_channels,
+        out_height,
+        out_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w);
+}
+
+
+template<typename T>
+__device__ void cross_correlation_kernel(
+    const T* input_1,         // [batch, in_channels, in_height, in_width]
+    const T* input_2,   // [batch, out_channels, out_height, out_width]
+    T* output,         // [out_channels, in_channels, kernel_height, kernel_width]
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int out_channels,
+    int out_height,
+    int out_width,
+    int kernel_height,
+    int kernel_width,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w
+) {
+    // Each thread computes one element of grad_filter
+    int kx = blockIdx.x * blockDim.x + threadIdx.x;
+    int ky = blockIdx.y * blockDim.y + threadIdx.y;
+    int in_c = blockIdx.z % in_channels;
+    int out_c = blockIdx.z / in_channels;
+
+    if (kx >= kernel_width || ky >= kernel_height ||
+        in_c >= in_channels || out_c >= out_channels) {
+        return;
+    }
+
+    T sum = 0.0;
+
+    // Accumulate gradients across all batch elements and spatial positions
+    for (int batch_idx = 0; batch_idx < batch_size; batch_idx++) {
+        for (int out_y = 0; out_y < out_height; out_y++) {
+            for (int out_x = 0; out_x < out_width; out_x++) {
+                // Calculate corresponding input position
+                int in_y = out_y * stride_h - pad_h + ky;
+                int in_x = out_x * stride_w - pad_w + kx;
+
+                // Check if input position is valid (within bounds)
+                if (in_y >= 0 && in_y < in_height &&
+                    in_x >= 0 && in_x < in_width) {
+
+                    // Get input value
+                    int input_idx = batch_idx * (in_channels * in_height * in_width) +
+                        in_c * (in_height * in_width) +
+                        in_y * in_width + in_x;
+
+                    // Get grad_output value
+                    int grad_out_idx = batch_idx * (out_channels * out_height * out_width) +
+                        out_c * (out_height * out_width) +
+                        out_y * out_width + out_x;
+
+                    // Accumulate: grad_filter[out_c][in_c][ky][kx] += input * grad_output
+                    sum += input1[input_idx] * input2[grad_out_idx];
+                }
+            }
+        }
+    }
+
+    // Write result to grad_filter
+    int grad_filter_idx = out_c * (in_channels * kernel_height * kernel_width) +
+        in_c * (kernel_height * kernel_width) +
+        ky * kernel_width + kx;
+    output[grad_filter_idx] = sum;
+}
+
+
+
+extern "C" __global__ void  cross_correlation(
+    const float* input1,
+    const float* input2,
+    float* output,
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int out_channels,
+    int out_height,
+    int out_width,
+    int kernel_height,
+    int kernel_width,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w) {
+
+    cross_correlation_kernel<float>(input1,
+        input2,
+        output,
+        batch_size,
+        in_channels,
+        in_height,
+        in_width,
+        out_channels,
+        out_height,
+        out_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w);
+}
+
+
+
+extern "C" __global__ void cross_correlation_f64(
+    const double* input1,
+    const double* input2,
+    double* output,
+    int batch_size,
+    int in_channels,
+    int in_height,
+    int in_width,
+    int out_channels,
+    int out_height,
+    int out_width,
+    int kernel_height,
+    int kernel_width,
+    int stride_h,
+    int stride_w,
+    int pad_h,
+    int pad_w) {
+
+    cross_correlation_kernel<double>(input1,
+        input2,
+        output,
+        batch_size,
+        in_channels,
+        in_height,
+        in_width,
+        out_channels,
+        out_height,
+        out_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w);
+}

@@ -644,6 +644,12 @@ int main() {
     run_and_time_conv2d("conv2d_forward", conv2d_forward,
         d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+    run_and_time_conv2d("conv2d_backward_wrt_input", conv2d_backward_wrt_input,
+        d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
+        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+    run_and_time_conv2d("conv2d_backward_wrt_filter", conv2d_backward_wrt_filter,
+        d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
+        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
     printf("\n=== FLOAT64 BINARY OPERATIONS ===\n");
     run_and_time_kernel_binary("elementwise_add_f64", elementwise_add_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
@@ -706,6 +712,12 @@ int main() {
 
     printf("\n=== FLOAT64 CONVOLUTION ===\n");
     run_and_time_conv2d("conv2d_forward_f64", conv2d_forward_f64,
+        d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
+        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+    run_and_time_conv2d("conv2d_backward_wrt_input_f64", conv2d_backward_wrt_input_f64,
+        d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
+        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+    run_and_time_conv2d("conv2d_backward_wrt_filter_f64", conv2d_backward_wrt_filter_f64,
         d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
