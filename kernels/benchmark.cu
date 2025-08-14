@@ -390,6 +390,105 @@ void run_and_time_conv2d(const char* name,
     CHECK_CUDA(cudaEventDestroy(stop));
 }
 
+template <typename T>
+void run_and_time_cross_correlation(const char* name,
+    void (*kernel)(const T*, const T*, T*, int, int, int, int, int, int, int, int, int, int, int, int, int),
+    const T* d_input1, const T* d_input2, T* d_output,
+    int batch_size, int in_channels, int in_height, int in_width,
+    int out_channels, int out_height, int out_width,
+    int kernel_height, int kernel_width, int stride_h, int stride_w, int pad_h, int pad_w) {
+
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    // CORRECTED: Match ops.rs cross_correlation launch config exactly
+    // ops.rs uses: grid_x = kernel_width.div_ceil(16), grid_y = kernel_height.div_ceil(16), grid_z = in_channels * out_channels
+    // block_dim: (16, 16, 1), shared_mem_bytes: 0
+
+    dim3 block(16, 16, 1);  // TILE_SIZE = 16 from ops.rs
+    dim3 grid((kernel_width + 15) / 16,     // grid_x = kernel_width.div_ceil(16)
+        (kernel_height + 15) / 16,    // grid_y = kernel_height.div_ceil(16)
+        in_channels * out_channels);  // grid_z = in_channels * out_channels
+
+    CHECK_CUDA(cudaEventRecord(start));
+    kernel << <grid, block >> > (
+        d_input1, d_input2, d_output,
+        batch_size, in_channels, in_height, in_width,
+        out_channels, out_height, out_width,
+        kernel_height, kernel_width, stride_h, stride_w, pad_h, pad_w);
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+
+    float ms;
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
+
+    // Calculate GFLOPS for cross-correlation
+    long long ops = (long long)batch_size * in_channels * out_channels *
+        kernel_height * kernel_width * out_height * out_width * 2; // 2 for MAC
+    double gflops = ops / (ms * 1e6);
+
+    printf("%-25s took %.3f ms (%.1f GFLOPS)\n", name, ms, gflops);
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+}
+
+// For deconv2d - this might be using wrong output dimensions in grid calculation
+template <typename T>
+void run_and_time_deconv2d(const char* name,
+    void (*kernel)(const T*, const T*, T*, int, int, int, int, int, int, int, int, int, int, int, int, int),
+    const T* d_input, const T* d_filter, T* d_output,
+    int batch_size, int in_channels, int in_height, int in_width,
+    int out_channels, int out_height, int out_width,
+    int kernel_height, int kernel_width, int stride_h, int stride_w, int pad_h, int pad_w) {
+
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    // CORRECTED: For deconv2d, ops.rs uses the output dimensions for grid calculation
+    // Based on deconv2d implementation in ops.rs:
+    // grid_x = output_shape[3].div_ceil(TILE_SIZE as usize) = out_width.div_ceil(16)
+    // grid_y = output_shape[2].div_ceil(TILE_SIZE as usize) = out_height.div_ceil(16)
+    // grid_z = batch_size * output_shape[1] = batch_size * out_channels
+
+    dim3 block(TILE_SIZE, TILE_SIZE, 1);  // 16x16 threads per block
+    dim3 grid((out_width + TILE_SIZE - 1) / TILE_SIZE,   // Cover output width
+        (out_height + TILE_SIZE - 1) / TILE_SIZE,  // Cover output height
+        batch_size * out_channels);                // Cover all batches and output channels
+
+    // Calculate shared memory size to match ops.rs implementation exactly
+    // For deconv2d, ops.rs uses same shared memory calculation as conv2d_forward
+    int input_tile_h = TILE_SIZE + kernel_height - 1;
+    int input_tile_w = TILE_SIZE + kernel_width - 1;
+    int filter_size = kernel_height * kernel_width;
+    size_t shared_mem_size = (input_tile_h * input_tile_w + filter_size) * sizeof(T);
+
+    CHECK_CUDA(cudaEventRecord(start));
+    kernel << <grid, block, shared_mem_size >> > (
+        d_input, d_filter, d_output,
+        batch_size, in_channels, in_height, in_width,
+        out_channels, out_height, out_width,
+        kernel_height, kernel_width, stride_h, stride_w, pad_h, pad_w);
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+
+    float ms;
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
+
+    // Calculate GFLOPS for deconvolution
+    long long ops = (long long)batch_size * out_channels * out_height * out_width *
+        in_channels * kernel_height * kernel_width * 2; // 2 for MAC
+    double gflops = ops / (ms * 1e6);
+
+    printf("%-25s took %.3f ms (%.1f GFLOPS, %dx%dx%dx%d)\n",
+        name, ms, gflops, batch_size, out_channels, out_height, out_width);
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+}
+
 
 template <typename T>
 void run_and_time_conv1d(const char* name,
@@ -644,10 +743,10 @@ int main() {
     run_and_time_conv2d("conv2d_forward", conv2d_forward,
         d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_conv2d("conv2d_backward_wrt_input", conv2d_backward_wrt_input,
+    run_and_time_deconv2d("deconv2d", deconv2d,
         d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_conv2d("conv2d_backward_wrt_filter", conv2d_backward_wrt_filter,
+    run_and_time_cross_correlation("cross_correlation", cross_correlation,
         d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
@@ -714,10 +813,10 @@ int main() {
     run_and_time_conv2d("conv2d_forward_f64", conv2d_forward_f64,
         d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_conv2d("conv2d_backward_wrt_input_f64", conv2d_backward_wrt_input_f64,
+    run_and_time_deconv2d("deconv2d_f64", deconv2d_f64,
         d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_conv2d("conv2d_backward_wrt_filter_f64", conv2d_backward_wrt_filter_f64,
+    run_and_time_cross_correlation("cross_correlation_f64", cross_correlation_f64,
         d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
