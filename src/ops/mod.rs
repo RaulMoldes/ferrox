@@ -719,7 +719,7 @@ mod ops_tests {
     }
 
     #[test]
-    fn conv2d_pytorch_reference_test() {
+    fn conv2d_test() {
         // Test against PyTorch reference values - exact same data as our validation tests
         let input_data = vec![
             // Channel 0
@@ -775,7 +775,7 @@ mod ops_tests {
             &[1, 4, 5, 5],
             &expected_values,
             1e-3,
-            "Conv2d_PyTorch_Reference"
+            "Conv2d_Test"
         );
     }
 
