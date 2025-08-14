@@ -149,29 +149,14 @@ __device__ void elementwise_max_kernel(
     T* c,
     int size
 ) {
-    __shared__ T shared_a[BLOCK_SIZE];
-    __shared__ T shared_b[BLOCK_SIZE];
 
-    int tid = threadIdx.x;
+
     int idx = get_global_idx();
-    int block_size = blockDim.x;
 
-    for (int offset = 0; offset < size; offset += gridDim.x * block_size) {
-        int global_idx = offset + idx;
-
-        if (global_idx < size) {
-            shared_a[tid] = a[global_idx];
-            shared_b[tid] = b[global_idx];
-        }
-
-        __syncthreads();
-
-        if (global_idx < size) {
-            c[global_idx] = max(shared_a[tid], shared_b[tid]);
-        }
-
-        __syncthreads();
+    if (idx < size) {
+        c[idx] = max(a[idx], b[idx]);
     }
+
 }
 
 template<typename T>
@@ -181,28 +166,10 @@ __device__ void elementwise_min_kernel(
     T* c,
     int size
 ) {
-    __shared__ T shared_a[BLOCK_SIZE];
-    __shared__ T shared_b[BLOCK_SIZE];
-
-    int tid = threadIdx.x;
     int idx = get_global_idx();
-    int block_size = blockDim.x;
 
-    // Load data into shared memory in chunks
-    for (int offset = 0; offset < size; offset += gridDim.x * block_size) {
-        int global_idx = offset + idx;
-
-        if (global_idx < size) {
-            shared_a[tid] = a[global_idx];
-            shared_b[tid] = b[global_idx];
-
-            __syncthreads();
-
-            // Compute and store result
-            c[global_idx] = min(shared_a[tid], shared_b[tid]);
-        }
-
-        __syncthreads();
+    if (idx < size) {
+        c[idx] = min(a[idx], b[idx]);
     }
 }
 
