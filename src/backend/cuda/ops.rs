@@ -86,6 +86,33 @@ impl<T: FerroxCudaN> CudaOps<T> {
         }
     }
 
+    /// Get optimized launch configuration for reduction operations
+    /// This minimizes warp stalls by ensuring proper occupancy and memory coalescing
+    fn get_reduction_launch_config(&self, total_output_elements: usize, axis_size: usize) -> LaunchConfig {
+        // Calculate optimal block size based on axis size and GPU occupancy
+        let optimal_block_size = if axis_size <= 32 {
+            // For small reductions, use smaller blocks to increase occupancy
+            64
+        } else if axis_size <= 128 {
+            128
+        } else if axis_size <= 512 {
+            256
+        } else {
+            // For large reductions, use full occupancy
+            512
+        };
+
+        // Grid size should match the number of output elements
+        // Each block handles one output element
+        let grid_size = total_output_elements.min(65535); // Max CUDA grid dimension
+
+        LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (optimal_block_size as u32, 1, 1),
+            shared_mem_bytes: 0, // We use minimal shared memory in optimized kernels
+        }
+    }
+
     /// Helper method to use the cuda memory pool
     fn create_tensor_from_pool(&self, shape: &[usize]) -> Result<CudaTensor<T>, String> {
         let size = shape.iter().product();
@@ -326,7 +353,19 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
         let size = a.size();
         let mut result = self.create_tensor_from_pool(a.shape())?;
-        let cfg = self.get_launch_config(size);
+
+
+        let cfg = if std::mem::size_of::<T>() == 8 {
+            // f64: Use vectorization (2 elements per thread) to reduce L1TEX stalls
+            LaunchConfig {
+                grid_dim: ((size / 2).div_ceil(512) as u32, 1, 1),
+                block_dim: (512, 1, 1),
+                shared_mem_bytes: 0,
+            }
+        } else {
+            // f32: Use standard configuration (1 element per thread)
+            self.get_launch_config(size)
+        };
 
         self.kernels
             .launch_power(cfg, a.data(), b.data(), result.data_mut(), size as i32)?;
@@ -1351,11 +1390,10 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
             let mut result = self.create_tensor_from_pool(&output_shape)?;
 
-            let cfg = LaunchConfig {
-                grid_dim: (outer_size as u32, 1, 1),
-                block_dim: (FerroxN::min(inner_size, 1024) as u32, 1, 1),
-                shared_mem_bytes: 0,
-            };
+            let total_output_elements = (outer_size * inner_size) as usize;
+
+
+            let cfg = self.get_reduction_launch_config(total_output_elements, axis_size as usize);
 
             kernel_launcher(
                 cfg,
@@ -1392,13 +1430,8 @@ impl<T: FerroxCudaN> CudaOps<T> {
             let outer_size = current_shape[..axis].iter().product::<usize>() as i32;
             let axis_size = current_shape[axis] as i32;
             let inner_size = current_shape[axis + 1..].iter().product::<usize>() as i32;
-
-            let cfg = LaunchConfig {
-                grid_dim: (outer_size as u32, 1, 1),
-                block_dim: (FerroxN::min(inner_size, 1024) as u32, 1, 1),
-                shared_mem_bytes: 0,
-            };
-
+            let total_output_elements = (outer_size * inner_size) as usize;
+            let cfg = self.get_reduction_launch_config(total_output_elements, axis_size as usize);
             if step_idx == sorted_axes.len() - 1 {
                 // Final step - write directly to result
                 kernel_launcher(
