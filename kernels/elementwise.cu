@@ -356,28 +356,45 @@ extern "C" __global__ void elementwise_log_f64(
     }
 }
 
+// Helper function to compute power with edge case handling
+__device__ __forceinline__ double safe_pow(double base, double exponent) {
+    if (base == 0.0 && exponent == 0.0) {
+        return 1.0;
+    } else if (base == 0.0 && exponent > 0.0) {
+        return 0.0;
+    } else if (base == 0.0 && exponent < 0.0) {
+        return CUDART_INF;
+    } else if (base < 0.0 && floor(exponent) != exponent) {
+        return CUDART_NAN;
+    } else {
+        return pow(base, exponent);
+    }
+}
+
+// Decided to change this kernel as L1TEX pipeline had become a limiter
 extern "C" __global__ void elementwise_pow_f64(
-    const double* a,
-    const double* b,
-    double* output,
+    const double* __restrict__ a,
+    const double* __restrict__ b,
+    double* __restrict__ output,
     int size
 ) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        double base = a[idx];
-        double exponent = b[idx];
+    int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 2; // Process 2 elements per thread
 
-        if (base == 0.0 && exponent == 0.0) {
-            output[idx] = 1.0;
-        } else if (base == 0.0 && exponent > 0.0) {
-            output[idx] = 0.0;
-        } else if (base == 0.0 && exponent < 0.0) {
-            output[idx] = CUDART_INF;
-        } else if (base < 0.0 && floor(exponent) != exponent) {
-            output[idx] = CUDART_NAN;
-        } else {
-            output[idx] = pow(base, exponent);
-        }
+    if (idx + 1 < size) {
+        // Load 2 doubles at once from both arrays (reduces L1TEX pressure)
+        double2 base_data = reinterpret_cast<const double2*>(a)[idx >> 1];
+        double2 exp_data = reinterpret_cast<const double2*>(b)[idx >> 1];
+
+        // Compute both using helper function
+        double2 result_data;
+        result_data.x = safe_pow(base_data.x, exp_data.x);
+        result_data.y = safe_pow(base_data.y, exp_data.y);
+
+        // Store 2 doubles at once
+        reinterpret_cast<double2*>(output)[idx >> 1] = result_data;
+    } else if (idx < size) {
+        // Handle remaining element
+        output[idx] = safe_pow(a[idx], b[idx]);
     }
 }
 

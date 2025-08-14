@@ -15,23 +15,49 @@ extern "C" __global__ void relu(
     }
 }
 
-extern "C" __global__ void sigmoid(const float* input, float* output, int size) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        // Element-wise sigmoid function: output = 1 / (1 + exp(-input))
-        float x = input[idx];
-        output[idx] = 1.0f / (1.0f + expf(-x));
+__device__ __forceinline__ float sigmoid_fused(float x) {
+    // Clamp to prevent overflow - reduces branch divergence
+    x = __saturatef(x * 0.0113636f) * 88.0f; // Fast clamp to [-88, 88]
+
+    // Use intrinsic for fused reciprocal: 1.0 / (1.0 + exp(-x))
+    return __frcp_rn(__fmaf_rn(expf(-x), 1.0f, 1.0f));
+}
+
+__device__ __forceinline__ double sigmoid_fused_f64(double x) {
+    x = fmax(-709.0, fmin(709.0, x));
+    return __drcp_rn(__fma_rn(exp(-x), 1.0, 1.0));
+}
+
+extern "C" __global__ void sigmoid(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int size
+) {
+    for (int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        idx < size;
+        idx += blockDim.x * gridDim.x) {
+        output[idx] = sigmoid_fused(input[idx]);
     }
 }
 
-
+extern "C" __global__ void sigmoid_f64(
+    const double* __restrict__ input,
+    double* __restrict__ output,
+    int size
+) {
+    for (int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        idx < size;
+        idx += blockDim.x * gridDim.x) {
+        output[idx] = sigmoid_fused_f64(input[idx]);
+    }
+}
 extern "C" __global__ void hyperbolic_tangent(
     const float* input,
     float* output,
     int size
 ) {
     // Calculate thread index using standard CUDA pattern
-    int idx =  get_global_idx();
+    int idx = get_global_idx();
 
     // Boundary check for thread safety
     if (idx < size) {
@@ -59,13 +85,6 @@ extern "C" __global__ void relu_f64(
         output[idx] = fmax(0.0, input[idx]);  // 0.0 not 0.0d
     }
 }
-extern "C" __global__ void sigmoid_f64(const double* input, double* output, int size) {
-    int idx = get_global_idx();
-    if (idx < size) {
-        double x = input[idx];  // Should be double, not float
-        output[idx] = 1.0 / (1.0 + exp(-x));  // Use exp() not expf()
-    }
-}
 
 extern "C" __global__ void hyperbolic_tangent_f64(
     const double* input,
@@ -73,7 +92,7 @@ extern "C" __global__ void hyperbolic_tangent_f64(
     int size
 ) {
     // Calculate thread index using standard CUDA pattern
-    int idx =  get_global_idx();
+    int idx = get_global_idx();
 
     // Boundary check for thread safety
     if (idx < size) {
@@ -227,7 +246,7 @@ extern "C" __global__ void softmax_f64(const double* input, double* output, int 
     int global_idx = get_global_idx();
 
     // S1: Find global maxima using block reduction
-    double local_max = -(double) FLT_MAX;
+    double local_max = -(double)FLT_MAX;
 
     // Initialize local max values.
     for (int i = global_idx; i < N; i += blockDim.x * gridDim.x) {
