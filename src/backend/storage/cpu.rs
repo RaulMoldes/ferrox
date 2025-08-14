@@ -51,160 +51,6 @@ impl<T: Clone> CPUStorage<T> {
     }
 }
 
-impl<T> CPUStorage<T>
-where
-    T: crate::backend::number::FerroxCudaN + Clone,
-{
-    /// Convert image patches to column matrix (im2col) - reused from original impl
-    /// This transforms 4D convolution into efficient 2D matrix multiplication
-    fn im2col(
-        &self,
-        kernel_size: (usize, usize),
-        stride: (usize, usize),
-        padding: (usize, usize),
-    ) -> Result<ArrayD<T>, String> {
-        let input_shape = self.shape();
-        let (batch, channels, in_h, in_w) = (
-            input_shape[0],
-            input_shape[1],
-            input_shape[2],
-            input_shape[3],
-        );
-        let (kernel_h, kernel_w) = kernel_size;
-
-        let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
-        let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-
-        let col_height = channels * kernel_h * kernel_w;
-        let col_width = batch * out_h * out_w;
-
-        let mut col_data = vec![FerroxN::zero(); col_height * col_width];
-
-        // Use effective data access for logical views
-        let input_data = if let Some(data) = self.data.as_slice() {
-            data
-        } else {
-            return Err("Input data is empty or not contiguous!".to_string());
-        };
-
-        // Extract patches and arrange them as columns for matrix multiplication
-        for b in 0..batch {
-            for c in 0..channels {
-                for ky in 0..kernel_h {
-                    for kx in 0..kernel_w {
-                        let col_row = c * kernel_h * kernel_w + ky * kernel_w + kx;
-
-                        for out_y in 0..out_h {
-                            for out_x in 0..out_w {
-                                let in_y = out_y * stride.0 + ky;
-                                let in_x = out_x * stride.1 + kx;
-                                let col_col = b * out_h * out_w + out_y * out_w + out_x;
-
-                                // Handle padding by checking bounds
-                                if in_y >= padding.0
-                                    && in_y < in_h + padding.0
-                                    && in_x >= padding.1
-                                    && in_x < in_w + padding.1
-                                {
-                                    let actual_y = in_y - padding.0;
-                                    let actual_x = in_x - padding.1;
-
-                                    if actual_y < in_h && actual_x < in_w {
-                                        let input_idx = b * (channels * in_h * in_w)
-                                            + c * (in_h * in_w)
-                                            + actual_y * in_w
-                                            + actual_x;
-                                        col_data[col_row * col_width + col_col] =
-                                            input_data[input_idx];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        ArrayD::from_shape_vec(IxDyn(&[col_height, col_width]), col_data)
-            .map_err(|e| format!("Failed to create im2col matrix: {e}"))
-    }
-
-    /// Standard 2D convolution implementation using im2col + GEMM
-    fn conv2d_impl(
-        &self,
-        filter: &ArrayD<T>,
-        stride: (usize, usize),
-        padding: (usize, usize),
-    ) -> Result<ArrayD<T>, String> {
-        let input_shape = self.shape();
-        let filter_shape = filter.shape();
-
-        let (batch, in_channels, in_h, in_w) = (
-            input_shape[0],
-            input_shape[1],
-            input_shape[2],
-            input_shape[3],
-        );
-        let (out_channels, _, kernel_h, kernel_w) = (
-            filter_shape[0],
-            filter_shape[1],
-            filter_shape[2],
-            filter_shape[3],
-        );
-
-        let out_h = (in_h + 2 * padding.0 - kernel_h) / stride.0 + 1;
-        let out_w = (in_w + 2 * padding.1 - kernel_w) / stride.1 + 1;
-
-        // Transform input to column matrix for efficient GEMM
-        let col_matrix = self.im2col((kernel_h, kernel_w), stride, padding)?;
-
-        // Reshape filter for matrix multiplication
-        let filter_reshaped = filter
-            .clone()
-            .into_shape_with_order(IxDyn(&[out_channels, in_channels * kernel_h * kernel_w]))
-            .map_err(|e| format!("Filter reshape failed: {e}"))?;
-
-        // Perform convolution as matrix multiplication: filter @ col_matrix
-        let im2col_view: ndarray::ArrayView2<T> = col_matrix
-            .view()
-            .into_dimensionality()
-            .map_err(|e| format!("Shape error: {e}"))?;
-
-        let filter_view: ndarray::ArrayView2<T> = filter_reshaped
-            .view()
-            .into_dimensionality()
-            .map_err(|e| format!("Shape error: {e}"))?;
-
-        let output_2d = filter_view.dot(&im2col_view);
-
-        // Transpose result from [out_channels, batch * out_h * out_w] to [batch, out_channels, out_h, out_w]
-        let output_data: Vec<T> = if let Some(out_slice) = output_2d.as_slice() {
-            out_slice.to_vec()
-        } else {
-            return Err("Failed to get contiguous output data".to_string());
-        };
-        let mut final_output = vec![FerroxN::zero(); batch * out_channels * out_h * out_w];
-
-        for out_c in 0..out_channels {
-            for b in 0..batch {
-                for y in 0..out_h {
-                    for x in 0..out_w {
-                        let src_idx =
-                            out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
-                        let dst_idx = b * (out_channels * out_h * out_w)
-                            + out_c * (out_h * out_w)
-                            + y * out_w
-                            + x;
-                        final_output[dst_idx] = output_data[src_idx];
-                    }
-                }
-            }
-        }
-
-        ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
-            .map_err(|e| format!("Failed to create output tensor: {e}"))
-    }
-}
 
 impl<T> CPUStorage<T>
 where
@@ -1232,6 +1078,47 @@ where
         let result = self.conv2d_impl(filter_data, stride, padding)?;
         Ok(Box::new(CPUStorage::new(result)))
     }
+
+
+    fn deconv2d(
+        &self,
+        input: &dyn StorageBackend<T>,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Ensure filter is also CPU storage
+        let filter_data = filter.cpu_data()?;
+        let filter_shape = filter.shape();
+
+        let input_shape = input.shape();
+        // Validate input dimensions for conv2d
+        if input_shape.len() != 4 || filter_shape.len() != 4 || self.shape().len() != 4 {
+            return Err("Deconv2D requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+        let result = self.deconv2d_impl( filter_data, input_shape, stride, padding)?;
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
+    fn cross_correlation(
+            &self,
+            other: &dyn StorageBackend<T>,
+            output_shape: &[usize],
+            stride: (usize, usize),
+            padding: (usize, usize),
+        ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+        let other_shape = other.shape();
+        if self.shape().len() != 4 || other_shape.len() != 4 {
+            return Err("Cross correlation requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+        let result = self.cross_correlation_impl(other_data,  output_shape, stride, padding)?;
+        Ok(Box::new(CPUStorage::new(result)))
+
+
+    }
+
+
 
     fn iter_values(&self) -> Result<Vec<T>, String> {
         // Efficient cloning of all values for iteration

@@ -585,6 +585,9 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
+
+
+
     /// Batch-aware softmax along specified axis
     /// More efficient than partitioning as it processes all batches in parallel
     pub fn softmax_batched(
@@ -1313,6 +1316,178 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
         Ok(result)
     }
+
+
+        #[allow(clippy::too_many_arguments)]
+    pub fn deconv2d(
+        &self,
+        input_in: &CudaTensor<T>,
+        filter_in: &CudaTensor<T>,
+        input_shape: &[usize],
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<CudaTensor<T>, String> {
+        let input = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        let filter = if filter_in.needs_materialization() {
+            &self.materialize(filter_in)?
+        } else {
+            filter_in
+        };
+
+        // Validate dimensions
+        if input.shape.len() != 4 || filter.shape.len() != 4 || input_shape.len() != 4 {
+            return Err("Conv2d backward requires 4D tensors".to_string());
+        }
+
+        let batch_size = input_shape[0];
+        let in_channels = input_shape[1];
+        let in_height = input_shape[2];
+        let in_width = input_shape[3];
+
+        let out_channels = input.shape[1];
+        let out_height = input.shape[2];
+        let out_width = input.shape[3];
+
+        let kernel_height = filter.shape[2];
+        let kernel_width = filter.shape[3];
+
+        let stride_h = stride.0;
+        let stride_w = stride.1;
+        let pad_h = padding.0;
+        let pad_w = padding.1;
+
+        // Create output tensor with input shape
+        let mut result = self.create_tensor_from_pool(input_shape)?;
+
+        // Configure launch parameters for input gradient
+        let grid_x = in_width.div_ceil(TILE_SIZE as usize);
+        let grid_y = in_height.div_ceil(TILE_SIZE as usize);
+        let grid_z = batch_size * in_channels;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_x as u32, grid_y as u32, grid_z as u32),
+            block_dim: (TILE_SIZE, TILE_SIZE, 1),
+            shared_mem_bytes: {
+                let filter_size = kernel_height * kernel_width;
+                (filter_size * std::mem::size_of::<T>()).try_into().unwrap()
+            },
+        };
+
+        // Launch backward input kernel
+        self.kernels.launch_deconv2d(
+            cfg,
+            input.data(),
+            filter.data(),
+            result.data_mut(),
+            batch_size as i32,
+            in_channels as i32,
+            in_height as i32,
+            in_width as i32,
+            out_channels as i32,
+            out_height as i32,
+            out_width as i32,
+            kernel_height as i32,
+            kernel_width as i32,
+            stride_h as i32,
+            stride_w as i32,
+            pad_h as i32,
+            pad_w as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 2D Convolution backward pass - gradient w.r.t. filter weights
+    /// Used in automatic differentiation for Conv2d operator
+    #[allow(clippy::too_many_arguments)]
+    pub fn cross_correlation(
+        &self,
+        input_in1: &CudaTensor<T>,
+        input_in2: &CudaTensor<T>,
+        output_shape: &[usize],
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<CudaTensor<T>, String> {
+        let input1 = if input_in1.needs_materialization() {
+            &self.materialize(input_in1)?
+        } else {
+            input_in1
+        };
+
+        let input2 = if input_in2.needs_materialization() {
+            &self.materialize(input_in2)?
+        } else {
+            input_in2
+        };
+
+        // Validate dimensions
+        if input1.shape.len() != 4 || input2.shape.len() != 4 || output_shape.len() != 4 {
+            return Err("Cross correlation requires 4D tensors".to_string());
+        }
+
+        let batch_size = input1.shape[0];
+        let in_channels = input1.shape[1];
+        let in_height = input1.shape[2];
+        let in_width = input1.shape[3];
+
+        let out_channels = output_shape[0];
+        let out_height = input2.shape[2];
+        let out_width = input2.shape[3];
+
+        let kernel_height = output_shape[2];
+        let kernel_width = output_shape[3];
+
+        let stride_h = stride.0;
+        let stride_w = stride.1;
+        let pad_h = padding.0;
+        let pad_w = padding.1;
+
+        // Create output tensor with filter shape
+        let mut result = self.create_tensor_from_pool(output_shape)?;
+
+        // Configure launch parameters for filter gradient
+        let grid_x = kernel_width.div_ceil(16);
+        let grid_y = kernel_height.div_ceil(16);
+        let grid_z = in_channels * out_channels;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_x as u32, grid_y as u32, grid_z as u32),
+            block_dim: (16, 16, 1),
+            shared_mem_bytes: 0, // No shared memory needed for filter gradient
+        };
+
+        // Launch backward filter kernel
+        self.kernels.launch_cross_correlation(
+            cfg,
+            input1.data(),
+            input2.data(),
+            result.data_mut(),
+            batch_size as i32,
+            in_channels as i32,
+            in_height as i32,
+            in_width as i32,
+            out_channels as i32,
+            out_height as i32,
+            out_width as i32,
+            kernel_height as i32,
+            kernel_width as i32,
+            stride_h as i32,
+            stride_w as i32,
+            pad_h as i32,
+            pad_w as i32,
+        )?;
+
+        Ok(result)
+    }
+
+
+
+
 
     pub fn debug_cuda_tensor(&self, tensor: &CudaTensor<T>, name: &str) -> Result<(), String> {
         with_cuda_context(|ctx| {

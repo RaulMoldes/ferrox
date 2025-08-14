@@ -1359,6 +1359,86 @@ where
         let result_storage = storage.conv2d(filter_storage.as_ref(), stride, padding)?;
         Self::from_storage_backend(result_storage, self.device)
     }
+
+
+     /// 2D Deconvolution - gradient w.r.t. input
+    /// Used in automatic differentiation for Conv2d backward pass
+    ///
+    /// # Arguments
+    /// * `input` - Original input tensor (for shape reference) [batch, in_channels, height, width]
+    /// * `filter` - Filter weights tensor [out_channels, in_channels, kernel_h, kernel_w]
+    /// * `stride` - Stride for the deconvolution
+    /// * `padding` - Padding for the deconvolution
+    ///
+    /// # Returns
+    /// Gradient w.r.t. input with same shape as `input`
+    pub fn deconv2d(
+        &self, // self = grad_output
+        input: &Self,
+        filter: &Self,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let input_storage = input
+            .storage
+            .as_ref()
+            .ok_or("Input tensor has no storage backend")?;
+        let filter_storage = filter
+            .storage
+            .as_ref()
+            .ok_or("Filter tensor has no storage backend")?;
+
+        let result_storage = storage.deconv2d(
+            input_storage.as_ref(),
+            filter_storage.as_ref(),
+            stride,
+            padding,
+        )?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+
+     /// 2D Cross-correlation - gradient w.r.t. filter weights
+    /// Used in automatic differentiation for Conv2d backward pass
+    ///
+    /// # Arguments
+    /// * `grad_output` - Gradient from the output [batch, out_channels, out_h, out_w]
+    /// * `filter_shape` - Shape of the filter [out_channels, in_channels, kernel_h, kernel_w]
+    /// * `stride` - Stride used in the original convolution
+    /// * `padding` - Padding used in the original convolution
+    ///
+    /// # Returns
+    /// Gradient w.r.t. filter weights with shape `filter_shape`
+    pub fn cross_correlation(
+        &self, // self = input
+        grad_output: &Self,
+        filter_shape: &[usize],
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let grad_output_storage = grad_output
+            .storage
+            .as_ref()
+            .ok_or("Grad_output tensor has no storage backend")?;
+
+        let result_storage = storage.cross_correlation(
+            grad_output_storage.as_ref(),
+            filter_shape,
+            stride,
+            padding,
+        )?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
 }
 
 impl<T> Tensor<T>

@@ -1,4 +1,5 @@
 mod cpu;
+mod extensions;
 #[cfg(feature = "cuda")]
 mod cuda;
 
@@ -83,6 +84,8 @@ where
     /// Scalar multiplication: self * scalar
     /// More efficient than broadcasting scalar to tensor shape
     fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+
 
     /// Scalar division: self / scalar
     /// More efficient than broadcasting scalar to tensor shape
@@ -274,6 +277,22 @@ where
     /// Returns new storage with convolution result - doesn't modify inputs
     fn conv2d(
         &self,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    fn cross_correlation(
+        &self,
+        other: &dyn StorageBackend<T>,
+        output_shape: &[usize],
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    fn deconv2d(
+        &self,
+        input: &dyn StorageBackend<T>,
         filter: &dyn StorageBackend<T>,
         stride: (usize, usize),
         padding: (usize, usize),

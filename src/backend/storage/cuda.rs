@@ -936,6 +936,85 @@ where
         }
     }
 
+
+
+    fn deconv2d(
+        &self,
+        input: &dyn StorageBackend<T>,
+        filter: &dyn StorageBackend<T>,
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+
+        let filter_shape = filter.shape();
+
+        let input_shape = input.shape();
+        // Validate input dimensions for conv2d
+        if input_shape.len() != 4 || filter_shape.len() != 4 || self.shape().len() != 4 {
+            return Err("Deconv2D requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+
+         if filter.is_gpu() {
+            // Both tensors on GPU - use CUDA kernels
+            let filter_gpu = filter
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast filter to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.deconv2d(&self.cuda_data, &filter_gpu.cuda_data, self.shape(), stride, padding)
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err(
+                "Mixed GPU/CPU deconvolution not supported - move both tensors to same device"
+                    .to_string(),
+            )
+        }
+
+
+    }
+
+    fn cross_correlation(
+            &self,
+            other: &dyn StorageBackend<T>,
+            output_shape: &[usize],
+            stride: (usize, usize),
+            padding: (usize, usize),
+        ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
+        let other_shape = other.shape();
+        if self.shape().len() != 4 || other_shape.len() != 4 {
+            return Err("Cross correlation requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+
+        if other.is_gpu() {
+            // Both tensors on GPU - use CUDA kernels
+            let filter_gpu = other
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast filter to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.cross_correlation(&self.cuda_data, &filter_gpu.cuda_data, self.shape(), stride, padding)
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err(
+                "Mixed GPU/CPU deconvolution not supported - move both tensors to same device"
+                    .to_string(),
+            )
+        }
+
+    
+
+
+    }
+
     // Note that this ops require moving the data to the CPU
     fn iter_values(&self) -> Result<Vec<T>, String> {
         Err("Cannot iterate over a tensor in cuda. Move to cpu first.".to_string())

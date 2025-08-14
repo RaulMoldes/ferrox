@@ -134,7 +134,14 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         name: "convolutions",
         ptx: CONVOLUTIONS_PTX,
         module: "convolutions_module",
-        functions: &["conv2d_forward", "conv2d_forward_f64"],
+        functions: &[
+        "conv2d_forward",
+        "conv2d_forward_f64",
+        "deconv2d",
+        "deconv2d_f64",
+        "cross_correlation",
+        "cross_correlation_f64"
+        ],
     },
     KernelConfig {
         name: "fill",
@@ -1133,8 +1140,9 @@ impl KernelManager {
     /// CONVOLUTIONAL KERNELS
     /// Launch 2D convolution with bias support
     #[allow(clippy::too_many_arguments)]
-    pub fn launch_conv2d_forward<T>(
+    pub fn launch_conv2d<T>(
         &self,
+        kernel_base: &str,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
         filter: &CudaSlice<T>,
@@ -1156,7 +1164,7 @@ impl KernelManager {
     where
         T: FerroxCudaN + 'static,
     {
-        let kernel_name = self.get_kernel_name::<T>("conv2d_forward");
+        let kernel_name = self.get_kernel_name::<T>(kernel_base);
 
         launch_kernel!(
             self,
@@ -1180,6 +1188,152 @@ impl KernelManager {
             &pad_w
         )
     }
+
+
+     #[allow(clippy::too_many_arguments)]
+    pub fn launch_conv2d_forward<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        in_channels: i32,
+        in_height: i32,
+        in_width: i32,
+        out_channels: i32,
+        out_height: i32,
+        out_width: i32,
+        kernel_height: i32,
+        kernel_width: i32,
+        stride_h: i32,
+        stride_w: i32,
+        pad_h: i32,
+        pad_w: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_conv2d(
+            "conv2d_forward",
+            cfg,
+            input,
+            filter,
+            output,
+            batch_size,
+            in_channels,
+            in_height,
+            in_width,
+            out_channels,
+            out_height,
+            out_width,
+            kernel_height,
+            kernel_width,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w
+        )
+    }
+
+
+
+     #[allow(clippy::too_many_arguments)]
+    pub fn launch_deconv2d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        in_channels: i32,
+        in_height: i32,
+        in_width: i32,
+        out_channels: i32,
+        out_height: i32,
+        out_width: i32,
+        kernel_height: i32,
+        kernel_width: i32,
+        stride_h: i32,
+        stride_w: i32,
+        pad_h: i32,
+        pad_w: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_conv2d(
+            "deconv2d",
+            cfg,
+            input,
+            filter,
+            output,
+            batch_size,
+            in_channels,
+            in_height,
+            in_width,
+            out_channels,
+            out_height,
+            out_width,
+            kernel_height,
+            kernel_width,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w
+        )
+    }
+
+
+     #[allow(clippy::too_many_arguments)]
+    pub fn launch_cross_correlation<T>(
+        &self,
+        cfg: LaunchConfig,
+        input1: &CudaSlice<T>,
+        input2: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        in_channels: i32,
+        in_height: i32,
+        in_width: i32,
+        out_channels: i32,
+        out_height: i32,
+        out_width: i32,
+        kernel_height: i32,
+        kernel_width: i32,
+        stride_h: i32,
+        stride_w: i32,
+        pad_h: i32,
+        pad_w: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_conv2d(
+            "cross_correlation",
+            cfg,
+            input1,
+            input2,
+            output,
+            batch_size,
+            in_channels,
+            in_height,
+            in_width,
+            out_channels,
+            out_height,
+            out_width,
+            kernel_height,
+            kernel_width,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w
+        )
+    }
+
+
+
+
 
     pub fn get_stream(&self) -> &Arc<CudaStream> {
         &self.stream
