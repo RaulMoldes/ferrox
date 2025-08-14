@@ -1355,13 +1355,13 @@ where
             .storage
             .as_ref()
             .ok_or("Filter tensor has no storage backend")?;
-
+        println!("Computing conv2d on device {}", self.device);
         let result_storage = storage.conv2d(filter_storage.as_ref(), stride, padding)?;
+        self.debug("AFTER CONV2D");
         Self::from_storage_backend(result_storage, self.device)
     }
 
-
-     /// 2D Deconvolution - gradient w.r.t. input
+    /// 2D Deconvolution - gradient w.r.t. input
     /// Used in automatic differentiation for Conv2d backward pass
     ///
     /// # Arguments
@@ -1374,36 +1374,30 @@ where
     /// Gradient w.r.t. input with same shape as `input`
     pub fn deconv2d(
         &self, // self = grad_output
-        input: &Self,
         filter: &Self,
+        output_shape: &[usize],
         stride: (usize, usize),
         padding: (usize, usize),
     ) -> Result<Self, String> {
+        let filter = filter.clone().to_device(self.device)?;
+
         let storage = self
             .storage
             .as_ref()
             .ok_or("Tensor has no storage backend")?;
-        let input_storage = input
-            .storage
-            .as_ref()
-            .ok_or("Input tensor has no storage backend")?;
+
         let filter_storage = filter
             .storage
             .as_ref()
             .ok_or("Filter tensor has no storage backend")?;
 
-        let result_storage = storage.deconv2d(
-            input_storage.as_ref(),
-            filter_storage.as_ref(),
-            stride,
-            padding,
-        )?;
+        let result_storage =
+            storage.deconv2d(filter_storage.as_ref(), output_shape, stride, padding)?;
 
         Self::from_storage_backend(result_storage, self.device)
     }
 
-
-     /// 2D Cross-correlation - gradient w.r.t. filter weights
+    /// 2D Cross-correlation - gradient w.r.t. filter weights
     /// Used in automatic differentiation for Conv2d backward pass
     ///
     /// # Arguments

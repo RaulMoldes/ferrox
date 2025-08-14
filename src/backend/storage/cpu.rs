@@ -51,7 +51,6 @@ impl<T: Clone> CPUStorage<T> {
     }
 }
 
-
 impl<T> CPUStorage<T>
 where
     T: FerroxCudaN,
@@ -851,7 +850,6 @@ where
             ));
         }
 
-
         let axis_obj = Axis(axis);
 
         let max_values = self
@@ -1079,11 +1077,10 @@ where
         Ok(Box::new(CPUStorage::new(result)))
     }
 
-
     fn deconv2d(
-        &self,
-        input: &dyn StorageBackend<T>,
+        &self, // I AM THE INPUT
         filter: &dyn StorageBackend<T>,
+        output_shape: &[usize],
         stride: (usize, usize),
         padding: (usize, usize),
     ) -> Result<Box<dyn StorageBackend<T>>, String> {
@@ -1091,34 +1088,34 @@ where
         let filter_data = filter.cpu_data()?;
         let filter_shape = filter.shape();
 
-        let input_shape = input.shape();
         // Validate input dimensions for conv2d
-        if input_shape.len() != 4 || filter_shape.len() != 4 || self.shape().len() != 4 {
-            return Err("Deconv2D requires 4D tensors [batch, channels, height, width]".to_string());
+        if output_shape.len() != 4 || filter_shape.len() != 4 || self.shape().len() != 4 {
+            return Err(
+                "Deconv2D requires 4D tensors [batch, channels, height, width]".to_string(),
+            );
         }
-        let result = self.deconv2d_impl( filter_data, input_shape, stride, padding)?;
+        let result = self.deconv2d_impl(filter_data, output_shape, stride, padding)?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
     fn cross_correlation(
-            &self,
-            other: &dyn StorageBackend<T>,
-            output_shape: &[usize],
-            stride: (usize, usize),
-            padding: (usize, usize),
-        ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        &self,
+        other: &dyn StorageBackend<T>,
+        output_shape: &[usize],
+        stride: (usize, usize),
+        padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         let other_data = other.cpu_data()?;
         let other_shape = other.shape();
         if self.shape().len() != 4 || other_shape.len() != 4 {
-            return Err("Cross correlation requires 4D tensors [batch, channels, height, width]".to_string());
+            return Err(
+                "Cross correlation requires 4D tensors [batch, channels, height, width]"
+                    .to_string(),
+            );
         }
-        let result = self.cross_correlation_impl(other_data,  output_shape, stride, padding)?;
+        let result = self.cross_correlation_impl(other_data, output_shape, stride, padding)?;
         Ok(Box::new(CPUStorage::new(result)))
-
-
     }
-
-
 
     fn iter_values(&self) -> Result<Vec<T>, String> {
         // Efficient cloning of all values for iteration

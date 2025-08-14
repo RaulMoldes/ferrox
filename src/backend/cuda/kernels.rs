@@ -135,12 +135,12 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
         ptx: CONVOLUTIONS_PTX,
         module: "convolutions_module",
         functions: &[
-        "conv2d_forward",
-        "conv2d_forward_f64",
-        "deconv2d",
-        "deconv2d_f64",
-        "cross_correlation",
-        "cross_correlation_f64"
+            "conv2d_forward",
+            "conv2d_forward_f64",
+            "deconv2d",
+            "deconv2d_f64",
+            "cross_correlation",
+            "cross_correlation_f64",
         ],
     },
     KernelConfig {
@@ -1189,8 +1189,7 @@ impl KernelManager {
         )
     }
 
-
-     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_conv2d_forward<T>(
         &self,
         cfg: LaunchConfig,
@@ -1232,13 +1231,11 @@ impl KernelManager {
             stride_h,
             stride_w,
             pad_h,
-            pad_w
+            pad_w,
         )
     }
 
-
-
-     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_deconv2d<T>(
         &self,
         cfg: LaunchConfig,
@@ -1280,12 +1277,11 @@ impl KernelManager {
             stride_h,
             stride_w,
             pad_h,
-            pad_w
+            pad_w,
         )
     }
 
-
-     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_cross_correlation<T>(
         &self,
         cfg: LaunchConfig,
@@ -1327,13 +1323,9 @@ impl KernelManager {
             stride_h,
             stride_w,
             pad_h,
-            pad_w
+            pad_w,
         )
     }
-
-
-
-
 
     pub fn get_stream(&self) -> &Arc<CudaStream> {
         &self.stream

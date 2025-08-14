@@ -1,7 +1,7 @@
 mod cpu;
-mod extensions;
 #[cfg(feature = "cuda")]
 mod cuda;
+mod extensions;
 
 #[cfg(feature = "cuda")]
 use crate::backend::cuda::context::CudaTensor;
@@ -84,8 +84,6 @@ where
     /// Scalar multiplication: self * scalar
     /// More efficient than broadcasting scalar to tensor shape
     fn mul_scalar(&self, scalar: T) -> Result<Box<dyn StorageBackend<T>>, String>;
-
-
 
     /// Scalar division: self / scalar
     /// More efficient than broadcasting scalar to tensor shape
@@ -291,9 +289,9 @@ where
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     fn deconv2d(
-        &self,
-        input: &dyn StorageBackend<T>,
+        &self, // I AM THE INPUT to the deconv (grad:output)
         filter: &dyn StorageBackend<T>,
+        output_shape: &[usize],
         stride: (usize, usize),
         padding: (usize, usize),
     ) -> Result<Box<dyn StorageBackend<T>>, String>;

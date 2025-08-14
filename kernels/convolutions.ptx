@@ -1511,24 +1511,24 @@ $L__BB3_62:
 	ret;
 
 }
-	// .globl	conv2d_backward_wrt_input
-.visible .entry conv2d_backward_wrt_input(
-	.param .u64 conv2d_backward_wrt_input_param_0,
-	.param .u64 conv2d_backward_wrt_input_param_1,
-	.param .u64 conv2d_backward_wrt_input_param_2,
-	.param .u32 conv2d_backward_wrt_input_param_3,
-	.param .u32 conv2d_backward_wrt_input_param_4,
-	.param .u32 conv2d_backward_wrt_input_param_5,
-	.param .u32 conv2d_backward_wrt_input_param_6,
-	.param .u32 conv2d_backward_wrt_input_param_7,
-	.param .u32 conv2d_backward_wrt_input_param_8,
-	.param .u32 conv2d_backward_wrt_input_param_9,
-	.param .u32 conv2d_backward_wrt_input_param_10,
-	.param .u32 conv2d_backward_wrt_input_param_11,
-	.param .u32 conv2d_backward_wrt_input_param_12,
-	.param .u32 conv2d_backward_wrt_input_param_13,
-	.param .u32 conv2d_backward_wrt_input_param_14,
-	.param .u32 conv2d_backward_wrt_input_param_15
+	// .globl	deconv2d
+.visible .entry deconv2d(
+	.param .u64 deconv2d_param_0,
+	.param .u64 deconv2d_param_1,
+	.param .u64 deconv2d_param_2,
+	.param .u32 deconv2d_param_3,
+	.param .u32 deconv2d_param_4,
+	.param .u32 deconv2d_param_5,
+	.param .u32 deconv2d_param_6,
+	.param .u32 deconv2d_param_7,
+	.param .u32 deconv2d_param_8,
+	.param .u32 deconv2d_param_9,
+	.param .u32 deconv2d_param_10,
+	.param .u32 deconv2d_param_11,
+	.param .u32 deconv2d_param_12,
+	.param .u32 deconv2d_param_13,
+	.param .u32 deconv2d_param_14,
+	.param .u32 deconv2d_param_15
 )
 {
 	.reg .pred 	%p<69>;
@@ -1537,21 +1537,21 @@ $L__BB3_62:
 	.reg .b64 	%rd<36>;
 
 
-	ld.param.u64 	%rd5, [conv2d_backward_wrt_input_param_0];
-	ld.param.u64 	%rd6, [conv2d_backward_wrt_input_param_1];
-	ld.param.u32 	%r84, [conv2d_backward_wrt_input_param_3];
-	ld.param.u32 	%r72, [conv2d_backward_wrt_input_param_4];
-	ld.param.u32 	%r73, [conv2d_backward_wrt_input_param_5];
-	ld.param.u32 	%r74, [conv2d_backward_wrt_input_param_6];
-	ld.param.u32 	%r75, [conv2d_backward_wrt_input_param_7];
-	ld.param.u32 	%r76, [conv2d_backward_wrt_input_param_8];
-	ld.param.u32 	%r77, [conv2d_backward_wrt_input_param_9];
-	ld.param.u32 	%r78, [conv2d_backward_wrt_input_param_10];
-	ld.param.u32 	%r79, [conv2d_backward_wrt_input_param_11];
-	ld.param.u32 	%r80, [conv2d_backward_wrt_input_param_12];
-	ld.param.u32 	%r81, [conv2d_backward_wrt_input_param_13];
-	ld.param.u32 	%r82, [conv2d_backward_wrt_input_param_14];
-	ld.param.u32 	%r83, [conv2d_backward_wrt_input_param_15];
+	ld.param.u64 	%rd5, [deconv2d_param_0];
+	ld.param.u64 	%rd6, [deconv2d_param_1];
+	ld.param.u32 	%r84, [deconv2d_param_3];
+	ld.param.u32 	%r72, [deconv2d_param_4];
+	ld.param.u32 	%r73, [deconv2d_param_5];
+	ld.param.u32 	%r74, [deconv2d_param_6];
+	ld.param.u32 	%r75, [deconv2d_param_7];
+	ld.param.u32 	%r76, [deconv2d_param_8];
+	ld.param.u32 	%r77, [deconv2d_param_9];
+	ld.param.u32 	%r78, [deconv2d_param_10];
+	ld.param.u32 	%r79, [deconv2d_param_11];
+	ld.param.u32 	%r80, [deconv2d_param_12];
+	ld.param.u32 	%r81, [deconv2d_param_13];
+	ld.param.u32 	%r82, [deconv2d_param_14];
+	ld.param.u32 	%r83, [deconv2d_param_15];
 	cvta.to.global.u64 	%rd1, %rd6;
 	cvta.to.global.u64 	%rd2, %rd5;
 	mov.u32 	%r85, %ctaid.x;
@@ -1931,7 +1931,7 @@ $L__BB4_48:
 	fma.rn.f32 	%f57, %f45, %f44, %f57;
 
 $L__BB4_54:
-	ld.param.u32 	%r181, [conv2d_backward_wrt_input_param_10];
+	ld.param.u32 	%r181, [deconv2d_param_10];
 	add.s32 	%r186, %r186, 1;
 	setp.lt.s32 	%p66, %r186, %r181;
 	@%p66 bra 	$L__BB4_13;
@@ -1946,9 +1946,9 @@ $L__BB4_56:
 	not.pred 	%p68, %p1;
 	@%p68 bra 	$L__BB4_58;
 
-	ld.param.u64 	%rd35, [conv2d_backward_wrt_input_param_2];
-	ld.param.u32 	%r177, [conv2d_backward_wrt_input_param_6];
-	ld.param.u32 	%r176, [conv2d_backward_wrt_input_param_5];
+	ld.param.u64 	%rd35, [deconv2d_param_2];
+	ld.param.u32 	%r177, [deconv2d_param_6];
+	ld.param.u32 	%r176, [deconv2d_param_5];
 	mov.u32 	%r175, %ctaid.x;
 	mov.u32 	%r174, %tid.x;
 	shl.b32 	%r173, %r175, 4;
@@ -1957,7 +1957,7 @@ $L__BB4_56:
 	mov.u32 	%r170, %tid.y;
 	shl.b32 	%r169, %r171, 4;
 	add.s32 	%r168, %r169, %r170;
-	ld.param.u32 	%r167, [conv2d_backward_wrt_input_param_4];
+	ld.param.u32 	%r167, [deconv2d_param_4];
 	mad.lo.s32 	%r164, %r6, %r167, %r5;
 	mad.lo.s32 	%r165, %r164, %r176, %r168;
 	mad.lo.s32 	%r166, %r165, %r177, %r172;
@@ -1970,24 +1970,24 @@ $L__BB4_58:
 	ret;
 
 }
-	// .globl	conv2d_backward_wrt_input_f64
-.visible .entry conv2d_backward_wrt_input_f64(
-	.param .u64 conv2d_backward_wrt_input_f64_param_0,
-	.param .u64 conv2d_backward_wrt_input_f64_param_1,
-	.param .u64 conv2d_backward_wrt_input_f64_param_2,
-	.param .u32 conv2d_backward_wrt_input_f64_param_3,
-	.param .u32 conv2d_backward_wrt_input_f64_param_4,
-	.param .u32 conv2d_backward_wrt_input_f64_param_5,
-	.param .u32 conv2d_backward_wrt_input_f64_param_6,
-	.param .u32 conv2d_backward_wrt_input_f64_param_7,
-	.param .u32 conv2d_backward_wrt_input_f64_param_8,
-	.param .u32 conv2d_backward_wrt_input_f64_param_9,
-	.param .u32 conv2d_backward_wrt_input_f64_param_10,
-	.param .u32 conv2d_backward_wrt_input_f64_param_11,
-	.param .u32 conv2d_backward_wrt_input_f64_param_12,
-	.param .u32 conv2d_backward_wrt_input_f64_param_13,
-	.param .u32 conv2d_backward_wrt_input_f64_param_14,
-	.param .u32 conv2d_backward_wrt_input_f64_param_15
+	// .globl	deconv2d_f64
+.visible .entry deconv2d_f64(
+	.param .u64 deconv2d_f64_param_0,
+	.param .u64 deconv2d_f64_param_1,
+	.param .u64 deconv2d_f64_param_2,
+	.param .u32 deconv2d_f64_param_3,
+	.param .u32 deconv2d_f64_param_4,
+	.param .u32 deconv2d_f64_param_5,
+	.param .u32 deconv2d_f64_param_6,
+	.param .u32 deconv2d_f64_param_7,
+	.param .u32 deconv2d_f64_param_8,
+	.param .u32 deconv2d_f64_param_9,
+	.param .u32 deconv2d_f64_param_10,
+	.param .u32 deconv2d_f64_param_11,
+	.param .u32 deconv2d_f64_param_12,
+	.param .u32 deconv2d_f64_param_13,
+	.param .u32 deconv2d_f64_param_14,
+	.param .u32 deconv2d_f64_param_15
 )
 {
 	.reg .pred 	%p<76>;
@@ -1996,20 +1996,20 @@ $L__BB4_58:
 	.reg .b64 	%rd<36>;
 
 
-	ld.param.u64 	%rd5, [conv2d_backward_wrt_input_f64_param_0];
-	ld.param.u64 	%rd6, [conv2d_backward_wrt_input_f64_param_1];
-	ld.param.u32 	%r84, [conv2d_backward_wrt_input_f64_param_3];
-	ld.param.u32 	%r72, [conv2d_backward_wrt_input_f64_param_4];
-	ld.param.u32 	%r73, [conv2d_backward_wrt_input_f64_param_5];
-	ld.param.u32 	%r74, [conv2d_backward_wrt_input_f64_param_6];
-	ld.param.u32 	%r75, [conv2d_backward_wrt_input_f64_param_7];
-	ld.param.u32 	%r76, [conv2d_backward_wrt_input_f64_param_8];
-	ld.param.u32 	%r77, [conv2d_backward_wrt_input_f64_param_9];
-	ld.param.u32 	%r78, [conv2d_backward_wrt_input_f64_param_10];
-	ld.param.u32 	%r79, [conv2d_backward_wrt_input_f64_param_11];
-	ld.param.u32 	%r80, [conv2d_backward_wrt_input_f64_param_12];
-	ld.param.u32 	%r81, [conv2d_backward_wrt_input_f64_param_13];
-	ld.param.u32 	%r83, [conv2d_backward_wrt_input_f64_param_15];
+	ld.param.u64 	%rd5, [deconv2d_f64_param_0];
+	ld.param.u64 	%rd6, [deconv2d_f64_param_1];
+	ld.param.u32 	%r84, [deconv2d_f64_param_3];
+	ld.param.u32 	%r72, [deconv2d_f64_param_4];
+	ld.param.u32 	%r73, [deconv2d_f64_param_5];
+	ld.param.u32 	%r74, [deconv2d_f64_param_6];
+	ld.param.u32 	%r75, [deconv2d_f64_param_7];
+	ld.param.u32 	%r76, [deconv2d_f64_param_8];
+	ld.param.u32 	%r77, [deconv2d_f64_param_9];
+	ld.param.u32 	%r78, [deconv2d_f64_param_10];
+	ld.param.u32 	%r79, [deconv2d_f64_param_11];
+	ld.param.u32 	%r80, [deconv2d_f64_param_12];
+	ld.param.u32 	%r81, [deconv2d_f64_param_13];
+	ld.param.u32 	%r83, [deconv2d_f64_param_15];
 	cvta.to.global.u64 	%rd1, %rd6;
 	cvta.to.global.u64 	%rd2, %rd5;
 	mov.u32 	%r85, %ctaid.x;
@@ -2150,7 +2150,7 @@ $L__BB5_10:
 	mov.u32 	%r221, 0;
 
 $L__BB5_13:
-	ld.param.u32 	%r195, [conv2d_backward_wrt_input_f64_param_14];
+	ld.param.u32 	%r195, [deconv2d_f64_param_14];
 	add.s32 	%r194, %r4, %r195;
 	mov.u32 	%r225, 0;
 	add.s32 	%r179, %r79, -1;
@@ -2401,29 +2401,29 @@ $L__BB5_48:
 	fma.rn.f64 	%fd57, %fd45, %fd44, %fd57;
 
 $L__BB5_54:
-	ld.param.u32 	%r216, [conv2d_backward_wrt_input_f64_param_10];
+	ld.param.u32 	%r216, [deconv2d_f64_param_10];
 	add.s32 	%r221, %r221, 1;
 	setp.lt.s32 	%p66, %r221, %r216;
 	@%p66 bra 	$L__BB5_13;
 
 $L__BB5_55:
-	ld.param.u32 	%r196, [conv2d_backward_wrt_input_f64_param_7];
+	ld.param.u32 	%r196, [deconv2d_f64_param_7];
 	bar.sync 	0;
 	add.s32 	%r217, %r217, 1;
 	setp.lt.s32 	%p67, %r217, %r196;
 	@%p67 bra 	$L__BB5_2;
 
 $L__BB5_56:
-	ld.param.u32 	%r211, [conv2d_backward_wrt_input_f64_param_4];
+	ld.param.u32 	%r211, [deconv2d_f64_param_4];
 	mov.u32 	%r210, %ctaid.y;
 	mov.u32 	%r209, %tid.y;
 	shl.b32 	%r208, %r210, 4;
-	ld.param.u32 	%r207, [conv2d_backward_wrt_input_f64_param_5];
+	ld.param.u32 	%r207, [deconv2d_f64_param_5];
 	add.s32 	%r206, %r208, %r209;
 	mov.u32 	%r205, %ctaid.x;
 	mov.u32 	%r204, %tid.x;
 	shl.b32 	%r203, %r205, 4;
-	ld.param.u32 	%r202, [conv2d_backward_wrt_input_f64_param_6];
+	ld.param.u32 	%r202, [deconv2d_f64_param_6];
 	add.s32 	%r201, %r203, %r204;
 	setp.lt.s32 	%p75, %r201, %r202;
 	setp.lt.s32 	%p74, %r206, %r207;
@@ -2432,20 +2432,20 @@ $L__BB5_56:
 	sub.s32 	%r198, %r199, %r200;
 	setp.lt.s32 	%p73, %r198, %r211;
 	and.pred  	%p72, %p74, %p75;
-	ld.param.u32 	%r197, [conv2d_backward_wrt_input_f64_param_3];
+	ld.param.u32 	%r197, [deconv2d_f64_param_3];
 	setp.lt.s32 	%p71, %r6, %r197;
 	and.pred  	%p70, %p72, %p73;
 	and.pred  	%p69, %p70, %p71;
 	not.pred 	%p68, %p69;
 	@%p68 bra 	$L__BB5_58;
 
-	ld.param.u32 	%r215, [conv2d_backward_wrt_input_f64_param_4];
+	ld.param.u32 	%r215, [deconv2d_f64_param_4];
 	mul.lo.s32 	%r214, %r6, %r215;
 	mov.u32 	%r213, %ctaid.z;
 	sub.s32 	%r212, %r213, %r214;
-	ld.param.u64 	%rd35, [conv2d_backward_wrt_input_f64_param_2];
-	ld.param.u32 	%r177, [conv2d_backward_wrt_input_f64_param_6];
-	ld.param.u32 	%r176, [conv2d_backward_wrt_input_f64_param_5];
+	ld.param.u64 	%rd35, [deconv2d_f64_param_2];
+	ld.param.u32 	%r177, [deconv2d_f64_param_6];
+	ld.param.u32 	%r176, [deconv2d_f64_param_5];
 	mov.u32 	%r175, %ctaid.x;
 	mov.u32 	%r174, %tid.x;
 	shl.b32 	%r173, %r175, 4;
@@ -2454,7 +2454,7 @@ $L__BB5_56:
 	mov.u32 	%r170, %tid.y;
 	shl.b32 	%r169, %r171, 4;
 	add.s32 	%r168, %r169, %r170;
-	ld.param.u32 	%r167, [conv2d_backward_wrt_input_f64_param_4];
+	ld.param.u32 	%r167, [deconv2d_f64_param_4];
 	mad.lo.s32 	%r164, %r6, %r167, %r212;
 	mad.lo.s32 	%r165, %r164, %r176, %r168;
 	mad.lo.s32 	%r166, %r165, %r177, %r172;
@@ -2467,24 +2467,24 @@ $L__BB5_58:
 	ret;
 
 }
-	// .globl	conv2d_backward_wrt_filter
-.visible .entry conv2d_backward_wrt_filter(
-	.param .u64 conv2d_backward_wrt_filter_param_0,
-	.param .u64 conv2d_backward_wrt_filter_param_1,
-	.param .u64 conv2d_backward_wrt_filter_param_2,
-	.param .u32 conv2d_backward_wrt_filter_param_3,
-	.param .u32 conv2d_backward_wrt_filter_param_4,
-	.param .u32 conv2d_backward_wrt_filter_param_5,
-	.param .u32 conv2d_backward_wrt_filter_param_6,
-	.param .u32 conv2d_backward_wrt_filter_param_7,
-	.param .u32 conv2d_backward_wrt_filter_param_8,
-	.param .u32 conv2d_backward_wrt_filter_param_9,
-	.param .u32 conv2d_backward_wrt_filter_param_10,
-	.param .u32 conv2d_backward_wrt_filter_param_11,
-	.param .u32 conv2d_backward_wrt_filter_param_12,
-	.param .u32 conv2d_backward_wrt_filter_param_13,
-	.param .u32 conv2d_backward_wrt_filter_param_14,
-	.param .u32 conv2d_backward_wrt_filter_param_15
+	// .globl	cross_correlation
+.visible .entry cross_correlation(
+	.param .u64 cross_correlation_param_0,
+	.param .u64 cross_correlation_param_1,
+	.param .u64 cross_correlation_param_2,
+	.param .u32 cross_correlation_param_3,
+	.param .u32 cross_correlation_param_4,
+	.param .u32 cross_correlation_param_5,
+	.param .u32 cross_correlation_param_6,
+	.param .u32 cross_correlation_param_7,
+	.param .u32 cross_correlation_param_8,
+	.param .u32 cross_correlation_param_9,
+	.param .u32 cross_correlation_param_10,
+	.param .u32 cross_correlation_param_11,
+	.param .u32 cross_correlation_param_12,
+	.param .u32 cross_correlation_param_13,
+	.param .u32 cross_correlation_param_14,
+	.param .u32 cross_correlation_param_15
 )
 {
 	.reg .pred 	%p<53>;
@@ -2493,22 +2493,22 @@ $L__BB5_58:
 	.reg .b64 	%rd<27>;
 
 
-	ld.param.u64 	%rd6, [conv2d_backward_wrt_filter_param_0];
-	ld.param.u64 	%rd7, [conv2d_backward_wrt_filter_param_1];
-	ld.param.u64 	%rd5, [conv2d_backward_wrt_filter_param_2];
-	ld.param.u32 	%r42, [conv2d_backward_wrt_filter_param_3];
-	ld.param.u32 	%r43, [conv2d_backward_wrt_filter_param_4];
-	ld.param.u32 	%r44, [conv2d_backward_wrt_filter_param_5];
-	ld.param.u32 	%r45, [conv2d_backward_wrt_filter_param_6];
-	ld.param.u32 	%r46, [conv2d_backward_wrt_filter_param_7];
-	ld.param.u32 	%r47, [conv2d_backward_wrt_filter_param_8];
-	ld.param.u32 	%r48, [conv2d_backward_wrt_filter_param_9];
-	ld.param.u32 	%r49, [conv2d_backward_wrt_filter_param_10];
-	ld.param.u32 	%r50, [conv2d_backward_wrt_filter_param_11];
-	ld.param.u32 	%r51, [conv2d_backward_wrt_filter_param_12];
-	ld.param.u32 	%r52, [conv2d_backward_wrt_filter_param_13];
-	ld.param.u32 	%r53, [conv2d_backward_wrt_filter_param_14];
-	ld.param.u32 	%r54, [conv2d_backward_wrt_filter_param_15];
+	ld.param.u64 	%rd6, [cross_correlation_param_0];
+	ld.param.u64 	%rd7, [cross_correlation_param_1];
+	ld.param.u64 	%rd5, [cross_correlation_param_2];
+	ld.param.u32 	%r42, [cross_correlation_param_3];
+	ld.param.u32 	%r43, [cross_correlation_param_4];
+	ld.param.u32 	%r44, [cross_correlation_param_5];
+	ld.param.u32 	%r45, [cross_correlation_param_6];
+	ld.param.u32 	%r46, [cross_correlation_param_7];
+	ld.param.u32 	%r47, [cross_correlation_param_8];
+	ld.param.u32 	%r48, [cross_correlation_param_9];
+	ld.param.u32 	%r49, [cross_correlation_param_10];
+	ld.param.u32 	%r50, [cross_correlation_param_11];
+	ld.param.u32 	%r51, [cross_correlation_param_12];
+	ld.param.u32 	%r52, [cross_correlation_param_13];
+	ld.param.u32 	%r53, [cross_correlation_param_14];
+	ld.param.u32 	%r54, [cross_correlation_param_15];
 	cvta.to.global.u64 	%rd1, %rd7;
 	cvta.to.global.u64 	%rd2, %rd6;
 	mov.u32 	%r55, %ntid.x;
@@ -2758,24 +2758,24 @@ $L__BB6_29:
 	ret;
 
 }
-	// .globl	conv2d_backward_wrt_filter_f64
-.visible .entry conv2d_backward_wrt_filter_f64(
-	.param .u64 conv2d_backward_wrt_filter_f64_param_0,
-	.param .u64 conv2d_backward_wrt_filter_f64_param_1,
-	.param .u64 conv2d_backward_wrt_filter_f64_param_2,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_3,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_4,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_5,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_6,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_7,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_8,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_9,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_10,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_11,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_12,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_13,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_14,
-	.param .u32 conv2d_backward_wrt_filter_f64_param_15
+	// .globl	cross_correlation_f64
+.visible .entry cross_correlation_f64(
+	.param .u64 cross_correlation_f64_param_0,
+	.param .u64 cross_correlation_f64_param_1,
+	.param .u64 cross_correlation_f64_param_2,
+	.param .u32 cross_correlation_f64_param_3,
+	.param .u32 cross_correlation_f64_param_4,
+	.param .u32 cross_correlation_f64_param_5,
+	.param .u32 cross_correlation_f64_param_6,
+	.param .u32 cross_correlation_f64_param_7,
+	.param .u32 cross_correlation_f64_param_8,
+	.param .u32 cross_correlation_f64_param_9,
+	.param .u32 cross_correlation_f64_param_10,
+	.param .u32 cross_correlation_f64_param_11,
+	.param .u32 cross_correlation_f64_param_12,
+	.param .u32 cross_correlation_f64_param_13,
+	.param .u32 cross_correlation_f64_param_14,
+	.param .u32 cross_correlation_f64_param_15
 )
 {
 	.reg .pred 	%p<53>;
@@ -2784,19 +2784,19 @@ $L__BB6_29:
 	.reg .b64 	%rd<28>;
 
 
-	ld.param.u64 	%rd6, [conv2d_backward_wrt_filter_f64_param_0];
-	ld.param.u64 	%rd7, [conv2d_backward_wrt_filter_f64_param_1];
-	ld.param.u32 	%r42, [conv2d_backward_wrt_filter_f64_param_3];
-	ld.param.u32 	%r43, [conv2d_backward_wrt_filter_f64_param_4];
-	ld.param.u32 	%r44, [conv2d_backward_wrt_filter_f64_param_5];
-	ld.param.u32 	%r45, [conv2d_backward_wrt_filter_f64_param_6];
-	ld.param.u32 	%r46, [conv2d_backward_wrt_filter_f64_param_7];
-	ld.param.u32 	%r47, [conv2d_backward_wrt_filter_f64_param_8];
-	ld.param.u32 	%r48, [conv2d_backward_wrt_filter_f64_param_9];
-	ld.param.u32 	%r49, [conv2d_backward_wrt_filter_f64_param_10];
-	ld.param.u32 	%r50, [conv2d_backward_wrt_filter_f64_param_11];
-	ld.param.u32 	%r52, [conv2d_backward_wrt_filter_f64_param_13];
-	ld.param.u32 	%r54, [conv2d_backward_wrt_filter_f64_param_15];
+	ld.param.u64 	%rd6, [cross_correlation_f64_param_0];
+	ld.param.u64 	%rd7, [cross_correlation_f64_param_1];
+	ld.param.u32 	%r42, [cross_correlation_f64_param_3];
+	ld.param.u32 	%r43, [cross_correlation_f64_param_4];
+	ld.param.u32 	%r44, [cross_correlation_f64_param_5];
+	ld.param.u32 	%r45, [cross_correlation_f64_param_6];
+	ld.param.u32 	%r46, [cross_correlation_f64_param_7];
+	ld.param.u32 	%r47, [cross_correlation_f64_param_8];
+	ld.param.u32 	%r48, [cross_correlation_f64_param_9];
+	ld.param.u32 	%r49, [cross_correlation_f64_param_10];
+	ld.param.u32 	%r50, [cross_correlation_f64_param_11];
+	ld.param.u32 	%r52, [cross_correlation_f64_param_13];
+	ld.param.u32 	%r54, [cross_correlation_f64_param_15];
 	cvta.to.global.u64 	%rd1, %rd7;
 	cvta.to.global.u64 	%rd2, %rd6;
 	mov.u32 	%r55, %ntid.x;
@@ -2845,19 +2845,19 @@ $L__BB7_4:
 	setp.lt.s32 	%p10, %r48, 1;
 	@%p10 bra 	$L__BB7_27;
 
-	ld.param.u32 	%r112, [conv2d_backward_wrt_filter_f64_param_7];
+	ld.param.u32 	%r112, [cross_correlation_f64_param_7];
 	mov.u32 	%r126, 0;
 
 $L__BB7_6:
 	mov.u32 	%r132, 0;
 	add.s32 	%r120, %r48, -1;
-	ld.param.u32 	%r119, [conv2d_backward_wrt_filter_f64_param_7];
+	ld.param.u32 	%r119, [cross_correlation_f64_param_7];
 	mad.lo.s32 	%r118, %r125, %r112, %r6;
 	mul.lo.s32 	%r117, %r118, %r47;
 	mad.lo.s32 	%r116, %r125, %r43, %r5;
 	mul.lo.s32 	%r115, %r116, %r44;
-	ld.param.u32 	%r114, [conv2d_backward_wrt_filter_f64_param_14];
-	ld.param.u32 	%r113, [conv2d_backward_wrt_filter_f64_param_12];
+	ld.param.u32 	%r114, [cross_correlation_f64_param_14];
+	ld.param.u32 	%r113, [cross_correlation_f64_param_12];
 	mul.lo.s32 	%r72, %r126, %r113;
 	sub.s32 	%r73, %r72, %r114;
 	add.s32 	%r19, %r73, %r4;
@@ -3033,15 +3033,15 @@ $L__BB7_26:
 	@%p51 bra 	$L__BB7_6;
 
 $L__BB7_27:
-	ld.param.u32 	%r109, [conv2d_backward_wrt_filter_f64_param_3];
+	ld.param.u32 	%r109, [cross_correlation_f64_param_3];
 	add.s32 	%r125, %r125, 1;
 	setp.lt.s32 	%p52, %r125, %r109;
 	@%p52 bra 	$L__BB7_4;
 
 $L__BB7_28:
-	ld.param.u64 	%rd27, [conv2d_backward_wrt_filter_f64_param_2];
-	ld.param.u32 	%r111, [conv2d_backward_wrt_filter_f64_param_11];
-	ld.param.u32 	%r110, [conv2d_backward_wrt_filter_f64_param_10];
+	ld.param.u64 	%rd27, [cross_correlation_f64_param_2];
+	ld.param.u32 	%r111, [cross_correlation_f64_param_11];
+	ld.param.u32 	%r110, [cross_correlation_f64_param_10];
 	mad.lo.s32 	%r105, %r6, %r43, %r5;
 	mad.lo.s32 	%r106, %r105, %r110, %r4;
 	mad.lo.s32 	%r107, %r106, %r111, %r3;

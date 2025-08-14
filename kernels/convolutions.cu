@@ -337,11 +337,11 @@ __device__ void deconv2d_kernel(
                         out_y /= stride_h;
                         out_x /= stride_w;
                         if (out_y < out_height && out_x < out_width) {
-                            int grad_out_idx = batch_idx * (out_channels * out_height * out_width) +
+                            int out_idx = batch_idx * (out_channels * out_height * out_width) +
                                 out_c * (out_height * out_width) +
                                 out_y * out_width + out_x;
                             int filter_idx = ky * kernel_width + kx;
-                            result += input[grad_out_idx] * shared_filter[filter_idx];
+                            result += input[out_idx] * shared_filter[filter_idx];
                         }
                     }
                 }
@@ -351,12 +351,14 @@ __device__ void deconv2d_kernel(
     }
 
     if (valid_input) {
-        int grad_input_idx = batch_idx * (in_channels * in_height * in_width) +
+        int output_idx = batch_idx * (in_channels * in_height * in_width) +
             in_c * (in_height * in_width) +
             in_y * in_width + in_x;
-        output[grad_input_idx] = result;
+        output[output_idx] = result;
     }
 }
+
+
 
 
 extern "C" __global__ void  deconv2d(
@@ -437,8 +439,8 @@ extern "C" __global__ void deconv2d_f64(
 
 template<typename T>
 __device__ void cross_correlation_kernel(
-    const T* input_1,         // [batch, in_channels, in_height, in_width]
-    const T* input_2,   // [batch, out_channels, out_height, out_width]
+    const T* input1,         // [batch, in_channels, in_height, in_width]
+    const T* input2,   // [batch, out_channels, out_height, out_width]
     T* output,         // [out_channels, in_channels, kernel_height, kernel_width]
     int batch_size,
     int in_channels,

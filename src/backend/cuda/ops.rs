@@ -585,9 +585,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
-
-
-
     /// Batch-aware softmax along specified axis
     /// More efficient than partitioning as it processes all batches in parallel
     pub fn softmax_batched(
@@ -1317,8 +1314,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
-
-        #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn deconv2d(
         &self,
         input_in: &CudaTensor<T>,
@@ -1484,10 +1480,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
         Ok(result)
     }
-
-
-
-
 
     pub fn debug_cuda_tensor(&self, tensor: &CudaTensor<T>, name: &str) -> Result<(), String> {
         with_cuda_context(|ctx| {
