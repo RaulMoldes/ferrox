@@ -3,7 +3,7 @@ use super::kernels::{load_all_kernels, KernelManager};
 use super::ops::CudaOps;
 use super::stream_manager::StreamManager;
 use crate::backend::manager::{alloc_cuda_slice, return_cuda_slice};
-
+use crate::backend::memory::PoolAllocation;
 use crate::backend::with_cuda_context;
 use crate::{FerroxCudaF, FerroxCudaN};
 #[allow(unused_imports)]
@@ -13,6 +13,7 @@ use ndarray::ArrayD;
 use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
+
 
 pub struct CudaContextManager<T>
 where
@@ -65,12 +66,12 @@ where
     // ============= GPU MEMORY MANAGEMENT =============
 
     /// Allocates zeroed memory on the GPU
-    pub fn alloc_zeros(&self, size: usize) -> Result<(CudaSlice<T>, u64), String>
+    pub fn alloc_zeros(&self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
-    {
-        let alloc_result = alloc_cuda_slice::<T>(size)?;
-        Ok((alloc_result.data, alloc_result.allocation_id))
+    {        // WARNING .This now goes via the memory pool so there are NO GUARANTEES that the memory is initialized
+            alloc_cuda_slice::<T>(size)
+
     }
 
     pub fn stream_manager(&self) -> &StreamManager {
@@ -78,8 +79,8 @@ where
     }
 
     /// Synchronous host to device transfer
-    pub fn host_to_device(&self, data: &[T]) -> Result<(CudaSlice<T>, u64), String> {
-        let (mut device_buffer, id) = self.alloc_zeros(data.len())?;
+    pub fn host_to_device(&self, data: &[T]) -> Result<PoolAllocation<CudaSlice<T>>, String> {
+        let mut allocation = self.alloc_zeros(data.len())?;
 
         let stream = match self.stream_manager.get_stream("copy_h2d") {
             Some(h2d_stream) => h2d_stream,
@@ -89,17 +90,20 @@ where
         // Copy data from host to device using the correct cudarc API
 
         stream
-            .memcpy_htod(data, &mut device_buffer) // data is now &[T]
+            .memcpy_htod(data,allocation.data_mut()) // data is now &[T]
             .map_err(|e| format!("Host to device transfer failed: {}", e))?;
 
-        Ok((device_buffer, id))
+        Ok(allocation)
     }
 
     /// Synchronous device to host transfer
-    pub fn device_to_host(&self, data: &CudaSlice<T>) -> Result<Vec<T>, String>
+    pub fn device_to_host(&self, allocation: &PoolAllocation<CudaSlice<T>>) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
+
+
+        let data = allocation.data();
         // Allocate host buffer
         let mut host_buffer = vec![T::default(); data.len()];
 
@@ -118,12 +122,12 @@ where
     }
 
     /// Synchronous device to host transfer
-    pub fn device_to_device(&self, data: &CudaSlice<T>) -> Result<(CudaSlice<T>, u64), String>
+    pub fn device_to_device(&self, src: &PoolAllocation<CudaSlice<T>>) -> Result<PoolAllocation<CudaSlice<T>>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
         // Allocate device buffer
-        let (mut device_buffer, id) = self.alloc_zeros(data.len())?;
+        let mut dest = self.alloc_zeros(src.data().len())?;
 
         let stream = match self.stream_manager.get_stream("copy_d2d") {
             Some(d2h_stream) => d2h_stream,
@@ -133,10 +137,10 @@ where
         // Copy data from device to device using the correct cudarc API
 
         stream
-            .memcpy_dtod(data, &mut device_buffer)
+            .memcpy_dtod(src.data(), dest.data_mut())
             .map_err(|e| format!("Device to host transfer failed: {}", e))?;
 
-        Ok((device_buffer, id))
+        Ok(dest)
     }
 
     // ============= BACKEND INTERFACE METHODS =============
@@ -187,8 +191,8 @@ where
             ));
         }
 
-        let (cuda_data, id) = self.host_to_device(data)?; // Pass slice reference
-        Ok(CudaTensor::new(cuda_data, shape, id))
+        let cuda_data= self.host_to_device(data)?; // Pass slice reference
+        Ok(CudaTensor::new(cuda_data, shape))
     }
 
     // ============= STREAM MANAGEMENT (DELEGATED TO STREAMMANAGER) =============
@@ -275,8 +279,7 @@ where
 #[repr(C)]
 #[derive(Debug)]
 pub struct CudaTensor<T: FerroxCudaN> {
-    pub data: Option<CudaSlice<T>>,
-    pub allocation_id: u64,
+    pub allocation: Option<PoolAllocation<CudaSlice<T>>>,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
 }
@@ -286,34 +289,45 @@ where
     T: FerroxCudaN,
 {
     /// Creates a new CUDA tensor with computed strides
-    pub fn new(data: CudaSlice<T>, shape: Vec<usize>, allocation_id: u64) -> Self {
+    pub fn new(allocation: PoolAllocation<CudaSlice<T>>, shape: Vec<usize>) -> Self {
         let strides = compute_strides(&shape);
 
         Self {
-            data: Some(data),
-            allocation_id,
+            allocation: Some(allocation),
             shape,
             strides,
         }
     }
 
     pub fn data(&self) -> &CudaSlice<T> {
-        self.data
+        self.allocation
+            .as_ref()
+            .expect("CudaTensor data was already consumed").data()
+    }
+
+    pub fn get_alloc(&self) -> &PoolAllocation<CudaSlice<T>> {
+        self.allocation
             .as_ref()
             .expect("CudaTensor data was already consumed")
     }
 
-    pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
-        self.data
+    pub fn get_alloc_mut(&mut self) -> &mut PoolAllocation<CudaSlice<T>> {
+        self.allocation
             .as_mut()
             .expect("CudaTensor data was already consumed")
     }
 
+    pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
+        self.allocation
+            .as_mut()
+            .expect("CudaTensor data was already consumed").data_mut()
+    }
+
     // Take ownership of the slice (consuming method)
-    pub fn take_data(&mut self) -> CudaSlice<T> {
-        self.data
+    pub fn take_alloc(&mut self) -> Option<PoolAllocation<CudaSlice<T>>> {
+        self.allocation
             .take()
-            .expect("CudaTensor data was already consumed")
+
     }
 
     /// Create tensor from CPU ndarray without taking ownership
@@ -346,8 +360,8 @@ where
         }
 
         // Transfer ndarray data to GPU - this copies the data to GPU
-        let (cuda_data, id) = context_manager.host_to_device(data_slice)?;
-        Ok(Self::new(cuda_data, shape, id))
+        let cuda_data = context_manager.host_to_device(data_slice)?;
+        Ok(Self::new(cuda_data, shape))
     }
 
     /// Create tensor from host data using context manager
@@ -366,8 +380,8 @@ where
             ));
         }
 
-        let (cuda_data, id) = context_manager.host_to_device(&data)?; // Pass slice reference
-        Ok(Self::new(cuda_data, shape, id))
+        let cuda_data = context_manager.host_to_device(&data)?; // Pass slice reference
+        Ok(Self::new(cuda_data, shape))
     }
 
     /// Transfer tensor data back to CPU
@@ -375,8 +389,8 @@ where
     where
         T: cudarc::driver::DeviceRepr + Clone,
     {
-        let slice = self.data();
-        context_manager.device_to_host(slice)
+        let alloc = self.get_alloc();
+        context_manager.device_to_host(alloc)
     }
 
     /// Transfer tensor data back to CPU asynchronously
@@ -391,8 +405,8 @@ where
 
     /// Get tensor data as vector
     pub fn to_vec(self, context_manager: &CudaContextManager<T>) -> Result<Vec<T>, String> {
-        let slice = self.data();
-        let mut full_data = context_manager.device_to_host(slice)?;
+        let alloc = self.get_alloc();
+        let mut full_data = context_manager.device_to_host(alloc)?;
         let expected_size = self.size(); // This is shape.iter().product()
         if full_data.len() > expected_size {
             // Memory pool returned larger slice - truncate to logical size
@@ -414,8 +428,8 @@ where
         shape: Vec<usize>,
     ) -> Result<Self, String> {
         let size = shape.iter().product();
-        let (data, id) = context_manager.alloc_zeros(size)?;
-        Ok(Self::new(data, shape, id))
+        let data = context_manager.alloc_zeros(size)?;
+        Ok(Self::new(data, shape))
     }
 
     // ============= TENSOR METADATA =============
@@ -674,11 +688,7 @@ where
     // Check to see if we need to materialize.
     pub fn needs_materialization(&self) -> bool {
         let logical_size = self.size(); // shape.iter().product()
-        let physical_size = if let Some(data) = &self.data {
-            data.len() // actual GPU memory allocated
-        } else {
-            0
-        };
+        let physical_size = self.data().len();
 
         // If logical size > physical size, we have broadcast expansion
         logical_size > physical_size || !self.is_contiguous()
@@ -716,10 +726,10 @@ where
 {
     fn drop(&mut self) {
         // Take ownership of the slice without cloning - this is the key fix
-        if let Some(slice) = self.data.take() {
+        if let Some(alloc) = self.take_alloc() {
             // Move slice to pool - no clone() call means no cuda_free here
-            if let Err(e) = return_cuda_slice::<T>(self.allocation_id, slice) {
-                eprintln!("Warning: Failed to return CUDA memory to pool: {}", e);
+            if return_cuda_slice::<T>(alloc).is_err() {
+                 eprintln!("Warning: Failed to return CUDA memory to pool");
                 // slice ownership was transferred to return_cuda_slice
                 // If it fails, the slice will be properly dropped inside the pool function
             }
@@ -736,14 +746,13 @@ where
     /// This prevents double-free errors and memory corruption
     fn clone(&self) -> Self {
         // Copy data from original to new allocation using CUDA memcpy
-        let (slice, id) =
-            with_cuda_context(|ctx: &CudaContextManager<T>| ctx.device_to_device(self.data()))
+        let new_alloc =
+            with_cuda_context(|ctx: &CudaContextManager<T>| ctx.device_to_device(self.get_alloc()))
                 .expect("Failed to copy GPU data during clone");
 
         // Create new CudaTensor with independent allocation_id
         Self {
-            data: Some(slice),
-            allocation_id: id,
+            allocation: Some(new_alloc),
             shape: self.shape.clone(),
             strides: self.strides.clone(),
         }

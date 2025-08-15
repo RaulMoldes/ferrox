@@ -271,7 +271,7 @@ where
             restored_max.broadcast_to(input_shape)?;
         }
 
-        println!("CALCULANDO GRADIENTE PARA MAX OP.");
+      
 
         // Create mask where input equals max values (gradient flows here)
         let mask = inputs[0].equal(&restored_max)?;

@@ -1,3 +1,4 @@
+use crate::backend::memory::cuda::PoolConfig;
 // src/backend/manager.rs
 #[cfg(feature = "cuda")]
 use crate::backend::memory::CudaMemoryPool;
@@ -28,7 +29,7 @@ pub struct BackendManager<T: FerroxCudaN> {
 
 impl<T: FerroxCudaN> Default for BackendManager<T> {
     fn default() -> Self {
-        Self::init()
+        Self::init(None)
     }
 }
 
@@ -48,7 +49,7 @@ impl<T: FerroxCudaN> BackendManager<T> {
         self.cuda_pool.as_ref()
     }
 
-    pub fn init() -> Self {
+    pub fn init(pool_config: Option<PoolConfig>) -> Self {
         #[cfg(not(feature = "cuda"))]
         {
             println!("CUDA feature not enabled, using CPU only");
@@ -67,7 +68,7 @@ impl<T: FerroxCudaN> BackendManager<T> {
                     None => cuda_backend.stream_manager().default_stream(),
                 };
 
-                let cuda_pool = CudaMemoryPool::new(stream.clone());
+                let cuda_pool = CudaMemoryPool::new(stream.clone(), pool_config);
                 manager.cuda_backend = Some(cuda_backend);
                 manager.cuda_pool = Some(Mutex::new(cuda_pool));
                 println!("CUDA backend and pool initialized successfully");
@@ -343,11 +344,11 @@ static BACKEND_F64: OnceLock<BackendManager<f64>> = OnceLock::new();
 
 #[allow(clippy::redundant_closure)]
 pub fn get_f32_backend() -> &'static BackendManager<f32> {
-    BACKEND_F32.get_or_init(|| BackendManager::<f32>::init())
+    BACKEND_F32.get_or_init(|| BackendManager::<f32>::init(None))
 }
 #[allow(clippy::redundant_closure)]
 pub fn get_f64_backend() -> &'static BackendManager<f64> {
-    BACKEND_F64.get_or_init(|| BackendManager::<f64>::init())
+    BACKEND_F64.get_or_init(|| BackendManager::<f64>::init(None))
 }
 
 pub fn has_f32_cuda() -> bool {
@@ -454,10 +455,9 @@ where
 // Main function for CUDA ops and context to return memory to pool
 #[cfg(feature = "cuda")]
 pub fn return_cuda_slice<T: FerroxCudaN>(
-    allocation_id: u64,
-    slice: CudaSlice<T>,
+    alloc: PoolAllocation<CudaSlice<T>>,
 ) -> Result<(), String> {
-    with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.return_to_pool(allocation_id, slice))
+    with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.deallocate(alloc))
 }
 
 #[cfg(feature = "cuda")]
@@ -470,7 +470,12 @@ pub fn cleanup_pool<T: FerroxCudaN>(
 #[cfg(feature = "cuda")]
 pub fn show_memory_stats<T: FerroxCudaN>(
 ) -> Result<(), String> {
-    with_cuda_pool(|pool: &mut CudaMemoryPool<T>| Ok(pool.print_stats()))
+    with_cuda_pool(|pool: &mut CudaMemoryPool<T>|{
+
+        pool.print_stats();
+        Ok(())
+})
+
 }
 
 

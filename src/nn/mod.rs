@@ -44,7 +44,7 @@ where
         T: rand_distr::num_traits::FromPrimitive,
     {
         let mut param_map = HashMap::new();
-        println!("Parameters created in graph using module impl");
+       
         for (param_counter, param) in self.parameters().into_iter().enumerate() {
             // Create a unique name if parameter doesn't have one
             let param_name = match &param.name {

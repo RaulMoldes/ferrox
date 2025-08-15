@@ -135,11 +135,15 @@ where
             )?;
         }
 
+        if epoch % 25 == 0 {
+            show_memory_stats::<T>()?;
+        }
+
         // Print progress
         if epoch % config.print_every == 0 {
 
-            show_memory_stats::<T>()?;
-            
+
+
             if let Some(&current_loss) = loss_history.last() {
                 println!(
                     "[EPOCH {}] Loss: {:.6}",

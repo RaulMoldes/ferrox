@@ -158,7 +158,7 @@ where
         engine: &mut AutoFerroxEngine<T>,
     ) -> std::collections::HashMap<String, NodeId> {
         let mut param_map = std::collections::HashMap::new();
-        println!("Initializing parameters in graph!");
+
         // Create weight node
         let weight_node =
             engine.create_variable(self.weight.data.clone(), self.weight.requires_grad);
