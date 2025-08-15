@@ -7,10 +7,12 @@ use crate::backend::{Device, Tensor};
 use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
+use crate::ops::basic::Add;
+use crate::ops::batched::Conv2dOp;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::ops::batched::Conv2dOp;
-use crate::ops::basic::Add;
+use crate::nn::layers::utils::reshape_and_broadcast;
+
 /// 2D Convolutional layer: applies convolution over input tensor
 /// Implements standard convolution operation with configurable kernel size, stride, and padding
 /// Weight tensor has shape [out_channels, in_channels, kernel_height, kernel_width]
@@ -44,6 +46,7 @@ where
 {
     /// Create a new 2D convolutional layer
     /// Initializes weights with Kaiming uniform distribution for ReLU activations
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         in_channels: usize,
         out_channels: usize,
@@ -142,12 +145,14 @@ where
         println!("Initializing Conv2d parameters in graph!");
 
         // Create weight node
-        let weight_node = engine.create_variable(self.weight.data.clone(), self.weight.requires_grad);
+        let weight_node =
+            engine.create_variable(self.weight.data.clone(), self.weight.requires_grad);
         param_map.insert("weight".to_string(), weight_node);
 
         // Create bias node if present
         if let Some(ref bias_param) = self.bias {
-            let bias_node = engine.create_variable(bias_param.data.clone(), bias_param.requires_grad);
+            let bias_node =
+                engine.create_variable(bias_param.data.clone(), bias_param.requires_grad);
             param_map.insert("bias".to_string(), bias_node);
         }
 
@@ -168,6 +173,7 @@ where
 
         // Validate input dimensions for conv2d
         let input_shape = input_tensor.shape();
+
         if input_shape.len() != 4 {
             return Err(format!(
                 "Conv2d requires 4D input [batch, channels, height, width], got shape {:?}",
@@ -194,14 +200,11 @@ where
             .map_err(|e| format!("Convolution operation failed: {}", e))?;
 
         // Add bias if present
-        if self.bias.is_some() {
-            // Get bias node from cached parameter mappings
-            let bias_node = self.get_parameter_node("bias")?;
-
-            // Add bias using element-wise addition (bias will be broadcasted automatically)
+        if let Ok(bias_node) = self.get_parameter_node("bias") {
+            let broadcasted_bias = reshape_and_broadcast(bias_node, conv_result, graph)?;
             let add_op = Box::new(Add::new());
             let final_result = graph
-                .apply_operation(add_op, vec![conv_result, bias_node])
+                .apply_operation(add_op, vec![conv_result, broadcasted_bias])
                 .map_err(|e| format!("Bias addition failed: {}", e))?;
 
             Ok(final_result)
@@ -244,7 +247,13 @@ where
     T: FerroxCudaF,
 {
     /// Calculate output dimensions given input dimensions
-    pub fn output_shape(&self, input_shape: &[usize]) -> Result<Vec<usize>, String> {
+    pub fn output_shape(
+        input_shape: &[usize],
+        padding: (usize, usize),
+        stride: (usize, usize),
+        kernel_size: (usize, usize),
+        out_channels: usize,
+    ) -> Result<Vec<usize>, String> {
         if input_shape.len() != 4 {
             return Err("Input must be 4D [batch, channels, height, width]".to_string());
         }
@@ -254,16 +263,21 @@ where
         let input_width = input_shape[3];
 
         // Calculate output dimensions using conv2d formula
-        let output_height = (input_height + 2 * self.padding.0 - self.kernel_size.0) / self.stride.0 + 1;
-        let output_width = (input_width + 2 * self.padding.1 - self.kernel_size.1) / self.stride.1 + 1;
+        let output_height = (input_height + 2 * padding.0 - kernel_size.0) / stride.0 + 1;
+        let output_width = (input_width + 2 * padding.1 - kernel_size.1) / stride.1 + 1;
 
-        Ok(vec![batch_size, self.out_channels, output_height, output_width])
+        Ok(vec![batch_size, out_channels, output_height, output_width])
     }
 
     /// Get number of parameters in this layer
     pub fn num_parameters(&self) -> usize {
-        let weight_params = self.out_channels * self.in_channels * self.kernel_size.0 * self.kernel_size.1;
-        let bias_params = if self.bias.is_some() { self.out_channels } else { 0 };
+        let weight_params =
+            self.out_channels * self.in_channels * self.kernel_size.0 * self.kernel_size.1;
+        let bias_params = if self.bias.is_some() {
+            self.out_channels
+        } else {
+            0
+        };
         weight_params + bias_params
     }
 
@@ -283,7 +297,7 @@ where
             kernel_size,
             (1, 1), // stride = 1 for same padding
             padding,
-            true,   // bias = true
+            true, // bias = true
             device,
         )
     }

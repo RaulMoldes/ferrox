@@ -2,7 +2,7 @@
 // I've separated the pure computational functions from the CPUStorage methods
 
 use crate::backend::storage::{CPUStorage, StorageBackend};
-use crate::{FerroxCudaF, FerroxN, FerroxCudaN};
+use crate::{FerroxCudaF, FerroxCudaN, FerroxN};
 use ndarray::{Array2, ArrayD, IxDyn};
 
 /// Function to convert image patches to column matrix (im2col)
@@ -105,9 +105,7 @@ where
     // Initialize padded output image
     let mut padded_output = ArrayD::zeros(IxDyn(&[batch_size, channels, padded_h, padded_w]));
 
-    let col_flat = col_matrix
-        .as_slice()
-        .ok_or("Col matrix not contiguous")?;
+    let col_flat = col_matrix.as_slice().ok_or("Col matrix not contiguous")?;
 
     // Map column matrix back to image
     for b in 0..batch_size {
@@ -171,7 +169,8 @@ where
         for b in 0..batch {
             for y in 0..out_h {
                 for x in 0..out_w {
-                    let src_idx = out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
+                    let src_idx =
+                        out_c * (batch * out_h * out_w) + b * (out_h * out_w) + y * out_w + x;
                     let dst_idx = b * (out_channels * out_h * out_w)
                         + out_c * (out_h * out_w)
                         + y * out_w
@@ -186,17 +185,13 @@ where
 }
 
 /// Reshape array to 2D safely, handling memory layout issues
-fn safe_reshape_to_2d<T>(
-    array: &ArrayD<T>,
-    new_shape: [usize; 2],
-) -> Result<Array2<T>, String>
+fn safe_reshape_to_2d<T>(array: &ArrayD<T>, new_shape: [usize; 2]) -> Result<Array2<T>, String>
 where
     T: FerroxCudaN + Clone,
 {
     // Convert to owned data first to ensure contiguous layout
     let data: Vec<T> = array.iter().cloned().collect();
-    Array2::from_shape_vec(new_shape, data)
-        .map_err(|e| format!("Failed to reshape to 2D: {e}"))
+    Array2::from_shape_vec(new_shape, data).map_err(|e| format!("Failed to reshape to 2D: {e}"))
 }
 
 impl<T> CPUStorage<T>
@@ -210,7 +205,9 @@ where
         stride: (usize, usize),
         padding: (usize, usize),
     ) -> Result<ArrayD<T>, String> {
-        let input_data = self.cpu_data()?.as_slice()
+        let input_data = self
+            .cpu_data()?
+            .as_slice()
             .ok_or("Input data is not contiguous")?;
         let input_shape = self.shape();
 
@@ -247,10 +244,8 @@ where
         let col_matrix = self.im2col((kernel_h, kernel_w), stride, padding)?;
 
         // Reshape filter for matrix multiplication
-        let filter_2d = safe_reshape_to_2d(
-            filter,
-            [out_channels, in_channels * kernel_h * kernel_w],
-        )?;
+        let filter_2d =
+            safe_reshape_to_2d(filter, [out_channels, in_channels * kernel_h * kernel_w])?;
 
         let col_2d = safe_reshape_to_2d(
             &col_matrix,
@@ -261,16 +256,9 @@ where
         let output_2d = filter_2d.dot(&col_2d);
 
         // Get output data and transpose
-        let output_data = output_2d.as_slice()
-            .ok_or("Output is not contiguous")?;
+        let output_data = output_2d.as_slice().ok_or("Output is not contiguous")?;
 
-        let final_output = transpose_conv_output(
-            output_data,
-            batch,
-            out_channels,
-            out_h,
-            out_w,
-        );
+        let final_output = transpose_conv_output(output_data, batch, out_channels, out_h, out_w);
 
         ArrayD::from_shape_vec(IxDyn(&[batch, out_channels, out_h, out_w]), final_output)
             .map_err(|e| format!("Failed to create output tensor: {e}"))
@@ -288,12 +276,8 @@ where
         let grad_shape = grad_output.shape();
         let filter_shape = filter.shape();
 
-        let (batch_size, out_channels, grad_h, grad_w) = (
-            grad_shape[0],
-            grad_shape[1],
-            grad_shape[2],
-            grad_shape[3],
-        );
+        let (batch_size, out_channels, grad_h, grad_w) =
+            (grad_shape[0], grad_shape[1], grad_shape[2], grad_shape[3]);
         let (_, in_channels, kernel_h, kernel_w) = (
             filter_shape[0],
             filter_shape[1],
@@ -302,22 +286,24 @@ where
         );
 
         // Reshape tensors for matrix multiplication
-        let filter_2d = safe_reshape_to_2d(
-            filter,
-            [out_channels, in_channels * kernel_h * kernel_w],
-        )?;
+        let filter_2d =
+            safe_reshape_to_2d(filter, [out_channels, in_channels * kernel_h * kernel_w])?;
 
-        let grad_2d = safe_reshape_to_2d(
-            grad_output,
-            [out_channels, batch_size * grad_h * grad_w],
-        )?;
+        let grad_2d =
+            safe_reshape_to_2d(grad_output, [out_channels, batch_size * grad_h * grad_w])?;
 
         // Matrix multiplication: filter.T @ grad_output
         let col_2d = filter_2d.t().dot(&grad_2d);
 
         // Convert back to column matrix format and apply col2im
         let col_matrix = col_2d.into_dyn();
-        col2im(col_matrix, input_shape, (kernel_h, kernel_w), stride, padding)
+        col2im(
+            col_matrix,
+            input_shape,
+            (kernel_h, kernel_w),
+            stride,
+            padding,
+        )
     }
 
     /// Cross-correlation implementation (gradient w.r.t. filter)
@@ -339,10 +325,8 @@ where
             [grad_shape[1], grad_shape[0] * grad_shape[2] * grad_shape[3]],
         )?;
 
-        let col_2d = safe_reshape_to_2d(
-            &col_matrix,
-            [col_matrix.shape()[0], col_matrix.shape()[1]],
-        )?;
+        let col_2d =
+            safe_reshape_to_2d(&col_matrix, [col_matrix.shape()[0], col_matrix.shape()[1]])?;
 
         // Matrix multiplication: grad_output @ col_matrix.T
         let result_2d = grad_2d.dot(&col_2d.t());

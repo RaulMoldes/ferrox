@@ -609,6 +609,14 @@ where
         self.nodes.get(&node_id)?.get_tensor()
     }
 
+    pub fn get_node_shape(&self, node_id: NodeId) -> Option<&[usize]> {
+        if let Some(tensor) = self.nodes.get(&node_id)?.get_tensor() {
+            Some(tensor.shape())
+        } else {
+            None
+        }
+    }
+
     pub fn clip_gradient(&mut self, node_id: NodeId, clip_coef: T) -> Result<(), String> {
         if let Some(grad) = self.get_gradient(node_id) {
             let clipped_grad = grad.mul_scalar(clip_coef)?;

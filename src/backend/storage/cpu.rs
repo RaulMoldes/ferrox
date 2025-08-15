@@ -320,6 +320,8 @@ where
         if target_shape.len() < current_shape.len() {
             return Err("Cannot broadcast to smaller number of dimensions".to_string());
         }
+        println!("Target shape: {:?}", target_shape);
+        println!("Current shape: {:?}", current_shape);
 
         // Check if shapes are compatible for broadcasting
         let offset = target_shape.len() - current_shape.len();

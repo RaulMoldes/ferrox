@@ -37,15 +37,13 @@ where
                 grad_output.broadcast_to(input_shape)?;
             }
 
-            println!("Reduccion expandda exitosamente");
-
             Ok(grad_output)
         }
         None => {
             // All axes reduced to scalar - must create full tensor with scalar value
             let device = grad_output.device();
             let scalar = grad_output.first()?;
-            println!("Input shape: {:?}", input_shape);
+
             Tensor::full_with_device(input_shape, device, scalar)
         }
     }

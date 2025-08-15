@@ -29,6 +29,7 @@ where
     T: FerroxCudaF,
 {
     let input_node = graph.create_variable(inputs.clone(), false);
+
     let predictions = model.forward(graph, input_node)?;
 
     let pred_tensor = graph

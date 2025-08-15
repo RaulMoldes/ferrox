@@ -41,7 +41,7 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
             stream,
             stats: PoolStats::default(),
             active_allocations: HashMap::new(),
-            max_pool_size_per_bucket: 20, // Lower limit for GPU memory conservation
+            max_pool_size_per_bucket: 10, // Lower limit for GPU memory conservation
         }
     }
 
@@ -63,6 +63,8 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
             return Err("Cannot allocate zero-sized CUDA memory".to_string());
         }
 
+
+
         self.allocation_counter += 1;
         let allocation_id = self.allocation_counter;
 
@@ -71,6 +73,7 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
             self.active_allocations.insert(allocation_id, bucket_idx);
 
             if let Some(pooled_slice) = self.buckets[bucket_idx].get_allocation() {
+                // If the slice fits , return the allocation id.
                 if pooled_slice.len() >= size {
                     self.stats.pool_hits += 1;
                     self.stats.active_allocations += 1;
@@ -88,7 +91,6 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
 
         // Create new allocation using specified stream
         let new_slice = self.create_new_allocation(size)?;
-
         self.update_stats_for_new_allocation(size);
 
         Ok(PoolAllocation {
@@ -96,6 +98,8 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
             size,
             allocation_id,
         })
+
+
     }
 
     fn deallocate(&mut self, allocation_id: u64) -> Result<(), String> {
@@ -117,6 +121,8 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
         self.stats.clone()
     }
 
+
+
     fn reset(&mut self) -> Result<(), String> {
         for bucket in &mut self.buckets {
             bucket.allocations.clear();
@@ -131,6 +137,25 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
 
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaN> CudaMemoryPool<T> {
+
+     pub fn print_stats(&self)->() {
+        println!("Total allocations = {}", self.allocation_counter);
+        println!("Active allocations = {}", self.active_allocations.len());
+        println!("Total allocations =  {}", self.stats.total_allocations);
+        println!("Pool hits = {}", self.stats.pool_hits);   // How many times we reused pooled memory
+        println!("Pool misses = {}", self.stats.pool_misses);
+        println!("Total memory bytes = {}", self.stats.total_memory_bytes);
+        println!("Peak memory bytes = {}", self.stats.total_memory_bytes);
+       
+        for (i, bucket) in self.buckets.iter().enumerate() {
+            println!("Bucket {}", i);
+            println!("Total in use: {}", bucket.in_use.len());
+            println!("Total allocations: {}", bucket.allocations.len());
+            println!("Size range of the bucket: {:?}", bucket.size_range);
+        }
+
+    }
+
     // Common allocation logic
     // Try to get slice from pool. If not, get the slice.
     fn allocate_with_stream(
@@ -157,6 +182,7 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
                     return Ok(PoolAllocation {
                         data: pooled_slice,
                         size,
+
                         allocation_id,
                     });
                 } else {
@@ -175,6 +201,7 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
         Ok(PoolAllocation {
             data: new_slice,
             size,
+
             allocation_id,
         })
     }
@@ -219,8 +246,9 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
                 if bucket.allocations.len() < self.max_pool_size_per_bucket {
                     bucket.return_allocation(cuda_slice);
                 }
-                // If bucket full, let CudaSlice drop (GPU memory freed automatically)
+
             }
+
 
             Ok(())
         } else {

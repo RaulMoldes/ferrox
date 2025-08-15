@@ -35,9 +35,6 @@ where
 
         // For reshape: gradient just needs to be reshaped back to input shape
         let input_shape = inputs[0].shape();
-
-        println!("Initial shape: {:?}", input_shape);
-
         grad_output.reshape(input_shape)?;
 
         Ok(vec![grad_output])
@@ -257,6 +254,3 @@ impl Default for Squeeze {
 /// Expand dimensions operation: output = expand_dims(input, axis)
 /// Alias for Unsqueeze operation, following TensorFlow naming convention
 pub type ExpandDims = Unsqueeze;
-
-
-

@@ -4,6 +4,7 @@ use ferrox::FerroxN;
 
 /// Configuration for MLP model architecture
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MLPConfig {
     pub input_size: usize,
     pub hidden_size: usize,

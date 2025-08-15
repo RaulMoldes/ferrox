@@ -6,8 +6,8 @@ use crate::backend::number::FerroxCudaF;
 use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
+use crate::ops::reduction::Mean;
 use crate::ops::reshape::Reshape;
-use crate::ops::reduction::{Max, Mean};
 use std::marker::PhantomData;
 /// Flatten layer: reshapes input tensor to 1D while preserving batch dimension
 /// Converts tensor from [batch_size, ...] to [batch_size, flattened_features]
@@ -63,7 +63,10 @@ where
 
         // Validate dimensions
         if start >= ndim || end > ndim || start >= end {
-            panic!("Invalid flatten dimensions: start={}, end={}, input_ndim={}", start, end, ndim);
+            panic!(
+                "Invalid flatten dimensions: start={}, end={}, input_ndim={}",
+                start, end, ndim
+            );
         }
 
         let mut output_shape = Vec::new();
@@ -135,145 +138,6 @@ where
     }
 }
 
-/// 2D Max Pooling layer: applies max pooling over spatial dimensions
-/// Reduces spatial dimensions by taking maximum values in pooling windows
-/// Input shape: [batch_size, channels, height, width]
-/// Output shape: [batch_size, channels, pooled_height, pooled_width]
-#[derive(Debug, Clone)]
-pub struct MaxPool2d<T>
-where
-    T: FerroxCudaF,
-{
-    /// Pooling window size (height, width)
-    kernel_size: (usize, usize),
-    /// Stride for pooling operation (height, width)
-    stride: (usize, usize),
-    /// Padding for pooling operation (height, width)
-    padding: (usize, usize),
-    /// Training mode flag
-    training: bool,
-    /// Phantom data for type parameter
-    _phantom: PhantomData<T>,
-}
-
-impl<T> MaxPool2d<T>
-where
-    T: FerroxCudaF,
-{
-    /// Create a new MaxPool2d layer
-    pub fn new(
-        kernel_size: (usize, usize),
-        stride: Option<(usize, usize)>,
-        padding: (usize, usize),
-    ) -> Self {
-        let stride = stride.unwrap_or(kernel_size); // Default stride = kernel_size
-
-        Self {
-            kernel_size,
-            stride,
-            padding,
-            training: true,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Create MaxPool2d with square kernel
-    pub fn new_square(kernel_size: usize, stride: Option<usize>, padding: usize) -> Self {
-        let stride_2d = stride.map(|s| (s, s)).unwrap_or((kernel_size, kernel_size));
-        Self::new((kernel_size, kernel_size), Some(stride_2d), (padding, padding))
-    }
-
-    /// Create common 2x2 max pooling (reduces spatial dimensions by half)
-    pub fn new_2x2() -> Self {
-        Self::new_square(2, None, 0) // 2x2 kernel, stride=2, no padding
-    }
-
-    /// Calculate output dimensions after pooling
-    #[allow(dead_code)]
-    fn calculate_output_shape(&self, input_shape: &[usize]) -> Result<Vec<usize>, String> {
-        if input_shape.len() != 4 {
-            return Err("MaxPool2d requires 4D input [batch, channels, height, width]".to_string());
-        }
-
-        let batch_size = input_shape[0];
-        let channels = input_shape[1];
-        let input_height = input_shape[2];
-        let input_width = input_shape[3];
-
-        // Calculate output spatial dimensions using pooling formula
-        let output_height = (input_height + 2 * self.padding.0 - self.kernel_size.0) / self.stride.0 + 1;
-        let output_width = (input_width + 2 * self.padding.1 - self.kernel_size.1) / self.stride.1 + 1;
-
-        Ok(vec![batch_size, channels, output_height, output_width])
-    }
-
-    /// Apply max pooling using repeated max reduction along spatial dimensions
-    /// This is a simplified implementation using the max_axes operation
-    fn apply_pooling(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
-
-        // Get input tensor shape
-        let input_tensor = graph
-            .get_tensor(input)
-            .ok_or("Input tensor not found in graph")?;
-        let input_shape = input_tensor.shape();
-
-        if input_shape.len() != 4 {
-            return Err("MaxPool2d requires 4D input [batch, channels, height, width]".to_string());
-        }
-
-        if self.kernel_size == (input_shape[2], input_shape[3]) && self.stride == self.kernel_size && self.padding == (0, 0) {
-            // Global max pooling case: reduce spatial dimensions completely
-            let max_op = Box::new(Max::along_axes(vec![2, 3], false)); // Reduce height and width
-            graph
-                .apply_operation(max_op, vec![input])
-                .map_err(|e| format!("Global max pooling failed: {}", e))
-        } else {
-            // For non-global pooling, we would need a proper pooling operation
-            // TODO: Implement a pooling op that supports windowing, strides and padding properly.
-            Err("Non-global max pooling requires dedicated pooling operations. Use global pooling (kernel_size = input spatial dimensions) or implement proper windowed pooling.".to_string())
-        }
-    }
-}
-
-impl<T> Default for MaxPool2d<T>
-where
-    T: FerroxCudaF,
-{
-    fn default() -> Self {
-        Self::new_2x2() // Default 2x2 pooling
-    }
-}
-
-impl<T> Module<T> for MaxPool2d<T>
-where
-    T: FerroxCudaF,
-{
-    /// Forward pass: apply max pooling
-    fn forward(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
-        self.apply_pooling(graph, input)
-    }
-
-    /// MaxPool2d has no parameters
-    fn parameters(&self) -> Vec<&Parameter<T>> {
-        Vec::new()
-    }
-
-    /// MaxPool2d has no mutable parameters
-    fn parameters_mut(&mut self) -> Vec<&mut Parameter<T>> {
-        Vec::new()
-    }
-
-    /// Get training mode
-    fn training(&self) -> bool {
-        self.training
-    }
-
-    /// Set training mode (no effect for MaxPool2d)
-    fn set_training(&mut self, training: bool) {
-        self.training = training;
-    }
-}
-
 /// Global Average Pooling 2D layer: averages over all spatial dimensions
 /// Reduces spatial dimensions to 1x1 by computing mean over height and width
 /// Input shape: [batch_size, channels, height, width]
@@ -320,7 +184,9 @@ where
     #[allow(dead_code)]
     fn calculate_output_shape(&self, input_shape: &[usize]) -> Result<Vec<usize>, String> {
         if input_shape.len() != 4 {
-            return Err("GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string());
+            return Err(
+                "GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string(),
+            );
         }
 
         let batch_size = input_shape[0];
@@ -356,7 +222,9 @@ where
         let input_shape = input_tensor.shape();
 
         if input_shape.len() != 4 {
-            return Err("GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string());
+            return Err(
+                "GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string(),
+            );
         }
 
         // Apply mean reduction along spatial dimensions (axes 2 and 3)

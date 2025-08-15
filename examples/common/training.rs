@@ -8,7 +8,7 @@ use ferrox::nn::{
     Module,
 };
 use ferrox::FerroxN;
-
+use ferrox::backend::manager::show_memory_stats;
 /// Initialize model parameters in the computational graph
 pub fn initialize_model<M, T, O>(
     model: &M,
@@ -47,6 +47,7 @@ where
 {
     // Clear gradients
     graph.zero_gradients();
+
 
     // Forward pass
     let predictions = model.forward(graph, input_node)?;
@@ -136,6 +137,9 @@ where
 
         // Print progress
         if epoch % config.print_every == 0 {
+
+            show_memory_stats::<T>()?;
+            
             if let Some(&current_loss) = loss_history.last() {
                 println!(
                     "[EPOCH {}] Loss: {:.6}",

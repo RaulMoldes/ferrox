@@ -674,8 +674,6 @@ impl KernelManager {
     {
         let kernel_name = self.get_kernel_name::<T>("softmax_batch_axis");
 
-        println!("CALL TO {}", kernel_name);
-
         launch_kernel!(
             self,
             &kernel_name,

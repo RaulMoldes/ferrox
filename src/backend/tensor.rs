@@ -192,10 +192,11 @@ where
             Ok(array) => {
                 let backend = get_backend::<T>();
 
-            let device = best_device::<T>();
+                let device = best_device::<T>();
                 // Create storage backend for the array
-            let (validated_device, storage) = backend.create_storage_from_data(&array, device)?;
-            Self::from_storage_backend(storage, validated_device)
+                let (validated_device, storage) =
+                    backend.create_storage_from_data(&array, device)?;
+                Self::from_storage_backend(storage, validated_device)
             }
             Err(e) => Err(format!("Failed to create tensor: {e}")),
         }
@@ -1355,9 +1356,9 @@ where
             .storage
             .as_ref()
             .ok_or("Filter tensor has no storage backend")?;
-        println!("Computing conv2d on device {}", self.device);
+
         let result_storage = storage.conv2d(filter_storage.as_ref(), stride, padding)?;
-        self.debug("AFTER CONV2D");
+
         Self::from_storage_backend(result_storage, self.device)
     }
 

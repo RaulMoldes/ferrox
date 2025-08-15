@@ -139,3 +139,94 @@ where
 
     TensorDataset::from_tensor(inputs, targets)
 }
+
+/// Generate synthetic image data for classification
+/// Creates simple patterns: class 0 = horizontal stripes, class 1 = vertical stripes, class 2 = diagonal
+#[allow(dead_code)]
+pub fn generate_synthetic_image_data<T>(
+    num_samples: usize,
+    num_classes: usize,
+    image_size: usize,
+    channels: usize,
+    device: Device,
+) -> Result<TensorDataset<T>, String>
+where
+    T: FerroxCudaF,
+{
+    let mut input_data = Vec::with_capacity(num_samples * channels * image_size * image_size);
+    let mut target_data = Vec::with_capacity(num_samples * num_classes);
+
+    for i in 0..num_samples {
+        let class = i % num_classes;
+
+        // Generate image for each channel
+        for _c in 0..channels {
+            // Create pattern based on class
+            for y in 0..image_size {
+                for x in 0..image_size {
+                    let pixel_value = match class {
+                        // Class 0: Horizontal stripes
+                        0 => {
+                            if (y / 4) % 2 == 0 {
+                                0.8
+                            } else {
+                                0.2
+                            }
+                        }
+                        // Class 1: Vertical stripes
+                        1 => {
+                            if (x / 4) % 2 == 0 {
+                                0.8
+                            } else {
+                                0.2
+                            }
+                        }
+                        // Class 2: Diagonal pattern
+                        2 => {
+                            if ((x + y) / 6) % 2 == 0 {
+                                0.8
+                            } else {
+                                0.2
+                            }
+                        }
+                        // Additional classes: random patterns
+                        _ => {
+                            if ((x * class + y) / 5) % 2 == 0 {
+                                0.8
+                            } else {
+                                0.2
+                            }
+                        }
+                    };
+
+                    // Add some noise to make it more realistic
+                    let noise =
+                        (i as f64 * 0.001 + x as f64 * 0.002 + y as f64 * 0.003) % 0.1 - 0.05;
+                    let final_value = (pixel_value + noise).clamp(0.0, 1.0);
+
+                    input_data.push(
+                        <T as FerroxN>::from_f64(final_value)
+                            .ok_or("Failed to convert pixel value")?,
+                    );
+                }
+            }
+        }
+
+        // Create one-hot target
+        for c in 0..num_classes {
+            target_data.push(
+                <T as FerroxN>::from_f64(if c == class { 1.0 } else { 0.0 })
+                    .ok_or("Failed to convert target value")?,
+            );
+        }
+    }
+
+    let inputs = Tensor::from_vec_with_device(
+        input_data,
+        &[num_samples, channels, image_size, image_size],
+        device,
+    )?;
+    let targets = Tensor::from_vec_with_device(target_data, &[num_samples, num_classes], device)?;
+
+    TensorDataset::from_tensor(inputs, targets)
+}

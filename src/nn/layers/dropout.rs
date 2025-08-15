@@ -46,7 +46,6 @@ where
         }
     }
 
-
     /// Get the dropout probability
     pub fn probability(&self) -> f64 {
         self.p
@@ -121,7 +120,8 @@ where
             .ok_or("Input tensor not found in graph")?;
 
         // Create dropout mask tensor
-        let mask_tensor = self.create_dropout_mask(input_tensor.shape())
+        let mask_tensor = self
+            .create_dropout_mask(input_tensor.shape())
             .map_err(|e| format!("Failed to create dropout mask: {}", e))?;
 
         // Create mask node in computational graph

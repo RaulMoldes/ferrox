@@ -779,138 +779,142 @@ mod ops_tests {
         );
     }
 
-#[test]
-fn conv2d_different_strides() {
-    // Test convolution with stride 2
-    let input = tensor_4d(&[
-        1.0, 2.0, 3.0, 4.0,
-        5.0, 6.0, 7.0, 8.0,
-        9.0, 10.0, 11.0, 12.0,
-        13.0, 14.0, 15.0, 16.0
-    ], 1, 1, 4, 4);
+    #[test]
+    fn conv2d_different_strides() {
+        // Test convolution with stride 2
+        let input = tensor_4d(
+            &[
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                16.0,
+            ],
+            1,
+            1,
+            4,
+            4,
+        );
 
-    let filter = tensor_4d(&[1.0, 1.0, 1.0, 1.0], 1, 1, 2, 2);
-    let inputs = vec![input, filter];
+        let filter = tensor_4d(&[1.0, 1.0, 1.0, 1.0], 1, 1, 2, 2);
+        let inputs = vec![input, filter];
 
-    // With stride=2, output should be 2x2
-    // Expected values: sum of 2x2 patches with stride 2
-    test_op_shape!(
-        Conv2dOp::new((2, 2), (0, 0)),
-        inputs,
-        &[1, 1, 2, 2],
-        "Conv2dOp_Stride2"
-    );
-}
+        // With stride=2, output should be 2x2
+        // Expected values: sum of 2x2 patches with stride 2
+        test_op_shape!(
+            Conv2dOp::new((2, 2), (0, 0)),
+            inputs,
+            &[1, 1, 2, 2],
+            "Conv2dOp_Stride2"
+        );
+    }
 
-#[test]
-fn conv2d_with_padding() {
-    // Test convolution with padding - use larger input for clearer behavior
-    let input_data: Vec<f32> = (1..10).map(|x| x as f32).collect(); // 1x1x3x3
-    let input = tensor_4d(&input_data, 1, 1, 3, 3);
-    let filter = tensor_4d(&[1.0, 0.0, 1.0, 0.0], 1, 1, 2, 2);
-    let inputs = vec![input, filter];
+    #[test]
+    fn conv2d_with_padding() {
+        // Test convolution with padding - use larger input for clearer behavior
+        let input_data: Vec<f32> = (1..10).map(|x| x as f32).collect(); // 1x1x3x3
+        let input = tensor_4d(&input_data, 1, 1, 3, 3);
+        let filter = tensor_4d(&[1.0, 0.0, 1.0, 0.0], 1, 1, 2, 2);
+        let inputs = vec![input, filter];
 
-    // 3x3 input, 2x2 kernel, padding=1, stride=1:
-    // Output size = (3 + 2*1 - 2)/1 + 1 = 4x4
-    test_op_shape!(
-        Conv2dOp::new((1, 1), (1, 1)),
-        inputs,
-        &[1, 1, 4, 4],
-        "Conv2dOp_WithPadding"
-    );
-}
+        // 3x3 input, 2x2 kernel, padding=1, stride=1:
+        // Output size = (3 + 2*1 - 2)/1 + 1 = 4x4
+        test_op_shape!(
+            Conv2dOp::new((1, 1), (1, 1)),
+            inputs,
+            &[1, 1, 4, 4],
+            "Conv2dOp_WithPadding"
+        );
+    }
 
-#[test]
-fn conv2d_same_padding() {
-    // Test "same" padding behavior - where output matches input size
-    let input_data: Vec<f32> = (1..26).map(|x| x as f32).collect(); // 1x1x5x5
-    let input = tensor_4d(&input_data, 1, 1, 5, 5);
-    let filter = tensor_4d(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 1, 1, 3, 3);
-    let inputs = vec![input, filter];
+    #[test]
+    fn conv2d_same_padding() {
+        // Test "same" padding behavior - where output matches input size
+        let input_data: Vec<f32> = (1..26).map(|x| x as f32).collect(); // 1x1x5x5
+        let input = tensor_4d(&input_data, 1, 1, 5, 5);
+        let filter = tensor_4d(&[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 1, 1, 3, 3);
+        let inputs = vec![input, filter];
 
-    // 5x5 input, 3x3 kernel, padding=1, stride=1:
-    // Output size = (5 + 2*1 - 3)/1 + 1 = 5x5 (same as input)
-    test_op_shape!(
-        Conv2dOp::new((1, 1), (1, 1)),
-        inputs,
-        &[1, 1, 5, 5],
-        "Conv2dOp_SamePadding"
-    );
-}
+        // 5x5 input, 3x3 kernel, padding=1, stride=1:
+        // Output size = (5 + 2*1 - 3)/1 + 1 = 5x5 (same as input)
+        test_op_shape!(
+            Conv2dOp::new((1, 1), (1, 1)),
+            inputs,
+            &[1, 1, 5, 5],
+            "Conv2dOp_SamePadding"
+        );
+    }
 
-#[test]
-fn conv2d_multiple_channels() {
-    // Test 3-channel input with 2 output channels
-    // Fix: Use smaller input to avoid gradient computation issues
-    let input_data: Vec<f32> = (0..12).map(|x| x as f32 * 0.1).collect(); // 1x3x2x2, scaled down
-    let input = tensor_4d(&input_data, 1, 3, 2, 2);
+    #[test]
+    fn conv2d_multiple_channels() {
+        // Test 3-channel input with 2 output channels
+        // Fix: Use smaller input to avoid gradient computation issues
+        let input_data: Vec<f32> = (0..12).map(|x| x as f32 * 0.1).collect(); // 1x3x2x2, scaled down
+        let input = tensor_4d(&input_data, 1, 3, 2, 2);
 
-    let filter_data: Vec<f32> = (0..24).map(|x| x as f32 * 0.01).collect(); // 2x3x2x2, smaller values
-    let filter = tensor_4d(&filter_data, 2, 3, 2, 2);
-    let inputs = vec![input, filter];
+        let filter_data: Vec<f32> = (0..24).map(|x| x as f32 * 0.01).collect(); // 2x3x2x2, smaller values
+        let filter = tensor_4d(&filter_data, 2, 3, 2, 2);
+        let inputs = vec![input, filter];
 
-    // Just test the shape, not gradients due to potential numerical issues
-    test_op_shape!(
-        Conv2dOp::new((1, 1), (0, 0)),
-        inputs,
-        &[1, 2, 1, 1],
-        "Conv2dOp_MultiChannel"
-    );
-}
+        // Just test the shape, not gradients due to potential numerical issues
+        test_op_shape!(
+            Conv2dOp::new((1, 1), (0, 0)),
+            inputs,
+            &[1, 2, 1, 1],
+            "Conv2dOp_MultiChannel"
+        );
+    }
 
-#[test]
-fn conv2d_batch_processing() {
-    // Test batch processing with multiple samples
-    // Fix: 2x1x2x2 needs 8 elements, not 16
-    let input_data: Vec<f32> = (0..8).map(|x| x as f32).collect(); // 2x1x2x2 (batch=2)
-    let input = tensor_4d(&input_data, 2, 1, 2, 2);
+    #[test]
+    fn conv2d_batch_processing() {
+        // Test batch processing with multiple samples
+        // Fix: 2x1x2x2 needs 8 elements, not 16
+        let input_data: Vec<f32> = (0..8).map(|x| x as f32).collect(); // 2x1x2x2 (batch=2)
+        let input = tensor_4d(&input_data, 2, 1, 2, 2);
 
-    let filter = tensor_4d(&[0.25, 0.25, 0.25, 0.25], 1, 1, 2, 2);
-    let inputs = vec![input, filter];
+        let filter = tensor_4d(&[0.25, 0.25, 0.25, 0.25], 1, 1, 2, 2);
+        let inputs = vec![input, filter];
 
-    test_op_shape!(
-        Conv2dOp::new((1, 1), (0, 0)),
-        inputs,
-        &[2, 1, 1, 1], // Batch dimension preserved
-        "Conv2dOp_Batch"
-    );
-}
+        test_op_shape!(
+            Conv2dOp::new((1, 1), (0, 0)),
+            inputs,
+            &[2, 1, 1, 1], // Batch dimension preserved
+            "Conv2dOp_Batch"
+        );
+    }
 
-#[test]
-fn conv2d_larger_kernel() {
-    // Test with 5x5 kernel on 6x6 input
-    let input_data: Vec<f32> = (0..36).map(|x| x as f32).collect(); // 1x1x6x6
-    let input = tensor_4d(&input_data, 1, 1, 6, 6);
+    #[test]
+    fn conv2d_larger_kernel() {
+        // Test with 5x5 kernel on 6x6 input
+        let input_data: Vec<f32> = (0..36).map(|x| x as f32).collect(); // 1x1x6x6
+        let input = tensor_4d(&input_data, 1, 1, 6, 6);
 
-    let filter_data: Vec<f32> = vec![1.0; 25]; // 1x1x5x5 kernel of ones
-    let filter = tensor_4d(&filter_data, 1, 1, 5, 5);
-    let inputs = vec![input, filter];
+        let filter_data: Vec<f32> = vec![1.0; 25]; // 1x1x5x5 kernel of ones
+        let filter = tensor_4d(&filter_data, 1, 1, 5, 5);
+        let inputs = vec![input, filter];
 
-    // 6x6 input with 5x5 kernel = 2x2 output
-    test_op_shape!(
-        Conv2dOp::new((1, 1), (0, 0)),
-        inputs,
-        &[1, 1, 2, 2],
-        "Conv2dOp_LargeKernel"
-    );
-}
+        // 6x6 input with 5x5 kernel = 2x2 output
+        test_op_shape!(
+            Conv2dOp::new((1, 1), (0, 0)),
+            inputs,
+            &[1, 1, 2, 2],
+            "Conv2dOp_LargeKernel"
+        );
+    }
 
-#[test]
-fn conv2d_edge_cases() {
-    // Test minimum valid convolution: 1x1 kernel
-    let input = tensor_4d(&[1.0, 2.0, 3.0, 4.0], 1, 1, 2, 2);
-    let filter = tensor_4d(&[2.0], 1, 1, 1, 1); // 1x1 kernel
-    let inputs = vec![input, filter];
+    #[test]
+    fn conv2d_edge_cases() {
+        // Test minimum valid convolution: 1x1 kernel
+        let input = tensor_4d(&[1.0, 2.0, 3.0, 4.0], 1, 1, 2, 2);
+        let filter = tensor_4d(&[2.0], 1, 1, 1, 1); // 1x1 kernel
+        let inputs = vec![input, filter];
 
-    // 1x1 kernel should preserve spatial dimensions
-    let expected_values = vec![2.0, 4.0, 6.0, 8.0]; // Input * 2
-    test_op_with_values!(
-        Conv2dOp::new((1, 1), (0, 0)),
-        inputs,
-        &[1, 1, 2, 2],
-        &expected_values,
-        1e-6,
-        "Conv2dOp_1x1Kernel"
-    );
-}
+        // 1x1 kernel should preserve spatial dimensions
+        let expected_values = vec![2.0, 4.0, 6.0, 8.0]; // Input * 2
+        test_op_with_values!(
+            Conv2dOp::new((1, 1), (0, 0)),
+            inputs,
+            &[1, 1, 2, 2],
+            &expected_values,
+            1e-6,
+            "Conv2dOp_1x1Kernel"
+        );
+    }
 }
