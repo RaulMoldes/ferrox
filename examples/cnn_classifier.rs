@@ -48,10 +48,10 @@ fn main() -> Result<(), String> {
     let training_config = TrainingConfig::fast(); // Use fast config for demo
 
     // Configuration for image classification
-    let image_size = 16;
+    let image_size = 32;
     let channels = 1; // Grayscale images
     let num_classes = 3; // Three pattern classes
-    let num_samples = 100;
+    let num_samples = 200;
     println!("\n=== CNN Image Classification Demo ===");
 
     println!("Creating CNN classifier...");

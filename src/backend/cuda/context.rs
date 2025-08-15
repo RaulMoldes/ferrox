@@ -254,7 +254,7 @@ where
         &self,
         data: &[T], // Changed from Vec<T> to &[T]
         stream_name: Option<&str>,
-    ) -> Result<CudaSlice<T>, String>
+    ) -> Result<PoolAllocation<CudaSlice<T>>, String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
     {
@@ -265,7 +265,7 @@ where
     /// Asynchronous device to host transfer using named stream
     pub fn device_to_host_async(
         &self,
-        data: &CudaSlice<T>,
+        data: &PoolAllocation<CudaSlice<T>>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String>
     where
@@ -399,7 +399,7 @@ where
         context_manager: &CudaContextManager<T>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String> {
-        let slice = self.data();
+        let slice = self.get_alloc();
         context_manager.device_to_host_async(slice, stream_name)
     }
 
@@ -728,8 +728,8 @@ where
         // Take ownership of the slice without cloning - this is the key fix
         if let Some(alloc) = self.take_alloc() {
             // Move slice to pool - no clone() call means no cuda_free here
-            if return_cuda_slice::<T>(alloc).is_err() {
-                 eprintln!("Warning: Failed to return CUDA memory to pool");
+            if let Err(e) = return_cuda_slice::<T>(alloc) {
+                 eprintln!("Warning: Failed to return CUDA memory to pool: {:?}", e);
                 // slice ownership was transferred to return_cuda_slice
                 // If it fails, the slice will be properly dropped inside the pool function
             }

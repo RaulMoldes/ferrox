@@ -135,9 +135,7 @@ where
             )?;
         }
 
-        if epoch % 25 == 0 {
-            show_memory_stats::<T>()?;
-        }
+       
 
         // Print progress
         if epoch % config.print_every == 0 {

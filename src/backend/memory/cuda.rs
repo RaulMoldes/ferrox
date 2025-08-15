@@ -147,13 +147,15 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
                    self.buckets.iter().map(|b| b.size_range).collect::<Vec<_>>())
         });
 
+    self.active_allocations.insert(allocation_id, bucket_idx);
+
     // Try pool reuse first
     if let Some(pooled_slice) = self.buckets[bucket_idx].get_allocation() {
         // If the slice fits, return the allocation
         if pooled_slice.size >= size {
             self.stats.pool_hits += 1;
             self.stats.active_allocations += 1;
-            self.active_allocations.insert(allocation_id, bucket_idx);
+
             //println!("Pool hit - reusing allocation. Active allocations");
             return Ok(pooled_slice);
         } else {

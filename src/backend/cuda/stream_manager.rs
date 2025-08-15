@@ -1,4 +1,4 @@
-use crate::backend::memory::MemoryPool;
+use crate::backend::memory::{MemoryPool, PoolAllocation};
 // src/backend/cuda/stream_manager.rs
 // Stream management helper - does NOT own the CUDA context
 use crate::backend::manager::with_cuda_pool;
@@ -108,7 +108,7 @@ impl StreamManager {
         ctx: &Arc<CudaContext>,
         data: &[T], // Changed from Vec<T> to &[T] for efficiency
         stream_name: Option<&str>,
-    ) -> Result<CudaSlice<T>, String>
+    ) -> Result<PoolAllocation<CudaSlice<T>>, String>
     where
         T: FerroxCudaN,
     {
@@ -126,22 +126,22 @@ impl StreamManager {
         };
 
         // Allocate GPU memory first
-        let pool_alloc = with_cuda_pool(|pool| pool.allocate(data.len()))?;
-        let mut device_buffer = pool_alloc.data;
+        let mut pool_alloc = with_cuda_pool(|pool| pool.allocate(data.len()))?;
+
         // Copy data from host to device using the correct cudarc API
 
         stream
-            .memcpy_htod(data, &mut device_buffer) // data is now &[T]
+            .memcpy_htod(data, pool_alloc.data_mut()) // data is now &[T]
             .map_err(|e| format!("Async host to device transfer failed: {}", e))?;
 
-        Ok(device_buffer)
+        Ok(pool_alloc)
     }
 
     /// Async device to host transfer using named stream
     pub fn device_to_host_async<T>(
         &self,
         ctx: &Arc<CudaContext>,
-        data: &CudaSlice<T>,
+        alloc: &PoolAllocation<CudaSlice<T>>,
         stream_name: Option<&str>,
     ) -> Result<Vec<T>, String>
     where
@@ -159,7 +159,7 @@ impl StreamManager {
             }
             None => ctx.default_stream(),
         };
-
+        let data = alloc.data();
         // Allocate host buffer
         let mut host_buffer = vec![T::default(); data.len()];
 
