@@ -3,7 +3,7 @@ use crate::backend::manager::get_backend;
 use crate::backend::manager::with_cuda_context;
 use crate::backend::number::FerroxCudaF;
 use crate::backend::storage::{CPUStorage, StorageBackend};
-use crate::backend::{default_device, Device};
+use crate::backend::{best_device, default_device, Device};
 use crate::ops::scalar;
 use ndarray::{concatenate, Array, ArrayD, ArrayViewD, Axis, IxDyn};
 use rand::distr::StandardUniform;
@@ -190,12 +190,12 @@ where
 
         match Array::from_shape_vec(IxDyn(shape), data) {
             Ok(array) => {
+                let backend = get_backend::<T>();
+
+            let device = best_device::<T>();
                 // Create storage backend for the array
-                let storage = CPUStorage::new(array.clone());
-                Ok(Self {
-                    device: default_device(),
-                    storage: Some(Box::new(storage)),
-                })
+            let (validated_device, storage) = backend.create_storage_from_data(&array, device)?;
+            Self::from_storage_backend(storage, validated_device)
             }
             Err(e) => Err(format!("Failed to create tensor: {e}")),
         }
