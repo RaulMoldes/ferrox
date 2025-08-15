@@ -9,6 +9,7 @@ use crate::nn::parameter::Parameter;
 use crate::nn::Module;
 use crate::ops::Mul;
 use rand::Rng;
+use std::marker::PhantomData;
 
 /// Dropout layer for regularization
 /// During training: randomly sets elements to zero with probability p
@@ -24,7 +25,7 @@ where
     /// Training mode flag - affects whether dropout is applied
     training: bool,
     /// Phantom data for type parameter
-    _phantom: std::marker::PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> Dropout<T>
@@ -41,22 +42,10 @@ where
         Self {
             p,
             training: true,
-            _phantom: std::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
-    /// Create dropout with common probability values
-    pub fn new_05() -> Self {
-        Self::new(0.5)
-    }
-
-    pub fn new_02() -> Self {
-        Self::new(0.2)
-    }
-
-    pub fn new_01() -> Self {
-        Self::new(0.1)
-    }
 
     /// Get the dropout probability
     pub fn probability(&self) -> f64 {

@@ -8,7 +8,7 @@ use crate::nn::parameter::Parameter;
 use crate::nn::Module;
 use crate::ops::reshape::Reshape;
 use crate::ops::reduction::{Max, Mean};
-
+use std::marker::PhantomData;
 /// Flatten layer: reshapes input tensor to 1D while preserving batch dimension
 /// Converts tensor from [batch_size, ...] to [batch_size, flattened_features]
 /// Commonly used between convolutional and linear layers
@@ -24,7 +24,7 @@ where
     /// Training mode flag
     training: bool,
     /// Phantom data for type parameter
-    _phantom: std::marker::PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> Flatten<T>
@@ -39,7 +39,7 @@ where
             start_dim,
             end_dim,
             training: true,
-            _phantom: std::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -153,7 +153,7 @@ where
     /// Training mode flag
     training: bool,
     /// Phantom data for type parameter
-    _phantom: std::marker::PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> MaxPool2d<T>
@@ -173,7 +173,7 @@ where
             stride,
             padding,
             training: true,
-            _phantom: std::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -210,9 +210,6 @@ where
     /// Apply max pooling using repeated max reduction along spatial dimensions
     /// This is a simplified implementation using the max_axes operation
     fn apply_pooling(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
-        // For now, implement a simple spatial max pooling
-        // This is a basic implementation - a full implementation would need
-        // proper windowed max pooling with stride and padding support
 
         // Get input tensor shape
         let input_tensor = graph
@@ -224,10 +221,6 @@ where
             return Err("MaxPool2d requires 4D input [batch, channels, height, width]".to_string());
         }
 
-        // For simplicity, we'll implement global max pooling along spatial dimensions
-        // A complete implementation would require a dedicated pooling operation
-        // that handles windows, stride, and padding properly
-
         if self.kernel_size == (input_shape[2], input_shape[3]) && self.stride == self.kernel_size && self.padding == (0, 0) {
             // Global max pooling case: reduce spatial dimensions completely
             let max_op = Box::new(Max::along_axes(vec![2, 3], false)); // Reduce height and width
@@ -236,7 +229,7 @@ where
                 .map_err(|e| format!("Global max pooling failed: {}", e))
         } else {
             // For non-global pooling, we would need a proper pooling operation
-            // For now, return an error suggesting the use of dedicated pooling ops
+            // TODO: Implement a pooling op that supports windowing, strides and padding properly.
             Err("Non-global max pooling requires dedicated pooling operations. Use global pooling (kernel_size = input spatial dimensions) or implement proper windowed pooling.".to_string())
         }
     }
@@ -295,7 +288,7 @@ where
     /// Training mode flag
     training: bool,
     /// Phantom data for type parameter
-    _phantom: std::marker::PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> GlobalAvgPool2d<T>
@@ -309,7 +302,7 @@ where
         Self {
             flatten,
             training: true,
-            _phantom: std::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 

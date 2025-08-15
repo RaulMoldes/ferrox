@@ -7,7 +7,10 @@ use crate::backend::{Device, Tensor};
 use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
-
+use std::cell::RefCell;
+use std::collections::HashMap;
+use crate::ops::batched::Conv2dOp;
+use crate::ops::basic::Add;
 /// 2D Convolutional layer: applies convolution over input tensor
 /// Implements standard convolution operation with configurable kernel size, stride, and padding
 /// Weight tensor has shape [out_channels, in_channels, kernel_height, kernel_width]
@@ -32,7 +35,7 @@ where
     pub padding: (usize, usize),
     /// Training mode flag
     training: bool,
-    parameter_maps: std::cell::RefCell<Option<std::collections::HashMap<String, NodeId>>>,
+    parameter_maps: RefCell<Option<std::collections::HashMap<String, NodeId>>>,
 }
 
 impl<T> Conv2d<T>
@@ -73,7 +76,7 @@ where
             stride,
             padding,
             training: true,
-            parameter_maps: std::cell::RefCell::new(None),
+            parameter_maps: RefCell::new(None),
         }
     }
 
@@ -128,14 +131,14 @@ where
 
 impl<T> Module<T> for Conv2d<T>
 where
-    T: FerroxCudaF + rand_distr::num_traits::FromPrimitive,
+    T: FerroxCudaF,
 {
     /// Create parameter nodes in the computational graph and return mapping
     fn create_parameters_in_graph(
         &self,
         engine: &mut AutoFerroxEngine<T>,
-    ) -> std::collections::HashMap<String, NodeId> {
-        let mut param_map = std::collections::HashMap::new();
+    ) -> HashMap<String, NodeId> {
+        let mut param_map = HashMap::new();
         println!("Initializing Conv2d parameters in graph!");
 
         // Create weight node
@@ -185,7 +188,7 @@ where
         let weight_node = self.get_parameter_node("weight")?;
 
         // Apply convolution operation using the existing Conv2d operation
-        let conv_op = Box::new(crate::ops::batched::Conv2d::new(self.stride, self.padding));
+        let conv_op = Box::new(Conv2dOp::new(self.stride, self.padding));
         let conv_result = graph
             .apply_operation(conv_op, vec![input, weight_node])
             .map_err(|e| format!("Convolution operation failed: {}", e))?;
@@ -196,7 +199,7 @@ where
             let bias_node = self.get_parameter_node("bias")?;
 
             // Add bias using element-wise addition (bias will be broadcasted automatically)
-            let add_op = Box::new(crate::ops::basic::Add::new());
+            let add_op = Box::new(Add::new());
             let final_result = graph
                 .apply_operation(add_op, vec![conv_result, bias_node])
                 .map_err(|e| format!("Bias addition failed: {}", e))?;

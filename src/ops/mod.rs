@@ -709,12 +709,12 @@ mod ops_tests {
         // Expected: (1*0.5 + 2*0.5 + 3*0.5 + 4*0.5) = 5.0
         // Output shape: [1, 1, 1, 1] with stride=1, padding=0
         test_op_with_values!(
-            Conv2d::new((1, 1), (0, 0)),
+            Conv2dOp::new((1, 1), (0, 0)),
             inputs,
             &[1, 1, 1, 1],
             &[5.0],
             1e-5,
-            "Conv2d_Simple"
+            "Conv2dOp_Simple"
         );
     }
 
@@ -770,12 +770,12 @@ mod ops_tests {
         ];
 
         test_op_with_values!(
-            Conv2d::new((1, 1), (1, 1)),
+            Conv2dOp::new((1, 1), (1, 1)),
             inputs,
             &[1, 4, 5, 5],
             &expected_values,
             1e-3,
-            "Conv2d_Test"
+            "Conv2dOp_Test"
         );
     }
 
@@ -795,10 +795,10 @@ fn conv2d_different_strides() {
     // With stride=2, output should be 2x2
     // Expected values: sum of 2x2 patches with stride 2
     test_op_shape!(
-        Conv2d::new((2, 2), (0, 0)),
+        Conv2dOp::new((2, 2), (0, 0)),
         inputs,
         &[1, 1, 2, 2],
-        "Conv2d_Stride2"
+        "Conv2dOp_Stride2"
     );
 }
 
@@ -813,10 +813,10 @@ fn conv2d_with_padding() {
     // 3x3 input, 2x2 kernel, padding=1, stride=1:
     // Output size = (3 + 2*1 - 2)/1 + 1 = 4x4
     test_op_shape!(
-        Conv2d::new((1, 1), (1, 1)),
+        Conv2dOp::new((1, 1), (1, 1)),
         inputs,
         &[1, 1, 4, 4],
-        "Conv2d_WithPadding"
+        "Conv2dOp_WithPadding"
     );
 }
 
@@ -831,10 +831,10 @@ fn conv2d_same_padding() {
     // 5x5 input, 3x3 kernel, padding=1, stride=1:
     // Output size = (5 + 2*1 - 3)/1 + 1 = 5x5 (same as input)
     test_op_shape!(
-        Conv2d::new((1, 1), (1, 1)),
+        Conv2dOp::new((1, 1), (1, 1)),
         inputs,
         &[1, 1, 5, 5],
-        "Conv2d_SamePadding"
+        "Conv2dOp_SamePadding"
     );
 }
 
@@ -851,10 +851,10 @@ fn conv2d_multiple_channels() {
 
     // Just test the shape, not gradients due to potential numerical issues
     test_op_shape!(
-        Conv2d::new((1, 1), (0, 0)),
+        Conv2dOp::new((1, 1), (0, 0)),
         inputs,
         &[1, 2, 1, 1],
-        "Conv2d_MultiChannel"
+        "Conv2dOp_MultiChannel"
     );
 }
 
@@ -869,10 +869,10 @@ fn conv2d_batch_processing() {
     let inputs = vec![input, filter];
 
     test_op_shape!(
-        Conv2d::new((1, 1), (0, 0)),
+        Conv2dOp::new((1, 1), (0, 0)),
         inputs,
         &[2, 1, 1, 1], // Batch dimension preserved
-        "Conv2d_Batch"
+        "Conv2dOp_Batch"
     );
 }
 
@@ -888,10 +888,10 @@ fn conv2d_larger_kernel() {
 
     // 6x6 input with 5x5 kernel = 2x2 output
     test_op_shape!(
-        Conv2d::new((1, 1), (0, 0)),
+        Conv2dOp::new((1, 1), (0, 0)),
         inputs,
         &[1, 1, 2, 2],
-        "Conv2d_LargeKernel"
+        "Conv2dOp_LargeKernel"
     );
 }
 
@@ -905,12 +905,12 @@ fn conv2d_edge_cases() {
     // 1x1 kernel should preserve spatial dimensions
     let expected_values = vec![2.0, 4.0, 6.0, 8.0]; // Input * 2
     test_op_with_values!(
-        Conv2d::new((1, 1), (0, 0)),
+        Conv2dOp::new((1, 1), (0, 0)),
         inputs,
         &[1, 1, 2, 2],
         &expected_values,
         1e-6,
-        "Conv2d_1x1Kernel"
+        "Conv2dOp_1x1Kernel"
     );
 }
 }
