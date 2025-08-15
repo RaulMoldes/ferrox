@@ -113,8 +113,8 @@ impl<T> PoolBucket<T> {
         // Check if we're at capacity before adding
         if self.allocations.len() >= self.max_allocations {
             // Drop the allocation (let it go out of scope to free memory)
-          println!("[WARNING] this bucket is almost full. {} allocations will be freed", self.max_simultaneous_evictions);
-            self.evict_lru(self.max_simultaneous_evictions); // EVICT THE THREE OLDEST ALLOCS
+       //   println!("[WARNING] this bucket is almost full. {} allocations will be freed", self.max_simultaneous_evictions);
+            self.evict_lru(1); // EVICT THE OLDEST ALLOCATION
         }
 
         let timestamp = current_timestamp();

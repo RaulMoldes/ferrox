@@ -52,10 +52,10 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
           let bucket_configs = vec![
-            BucketConfig::new(1, 1024, 250, "Small GPU tensors: weights, biases", 100, 50),
-            BucketConfig::new(1025, 262144, 20, "Medium GPU tensors: layer activations",10,5),
-            BucketConfig::new(262145, 16777216, 10, "Large GPU tensors: batch processing", 5,3),
-            BucketConfig::new(16777217, usize::MAX, 5, "Huge GPU tensors: full model parameters",5,1),
+            BucketConfig::new(1, 1024, 100, "Small GPU tensors: weights, biases", 75, 25),
+            BucketConfig::new(1025, 262144, 20, "Medium GPU tensors: layer activations",15,5),
+            BucketConfig::new(262145, 16777216, 5, "Large GPU tensors: batch processing", 3,2),
+            BucketConfig::new(16777217, usize::MAX, 2, "Huge GPU tensors: full model parameters",2,1),
         ];
 
         Self { bucket_configs }
@@ -186,10 +186,10 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
 
 
 
-            Ok(())
-        } else {
-            Err(format!("Invalid CUDA allocation ID: {}", allocation_id))
+
         }
+            Ok(())
+
     }
 
     fn cleanup(&mut self) -> Result<(), String> {
@@ -322,14 +322,18 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
             remaining_to_evict = remaining_to_evict.saturating_sub(evicted);
         }
 
-        if total_evicted > 0 {
-            println!("Evicted {} oldest allocations from pool", total_evicted);
-        }
-
         total_evicted
     }
 }
 
+
+impl<T> Drop for CudaMemoryPool<T>
+where T: FerroxCudaN
+{
+    fn drop(&mut self){
+        self.cleanup().unwrap();
+    }
+}
 
 
 // Non-CUDA stub implementation
