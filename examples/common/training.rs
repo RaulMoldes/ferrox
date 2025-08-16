@@ -137,6 +137,12 @@ where
             )?;
         }
 
+
+        if epoch % 20  == 0{
+            graph.print_stats();
+
+        }
+
         // Print progress
         if epoch % config.print_every == 0 {
             if let Some(&current_loss) = loss_history.last() {

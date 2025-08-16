@@ -164,6 +164,10 @@ where
         }
     }
 
+    pub fn is_persistent(&self) -> bool {
+        self.is_persistent
+    }
+
     pub fn get_inputs(&self) -> Option<&Vec<NodeId>> {
         match &self.state {
             NodeState::Leaf(_) => None,
@@ -178,6 +182,16 @@ where
 
     pub fn into_data(self) -> Option<Tensor<T>> {
         self.state.into_data()
+    }
+
+    pub fn take_data(&mut self) -> Tensor<T> {
+
+        match self.state {
+            NodeState::Evaluated { ref mut tensor, .. } => tensor.take().expect("Evaluated node {self.id} is empty"),
+            NodeState::Leaf(_) => panic!("Cannot take the data of a leaf tensor"),
+            NodeState::Pending { .. } => panic!("Cannot take the data of a pending tensor"),
+        }
+
     }
 
     pub fn new_evaluated(
@@ -300,7 +314,7 @@ where
     gradients: HashMap<NodeId, Tensor<T>>,
     training_mode: bool,
     evaluation_mode: EvaluationMode,
-    cache_outputs: bool
+    cache_outputs: bool,
 }
 
 impl<T> Default for AutoFerroxEngine<T>
@@ -424,6 +438,7 @@ where
             .ok_or_else(|| format!("Failed to evaluate node {}", node_id.0))
     }
 
+
     // Checks if the node is evaluated.
     // If already evaluated, does nothing
     // If not, evaluates all inputs and computes, then frees up everything it does not need anymore.
@@ -433,40 +448,32 @@ where
             return Ok(());
         }
 
-        // If not evaluated take the pending node.
-        let (op, input_ids) = {
-            let node = self
-                .nodes
-                .get(&node_id)
-                .ok_or_else(|| format!("Node {} not found", node_id.0))?;
 
-            match &node.state {
-                NodeState::Pending { op, inputs } => (op.clone_op(), inputs.clone()),
-                _ => return Ok(()), // Ya evaluado
-            }
+        let node = self.get_node_owned(node_id);
+        let pending = node.into_state();
+
+        let (op, inputs) = match pending {
+                NodeState::Pending { op, inputs } => (op, inputs),
+                _ => return Ok(()), // Already evaluated
         };
 
+
         // Evaluate all inputs recursively
-        for &input_id in &input_ids {
-            self.safe_evaluate_node(input_id)?;
+        for &input_id in &inputs {
+
+            if !self.is_evaluated(input_id){
+                self.safe_evaluate_node(input_id)?;
+            }
         }
 
         // Obtain input tensors.
-        let res: Result<Vec<_>, String> = input_ids
-            .iter()
-            .map(|&input_id| {
-                self.get_tensor(input_id)
-                    .ok_or_else(|| format!("Input node {} not evaluated", input_id.0))
-            })
-            .collect();
-
-        let mut input_tensors = res?;
+         let mut input_tensors =  self.collect_nodes_data(&inputs)?;
 
         // Compute result
         let result_tensor = op.compute(&mut input_tensors)?;
 
         // Clean up memory from the input nodes for efficiency.
-        for input_id in &input_ids {
+        for input_id in &inputs {
             // Decrement reference count
             let can_cleanup = self.decrement_ref_count(*input_id);
 
@@ -477,9 +484,8 @@ where
                     // 1. Not a parameter (leaf node with requires_grad)
                     // 2. Not persistent
                     // 3. Ref count is zero
-                    let is_parameter = node.is_leaf() && node.requires_grad;
 
-                    if !is_parameter && !node.is_persistent {
+                    if !node.is_parameter() && !node.is_persistent() {
                         let _ = self.try_clear_node(*input_id);
                     }
                 }
@@ -491,11 +497,28 @@ where
             node.state = NodeState::Evaluated {
                 tensor: Some(result_tensor),
                 op: Some(op),
-                inputs: input_ids,
+                inputs,
             };
         }
 
         Ok(())
+    }
+
+    fn take_result(&mut self, id: NodeId) -> Tensor<T> {
+        self.nodes.get_mut(&id).expect("Node not found").take_data()
+    }
+
+    fn requires_grad(&self, id: NodeId) -> bool {
+        self.nodes.get(&id).expect("Node not found").requires_grad
+    }
+
+    fn free_nodes_data(&mut self, ids: &[NodeId]) {
+        let filtered : Vec<&NodeId> = ids
+            .iter()
+            .filter(|id| self.is_evaluated(**id) && ! self.is_leaf(**id) && (self.is_training() && !self.requires_grad(**id)) || !self.is_training()).collect();
+        let _: Vec<Tensor<T>> = filtered.into_iter().map(|id| {
+                self.take_result(*id)
+            }).collect();
     }
 
     pub fn get_tensor(&self, node_id: NodeId) -> Option<&Tensor<T>> {
@@ -516,6 +539,38 @@ where
             .get(&node_id)
             .is_some_and(|node| node.is_evaluated())
     }
+
+    pub fn is_leaf(&self, node_id: NodeId) -> bool {
+        self.nodes
+            .get(&node_id)
+            .is_some_and(|node| node.is_leaf())
+    }
+
+
+    pub fn debug(&self) {
+        println!("Available ids:");
+        for key in self.nodes.keys() {
+            println!("- {:?}", key);
+        }
+    }
+
+   fn collect_nodes_data(
+    &self,
+    input_ids: &[NodeId],
+) -> Result<Vec<&Tensor<T>>, String> {
+    // Obtain input tensors.
+        let input_tensors: Result<Vec<_>, String> = input_ids
+            .iter()
+            .map(|&input_id| {
+                self.get_tensor(input_id)
+                    .ok_or_else(|| format!("[ERROR] Node {} not found!", input_id.0))
+            })
+            .collect();
+
+
+    input_tensors
+}
+
 
     pub fn apply_operation(
         &mut self,
@@ -547,30 +602,23 @@ where
                     }
                 }
 
+                //self.debug();
+               // println!("[DEBUG] collecting input data");
                 // Obtain input tensors.
-                let res: Result<Vec<_>, String> = input_ids
-                    .iter()
-                    .map(|&input_id| {
-                        self.get_tensor(input_id)
-                            .ok_or_else(|| format!("Input node {} not available", input_id.0))
-                    })
-                    .collect();
-
-                let mut input_tensors = res?;
+                let mut input_tensors = self.collect_nodes_data(&input_ids)?;
 
                 // Evaluate inmediately
                 let result_tensor = op.compute(&mut input_tensors)?;
+            //    println!("[DEBUG] result has been computed");
 
-                let cached_tensor = if self.cache_outputs && op.cache_output() { // Si la operación no se va a beneficiar de cachear el resultado me da igual lo que diga el usuario.
-                    Some(result_tensor)
-                } else {
-                    drop(result_tensor);
-                    None // Liberar automaticamente la memoria
-                };
+                 // Liberar memoria de todos los inputs.
+                if !self.cache_outputs && !op.cache_output() {
+                    self.free_nodes_data(&input_ids);
+                }
 
                 // Create evaluated node
                 let node = Node::new_evaluated(
-                    cached_tensor,
+                    Some(result_tensor),
                     Some(op), // Save the op for the backward pass
                     input_ids,
                     true,
@@ -595,9 +643,12 @@ where
         }
 
 
+
+
+
         if !self.is_parameter(node_id){
             // Liberar la memoria de este nodo
-             self.try_clear_node(node_id);
+             self.try_clear_node(node_id)?;
         }
 
         Ok(())
@@ -674,14 +725,7 @@ where
             .ok_or_else(|| format!("No inputs found for node {}", node_id))?;
 
         // Collect input tensors
-        let input_tensors: Result<Vec<&Tensor<T>>, String> = input_ids
-            .iter()
-            .map(|&input_id| {
-                self.get_tensor(input_id)
-                    .ok_or_else(|| format!("Input tensor not found for node {}", input_id.0))
-            })
-            .collect();
-        let mut input_tensors = input_tensors?;
+        let mut input_tensors =  self.collect_nodes_data(input_ids)?;
 
         // Compute gradients using the operation's gradient method
         let input_grads = some_op.gradient(grad_output, &mut input_tensors, some_output)?;
@@ -866,7 +910,12 @@ where
 
     /// Get statistics about memory usage
     pub fn get_memory_stats(&self) -> MemoryStats {
-        let total_nodes = self.nodes.len();
+        let total_nodes_vec: Vec<&Node<T>> = self.nodes.values().filter(
+
+            |node| node.is_evaluated() && node.get_tensor().is_some()
+
+        ).collect();
+        let total_nodes = total_nodes_vec.len();
         let cleanable_nodes = self
             .nodes
             .values()
@@ -888,119 +937,21 @@ where
 
 
     pub fn print_stats(&self) {
-        println!("=== AutoFerrox Engine Statistics ===");
+        let graph_stats = self.get_memory_stats();
 
-        // Basic counts
-        let total_nodes = self.nodes.len();
-        let total_gradients = self.gradients.len();
+        println!("==============================================");
+        let count = graph_stats.total_nodes;
+        println!("[DEBUG]: TOTAL NODES: {}", count);
 
-        println!("Nodes: {}", total_nodes);
-        println!("Gradients: {}", total_gradients);
+        let count = graph_stats.persistent_nodes;
+        println!("[DEBUG]: TOTAL PERSISTENT NODES: {}", count);
 
-        // Node type breakdown
-        let mut leaf_nodes = 0;
-        let mut evaluated_nodes = 0;
-        let mut pending_nodes = 0;
-        let mut parameter_nodes = 0;
-        let mut persistent_nodes = 0;
-        let mut cleanable_nodes = 0;
+        let count = graph_stats.gradient_count;
+        println!("[DEBUG]: GRADS COUNT: {}", count);
 
-        // Reference count statistics
-        let mut total_refs = 0;
-        let mut max_refs = 0;
-        let mut zero_ref_nodes = 0;
+        let count = graph_stats.cleanable_nodes;
+        println!("[DEBUG]: CLEANABLE NODES: {}", count);
+        println!("==============================================");
 
-        for node in self.nodes.values() {
-            // Node types
-            if node.is_leaf() {
-                leaf_nodes += 1;
-            }
-            if node.is_evaluated() {
-                evaluated_nodes += 1;
-            } else {
-                pending_nodes += 1;
-            }
-            if node.requires_grad && node.is_leaf() {
-                parameter_nodes += 1;
-            }
-            if node.is_persistent {
-                persistent_nodes += 1;
-            }
-            if node.can_be_cleaned() {
-                cleanable_nodes += 1;
-            }
-
-            // Reference counts
-            total_refs += node.ref_count;
-            max_refs = max_refs.max(node.ref_count);
-            if node.ref_count == 0 {
-                zero_ref_nodes += 1;
-            }
-        }
-
-        println!("  - Leaf nodes: {}", leaf_nodes);
-        println!("  - Parameter nodes: {}", parameter_nodes);
-        println!("  - Evaluated nodes: {}", evaluated_nodes);
-        println!("  - Pending nodes: {}", pending_nodes);
-        println!("  - Persistent nodes: {}", persistent_nodes);
-        println!("  - Cleanable nodes: {}", cleanable_nodes);
-
-        // Reference statistics
-        println!("References:");
-        println!("  - Total refs: {}", total_refs);
-        println!("  - Max refs on single node: {}", max_refs);
-        println!("  - Nodes with zero refs: {}", zero_ref_nodes);
-
-        if total_nodes > 0 {
-            println!(
-                "  - Avg refs per node: {:.2}",
-                total_refs as f32 / total_nodes as f32
-            );
-        }
-
-        // Memory analysis
-        let memory_pressure = if total_nodes > 0 {
-            cleanable_nodes as f32 / total_nodes as f32
-        } else {
-            0.0
-        };
-
-        println!("Memory:");
-        println!("  - Memory pressure: {:.1}%", memory_pressure * 100.0);
-        println!("  - Training mode: {}", self.training_mode);
-        println!("  - Evaluation mode: {:?}", self.evaluation_mode);
-
-        // Gradient analysis
-        let mut param_gradients = 0;
-        let mut intermediate_gradients = 0;
-
-        for &node_id in self.gradients.keys() {
-            if let Some(node) = self.nodes.get(&node_id) {
-                if node.requires_grad && node.is_leaf() {
-                    param_gradients += 1;
-                } else {
-                    intermediate_gradients += 1;
-                }
-            }
-        }
-
-        println!("Gradients breakdown:");
-        println!("  - Parameter gradients: {}", param_gradients);
-        println!("  - Intermediate gradients: {}", intermediate_gradients);
-
-        // Memory recommendations
-        if memory_pressure > 0.3 {
-            println!("High memory pressure - consider calling cleanup_now()");
-        }
-
-        if intermediate_gradients > parameter_nodes * 2 {
-            println!("Many intermediate gradients - consider clear_intermediate_gradients()");
-        }
-
-        if zero_ref_nodes > total_nodes / 4 {
-            println!("Many unreferenced nodes - consider cleanup_unreferenced_nodes()");
-        }
-
-        println!("=====================================");
     }
 }
