@@ -1,0 +1,84 @@
+--- MLP Classification Demo ---
+Loaded 8 CUDA kernels successfully
+CUDA backend and pool initialized successfully
+
+=== Binary Classification Demo ===
+Training binary classifier...
+[EPOCH 0] Loss: 5.487349
+[EPOCH 5] Loss: 4.084455
+[EPOCH 10] Loss: 2.742168
+[EPOCH 15] Loss: 0.596781
+[EPOCH 20] Loss: 0.452068
+[EPOCH 25] Loss: 0.350555
+[EPOCH 30] Loss: 0.263799
+[EPOCH 35] Loss: 0.212182
+[EPOCH 40] Loss: 0.181451
+[EPOCH 45] Loss: 0.158905
+=== AutoFerrox Engine Statistics ===
+Nodes: 14006
+Gradients: 8
+  - Leaf nodes: 1006
+  - Parameter nodes: 6
+  - Evaluated nodes: 14006
+  - Pending nodes: 0
+  - Persistent nodes: 6
+  - Cleanable nodes: 500
+References:
+  - Total refs: 17500
+  - Max refs on single node: 500
+  - Nodes with zero refs: 500
+  - Avg refs per node: 1.25
+Memory:
+  - Memory pressure: 3.6%
+  - Training mode: true
+  - Evaluation mode: Eager
+Gradients breakdown:
+  - Parameter gradients: 6
+  - Intermediate gradients: 2
+=====================================
+=== Binary Classification Evaluation ===
+Evaluated on 200 samples
+Prediction shape: [200, 1]
+BCE Loss: 0.501991
+
+=== Multiclass Classification Demo ===
+Training multiclass classifier...
+[EPOCH 0] Loss: 0.602886
+[EPOCH 5] Loss: 0.010156
+[EPOCH 10] Loss: 0.004568
+[EPOCH 15] Loss: 0.002725
+[EPOCH 20] Loss: 0.001822
+[EPOCH 25] Loss: 0.001312
+[EPOCH 30] Loss: 0.000996
+[EPOCH 35] Loss: 0.000784
+[EPOCH 40] Loss: 0.000634
+[EPOCH 45] Loss: 0.000524
+=== AutoFerrox Engine Statistics ===
+Nodes: 11506
+Gradients: 8
+  - Leaf nodes: 1006
+  - Parameter nodes: 6
+  - Evaluated nodes: 11506
+  - Pending nodes: 0
+  - Persistent nodes: 6
+  - Cleanable nodes: 500
+References:
+  - Total refs: 14000
+  - Max refs on single node: 500
+  - Nodes with zero refs: 500
+  - Avg refs per node: 1.22
+Memory:
+  - Memory pressure: 4.3%
+  - Training mode: true
+  - Evaluation mode: Eager
+Gradients breakdown:
+  - Parameter gradients: 6
+  - Intermediate gradients: 2
+=====================================
+=== Multiclass Classification Evaluation ===
+Evaluated on 200 samples
+Prediction shape: [200, 3]
+Target shape: [200, 3]
+CCE Loss: 0.000459
+
+Classification examples completed successfully!

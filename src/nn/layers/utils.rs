@@ -12,12 +12,12 @@ where
     T: FerroxCudaF,
 {
     let target_shape = graph
-        .get_node_shape(target)
+        .get_node_shape(&target)
         .expect("Failed to get target shape for broadcasting")
         .to_vec();
 
     let input_shape = graph
-        .get_node_shape(input)
+        .get_node_shape(&input)
         .expect("Failed to get input shape for broadcasting")
         .to_vec();
     let res = if input_shape.len() == 1 {

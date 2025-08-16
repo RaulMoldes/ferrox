@@ -91,7 +91,7 @@ where
     M: Module<T>,
     L: Loss<T>,
 {
-    let mut graph = AutoFerroxEngine::new();
+    //let mut graph = AutoFerroxEngine::new();
 
     // Initialize optimizer
     let mut optimizer = match config.optimizer {
@@ -112,6 +112,8 @@ where
         _ => return Err("Invalid optimizer name! Must be Adam or SGD".to_string()),
     };
 
+    
+    let mut graph = AutoFerroxEngine::new();
     // Initialize model parameters
     initialize_model(model, &mut graph, &mut optimizer)?;
 
@@ -135,7 +137,7 @@ where
             )?;
         }
 
-       
+
 
         // Print progress
         if epoch % config.print_every == 0 {

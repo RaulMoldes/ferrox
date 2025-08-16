@@ -10,6 +10,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// ATOMIC auto incrementing id for all nodes.
 static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+
+#[derive(Debug)]
+pub struct MemoryStats {
+    pub total_nodes: usize,
+    pub cleanable_nodes: usize,
+    pub persistent_nodes: usize,
+    pub gradient_count: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub usize);
 
@@ -94,6 +103,8 @@ where
     pub id: NodeId,
     pub state: NodeState<T>,
     pub requires_grad: bool,
+    pub ref_count: usize,
+    pub is_persistent: bool,
 }
 
 impl<T> Node<T>
@@ -105,6 +116,8 @@ where
             id: NodeId::new(),
             state: NodeState::Leaf(tensor),
             requires_grad,
+            ref_count: 0,
+            is_persistent: requires_grad,
         }
     }
 
@@ -113,6 +126,8 @@ where
             id: NodeId::new(),
             state: NodeState::Pending { op, inputs },
             requires_grad,
+            ref_count: 0,
+            is_persistent: false,
         }
     }
 
@@ -142,6 +157,8 @@ where
             id: NodeId::new(),
             state: NodeState::Evaluated { tensor, op, inputs },
             requires_grad,
+            ref_count: 0,
+            is_persistent: false,
         }
     }
 
@@ -182,6 +199,29 @@ where
 
     pub fn is_leaf(&self) -> bool {
         matches!(self.state, NodeState::Leaf(_))
+    }
+
+       /// Increment reference count
+    pub fn increment_ref(&mut self) {
+        self.ref_count += 1;
+    }
+
+    /// Decrement reference count and return true if can be cleaned
+    pub fn decrement_ref(&mut self) -> bool {
+        if self.ref_count > 0 {
+            self.ref_count -= 1;
+        }
+        self.can_be_cleaned()
+    }
+
+    /// Check if this node can be safely removed from memory
+    pub fn can_be_cleaned(&self) -> bool {
+        !self.is_persistent && self.ref_count == 0
+    }
+
+    /// Mark this node as persistent (never auto-clean)
+    pub fn mark_persistent(&mut self) {
+        self.is_persistent = true;
     }
 }
 
@@ -382,6 +422,13 @@ where
         input_ids: Vec<NodeId>,
     ) -> Result<NodeId, String> {
         self.validate_inputs(&op, &input_ids)?;
+
+
+        // Increment reference count for all input nodes
+        // This indicates they are being used by this new operation
+        for &input_id in &input_ids {
+            self.increment_ref_count(input_id);
+        }
 
         match self.evaluation_mode {
             EvaluationMode::Lazy => {
@@ -609,8 +656,8 @@ where
         self.nodes.get(&node_id)?.get_tensor()
     }
 
-    pub fn get_node_shape(&self, node_id: NodeId) -> Option<&[usize]> {
-        if let Some(tensor) = self.nodes.get(&node_id)?.get_tensor() {
+    pub fn get_node_shape(&self, node_id: &NodeId) -> Option<&[usize]> {
+        if let Some(tensor) = self.nodes.get(node_id)?.get_tensor() {
             Some(tensor.shape())
         } else {
             None
@@ -625,101 +672,241 @@ where
         Ok(())
     }
 
-    // Utilities for removing nodes
-    /// Remove a node from the computational graph
-    /// This is useful for cleaning up temporary data nodes to prevent memory growth
-    /// WARNING: Only remove nodes that are no longer needed for computation or gradient flow
-    pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
-        // Check if node exists
-        if !self.nodes.contains_key(&node_id) {
-            return Err(format!("Node {} does not exist in graph", node_id.0));
+    /// Increment reference count for a node
+    pub fn increment_ref_count(&mut self, node_id: NodeId) {
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            node.increment_ref();
         }
-
-        // Get the node to check if it's safe to remove
-        let node = self.nodes.get(&node_id).unwrap();
-
-        // Safety check: Don't remove parameter nodes (nodes with requires_grad = true)
-        // These are needed for gradient computation and parameter updates
-        if node.requires_grad {
-            return Err(format!(
-                "Cannot remove parameter node {} (requires_grad=true). This would break gradient flow.",
-                node_id.0
-            ));
-        }
-
-        // Check if any other nodes depend on this node
-        // This prevents removing nodes that are still referenced by other operations
-        let is_referenced = self.nodes.values().any(|other_node| {
-            if let Some(inputs) = other_node.get_inputs() {
-                inputs.contains(&node_id)
-            } else {
-                false
-            }
-        });
-
-        if is_referenced {
-            return Err(format!(
-                "Cannot remove node {} as it is still referenced by other nodes in the graph",
-                node_id.0
-            ));
-        }
-
-        // Safe to remove: remove from both nodes and gradients maps
-        self.nodes.remove(&node_id);
-        self.gradients.remove(&node_id);
-
-        Ok(())
     }
 
-    /// Remove multiple nodes at once (batch removal)
-    /// More efficient than calling remove_node repeatedly
-    pub fn remove_nodes(&mut self, node_ids: &[NodeId]) -> Result<(), String> {
-        // First, validate all nodes can be safely removed
-        for &node_id in node_ids {
-            if !self.nodes.contains_key(&node_id) {
-                return Err(format!("Node {} does not exist in graph", node_id.0));
-            }
+    /// Decrement reference count and return if node can be cleaned
+    pub fn decrement_ref_count(&mut self, node_id: NodeId) -> bool {
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            node.decrement_ref()
+        } else {
+            false
+        }
+    }
 
-            let node = self.nodes.get(&node_id).unwrap();
-            if node.requires_grad {
-                return Err(format!(
-                    "Cannot remove parameter node {} (requires_grad=true)",
-                    node_id.0
-                ));
+    /// Mark a node as persistent (won't be auto-cleaned)
+    pub fn mark_persistent(&mut self, node_id: NodeId) {
+        if let Some(node) = self.nodes.get_mut(&node_id) {
+            node.mark_persistent();
+        }
+    }
+
+    /// Check if a node can be safely removed
+    pub fn can_node_be_cleaned(&self, node_id: NodeId) -> bool {
+        self.nodes
+            .get(&node_id)
+            .map(|node| node.can_be_cleaned())
+            .unwrap_or(false)
+    }
+
+    /// Get reference count for debugging
+    pub fn get_ref_count(&self, node_id: NodeId) -> Option<usize> {
+        self.nodes.get(&node_id).map(|node| node.ref_count)
+    }
+
+
+     /// Remove nodes that have no references and are not persistent
+    pub fn cleanup_unreferenced_nodes(&mut self) -> Result<usize, String> {
+        let mut nodes_to_remove = Vec::new();
+
+        // Find nodes that can be cleaned up
+        for (&node_id, node) in &self.nodes {
+            if node.can_be_cleaned() {
+                nodes_to_remove.push(node_id);
             }
         }
 
-        // Check for any references between the nodes being removed and remaining nodes
-        let node_ids_set: std::collections::HashSet<_> = node_ids.iter().collect();
-        let is_any_referenced = self.nodes.iter().any(|(id, node)| {
-            // Skip nodes that are being removed
-            if node_ids_set.contains(id) {
-                return false;
+        let removed_count = nodes_to_remove.len();
+
+        // Remove the nodes and their gradients
+
+
+        for node_id in nodes_to_remove {
+            let mut nodes_to_decrement: Vec<NodeId> = Vec::new();
+            // Before removing, decrement reference counts of input nodes
+            if let Some(node) = self.nodes.get(&node_id) {
+                if let Some(inputs) = node.get_inputs() {
+                    for input_id in inputs {
+                        nodes_to_decrement.push(*input_id);
+                    }
+                }
             }
 
-            // Check if this remaining node references any of the nodes being removed
-            if let Some(inputs) = node.get_inputs() {
-                inputs
-                    .iter()
-                    .any(|input_id| node_ids_set.contains(&input_id))
-            } else {
-                false
+            for node_id in nodes_to_decrement {
+                self.decrement_ref_count(node_id);
             }
-        });
 
-        if is_any_referenced {
-            return Err(
-                "Cannot remove nodes as some are still referenced by remaining nodes".to_string(),
-            );
-        }
-
-        // Safe to remove all nodes
-        for &node_id in node_ids {
+            // Remove node and its gradient
             self.nodes.remove(&node_id);
             self.gradients.remove(&node_id);
         }
 
-        Ok(())
+        Ok(removed_count)
+    }
+
+    /// Force cleanup of a specific node if it's safe to do so
+    pub fn try_cleanup_node(&mut self, node_id: NodeId) -> Result<bool, String> {
+        if self.can_node_be_cleaned(node_id) {
+            // Decrement references to input nodes
+            let mut nodes_to_decrement: Vec<NodeId> = Vec::new();
+            // Before removing, decrement reference counts of input nodes
+            if let Some(node) = self.nodes.get(&node_id) {
+                if let Some(inputs) = node.get_inputs() {
+                    for input_id in inputs {
+                        nodes_to_decrement.push(*input_id);
+                    }
+                }
+            }
+
+            for node_id in nodes_to_decrement {
+                self.decrement_ref_count(node_id);
+            }
+
+
+            // Remove node and gradient
+            self.nodes.remove(&node_id);
+            self.gradients.remove(&node_id);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Get statistics about memory usage
+    pub fn get_memory_stats(&self) -> MemoryStats {
+        let total_nodes = self.nodes.len();
+        let cleanable_nodes = self.nodes.values()
+            .filter(|node| node.can_be_cleaned())
+            .count();
+        let persistent_nodes = self.nodes.values()
+            .filter(|node| node.is_persistent)
+            .count();
+
+        MemoryStats {
+            total_nodes,
+            cleanable_nodes,
+            persistent_nodes,
+            gradient_count: self.gradients.len(),
+        }
+    }
+
+
+     pub fn print_stats(&self) {
+        println!("=== AutoFerrox Engine Statistics ===");
+
+        // Basic counts
+        let total_nodes = self.nodes.len();
+        let total_gradients = self.gradients.len();
+
+        println!("Nodes: {}", total_nodes);
+        println!("Gradients: {}", total_gradients);
+
+        // Node type breakdown
+        let mut leaf_nodes = 0;
+        let mut evaluated_nodes = 0;
+        let mut pending_nodes = 0;
+        let mut parameter_nodes = 0;
+        let mut persistent_nodes = 0;
+        let mut cleanable_nodes = 0;
+
+        // Reference count statistics
+        let mut total_refs = 0;
+        let mut max_refs = 0;
+        let mut zero_ref_nodes = 0;
+
+        for node in self.nodes.values() {
+            // Node types
+            if node.is_leaf() {
+                leaf_nodes += 1;
+            }
+            if node.is_evaluated() {
+                evaluated_nodes += 1;
+            } else {
+                pending_nodes += 1;
+            }
+            if node.requires_grad && node.is_leaf() {
+                parameter_nodes += 1;
+            }
+            if node.is_persistent {
+                persistent_nodes += 1;
+            }
+            if node.can_be_cleaned() {
+                cleanable_nodes += 1;
+            }
+
+            // Reference counts
+            total_refs += node.ref_count;
+            max_refs = max_refs.max(node.ref_count);
+            if node.ref_count == 0 {
+                zero_ref_nodes += 1;
+            }
+        }
+
+        println!("  - Leaf nodes: {}", leaf_nodes);
+        println!("  - Parameter nodes: {}", parameter_nodes);
+        println!("  - Evaluated nodes: {}", evaluated_nodes);
+        println!("  - Pending nodes: {}", pending_nodes);
+        println!("  - Persistent nodes: {}", persistent_nodes);
+        println!("  - Cleanable nodes: {}", cleanable_nodes);
+
+        // Reference statistics
+        println!("References:");
+        println!("  - Total refs: {}", total_refs);
+        println!("  - Max refs on single node: {}", max_refs);
+        println!("  - Nodes with zero refs: {}", zero_ref_nodes);
+
+        if total_nodes > 0 {
+            println!("  - Avg refs per node: {:.2}", total_refs as f32 / total_nodes as f32);
+        }
+
+        // Memory analysis
+        let memory_pressure = if total_nodes > 0 {
+            cleanable_nodes as f32 / total_nodes as f32
+        } else {
+            0.0
+        };
+
+        println!("Memory:");
+        println!("  - Memory pressure: {:.1}%", memory_pressure * 100.0);
+        println!("  - Training mode: {}", self.training_mode);
+        println!("  - Evaluation mode: {:?}", self.evaluation_mode);
+
+        // Gradient analysis
+        let mut param_gradients = 0;
+        let mut intermediate_gradients = 0;
+
+        for (&node_id, _) in &self.gradients {
+            if let Some(node) = self.nodes.get(&node_id) {
+                if node.requires_grad && node.is_leaf() {
+                    param_gradients += 1;
+                } else {
+                    intermediate_gradients += 1;
+                }
+            }
+        }
+
+        println!("Gradients breakdown:");
+        println!("  - Parameter gradients: {}", param_gradients);
+        println!("  - Intermediate gradients: {}", intermediate_gradients);
+
+        // Memory recommendations
+        if memory_pressure > 0.3 {
+            println!("High memory pressure - consider calling cleanup_now()");
+        }
+
+        if intermediate_gradients > parameter_nodes * 2 {
+            println!("Many intermediate gradients - consider clear_intermediate_gradients()");
+        }
+
+        if zero_ref_nodes > total_nodes / 4 {
+            println!("Many unreferenced nodes - consider cleanup_unreferenced_nodes()");
+        }
+
+        println!("=====================================");
     }
 }
 

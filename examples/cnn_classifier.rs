@@ -85,6 +85,8 @@ fn main() -> Result<(), String> {
         &training_config,
     )?;
 
+    trained_graph.print_stats();
+
     println!("\nEvaluating model on test data...");
     evaluate_classification(&mut model, &mut trained_graph, test_data)?;
 

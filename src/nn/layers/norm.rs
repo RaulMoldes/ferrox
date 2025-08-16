@@ -195,7 +195,7 @@ where
     ) -> Result<NodeId, String> {
         let norm_axes = {
             let input_shape = graph
-                .get_node_shape(input)
+                .get_node_shape(&input)
                 .ok_or("Input tensor not found in graph")?;
 
             // For BatchNorm, we normalize across batch dimension (axis 0)
@@ -448,12 +448,12 @@ where
     T: FerroxCudaF,
 {
     let target_shape = graph
-        .get_node_shape(target)
+        .get_node_shape(&target)
         .expect("Failed to get target shape for broadcasting")
         .to_vec();
 
     let input_shape = graph
-        .get_node_shape(input)
+        .get_node_shape(&input)
         .expect("Failed to get input shape for broadcasting")
         .to_vec();
     let res = if input_shape.len() == 1 {
