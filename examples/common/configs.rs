@@ -56,6 +56,8 @@ impl MLPConfig {
             num_samples: 1000,
         }
     }
+
+
 }
 
 /// Training configuration supporting multiple optimizers
@@ -104,6 +106,25 @@ where
             decay: Some(FerroxN::from_f32(0.0001).unwrap()),
 
             // Adam parameters
+            beta1: Some(FerroxN::from_f32(0.9).unwrap()),
+            beta2: Some(FerroxN::from_f32(0.999).unwrap()),
+            eps: Some(FerroxN::from_f32(1e-8).unwrap()),
+            amsgrad: false,
+        }
+    }
+
+    pub fn cnn_training() -> Self {
+        Self {
+            batch_size: 32,
+            num_epochs: 100,
+            learning_rate: Some(FerroxN::from_f32(0.0001).unwrap()), // Lower LR for CNN
+            print_every: 5,
+            optimizer: "Adam",
+
+            momentum: Some(FerroxN::from_f32(0.9).unwrap()),
+            nesterov: false,
+            decay: Some(FerroxN::from_f32(0.0001).unwrap()),
+
             beta1: Some(FerroxN::from_f32(0.9).unwrap()),
             beta2: Some(FerroxN::from_f32(0.999).unwrap()),
             eps: Some(FerroxN::from_f32(1e-8).unwrap()),

@@ -161,51 +161,51 @@ where
 
         // Generate image for each channel
         for _c in 0..channels {
-            // Create pattern based on class
+            // Create VERY simple, high-contrast patterns
             for y in 0..image_size {
                 for x in 0..image_size {
                     let pixel_value = match class {
-                        // Class 0: Horizontal stripes
+                        // Class 0: Top half bright, bottom half dark
                         0 => {
-                            if (y / 4) % 2 == 0 {
-                                0.8
+                            if y < image_size / 2 {
+                                1.0
                             } else {
-                                0.2
+                                0.0
                             }
                         }
-                        // Class 1: Vertical stripes
+                        // Class 1: Left half bright, right half dark
                         1 => {
-                            if (x / 4) % 2 == 0 {
-                                0.8
+                            if x < image_size / 2 {
+                                1.0
                             } else {
-                                0.2
+                                0.0
                             }
                         }
-                        // Class 2: Diagonal pattern
+                        // Class 2: Center bright, edges dark
                         2 => {
-                            if ((x + y) / 6) % 2 == 0 {
-                                0.8
+                            let center_x = image_size / 2;
+                            let center_y = image_size / 2;
+                            let quarter_size = image_size / 4;
+
+                            if (x as i32 - center_x as i32).abs() < quarter_size as i32
+                                && (y as i32 - center_y as i32).abs() < quarter_size as i32 {
+                                1.0
                             } else {
-                                0.2
+                                0.0
                             }
                         }
-                        // Additional classes: random patterns
+                        // Additional classes: simple diagonal split
                         _ => {
-                            if ((x * class + y) / 5) % 2 == 0 {
-                                0.8
+                            if x + y < image_size {
+                                1.0
                             } else {
-                                0.2
+                                0.0
                             }
                         }
                     };
 
-                    // Add some noise to make it more realistic
-                    let noise =
-                        (i as f64 * 0.001 + x as f64 * 0.002 + y as f64 * 0.003) % 0.1 - 0.05;
-                    let final_value = (pixel_value + noise).clamp(0.0, 1.0);
-
                     input_data.push(
-                        <T as FerroxN>::from_f64(final_value)
+                        <T as FerroxN>::from_f64(pixel_value)
                             .ok_or("Failed to convert pixel value")?,
                     );
                 }

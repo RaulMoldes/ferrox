@@ -18,6 +18,7 @@ use crate::ops::{
 use crate::FerroxN;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use crate::ops::Div;
 /// ---------------------------------------------------
 /// BATCH NORM
 /// ---------------------------------------------------
@@ -307,7 +308,11 @@ where
             .apply_operation(sqrt_op, vec![var_plus_eps])
             .map_err(|e| format!("BatchNorm sqrt computation failed: {}", e))?;
 
-        let normalized = reshape_and_broadcast(std_dev, centered, graph)?;
+        let broadcasted_std = reshape_and_broadcast(std_dev, centered, graph)?;
+        let div_op = Box::new(Div);
+        let normalized = graph
+        .apply_operation(div_op, vec![centered, broadcasted_std])
+        .map_err(|e| format!("BatchNorm normalization division failed: {}", e))?;
         // Step 4: Apply learnable parameters: gamma * normalized + beta
         let w_node = self.get_parameter_node("weight")?;
 

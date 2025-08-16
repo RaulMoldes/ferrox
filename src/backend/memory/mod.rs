@@ -18,6 +18,8 @@ pub struct PoolAllocation<T> {
     pub allocation_id: u64,
 }
 
+
+
 impl<T> PoolAllocation<T> {
     fn new(data: T, size: usize, allocation_id: u64) -> Self {
         Self {
@@ -71,17 +73,40 @@ pub struct PoolStats {
     pub active_allocations: usize,
     pub pool_hits: usize,   // How many times we reused pooled memory
     pub pool_misses: usize, // How many times we had to allocate new memory
-    pub total_memory_bytes: usize,
-    pub peak_memory_bytes: usize,
+    pub underflow_misses: usize, // When the chunk did not fit in the returned chunk. TODO: reduce this number by implementing block merging.
 }
+
+#[derive(Debug, Clone)]
+pub struct BucketStats {
+    pub total_allocations: usize,
+    pub total_evictions: usize,
+    pub av_allocations: usize,
+    pub max_allocations: usize
+}
+
+impl BucketStats {
+    fn new(max_allocations: usize) -> Self {
+
+        println!("Available allocations se inicaliza: {:?}", max_allocations);
+        Self {
+            total_allocations: 0,
+            total_evictions: 0,
+            av_allocations: max_allocations,
+            max_allocations
+
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct PoolBucket<T> {
     pub size_range: (usize, usize),
     pub allocations: Vec<(PoolAllocation<T>, u64)>, // (allocation, last_access_timestamp)
     pub max_allocations: usize, // Maximum number of allocations this bucket can hold
-    max_simultaneous_evictions: usize,
-    eviction_threshold: u64,
+    to_evict: usize, // Number of frames taht will be evicted at the same time when we reach the limit
+    eviction_threshold: Option<u64> , // Configurable timestamp: Max time any frame is allowed to be kept in this bucket
+    stats: BucketStats,
 }
 
 impl<T> PoolBucket<T> {
@@ -89,15 +114,17 @@ impl<T> PoolBucket<T> {
         min_size: usize,
         max_size: usize,
         max_allocations: usize,
-        max_simultaneous_evictions: usize,
-        eviction_threshold: u64,
+        to_evict: usize,
+        eviction_threshold: Option<u64>,
     ) -> Self {
+
         Self {
             size_range: (min_size, max_size),
             allocations: Vec::new(),
             max_allocations,
-            max_simultaneous_evictions,
+            to_evict,
             eviction_threshold,
+            stats: BucketStats::new(max_allocations)
         }
     }
 
@@ -108,25 +135,41 @@ impl<T> PoolBucket<T> {
 
     // Get available allocation from this bucket
     pub fn get_allocation(&mut self) -> Option<PoolAllocation<T>> {
+
         self.allocations.pop().map(|(allocation, _)| allocation)
     }
 
     // Return allocation to this bucket's pool with current timestamp
     pub fn return_allocation(&mut self, allocation: PoolAllocation<T>) {
         // Check if we're at capacity before adding
-        if self.allocations.len() >= self.max_allocations {
+
+        let current_allocations = self.allocation_counts();
+
+        if current_allocations >= self.max_allocations {
             // Drop the allocation (let it go out of scope to free memory)
-            //   println!("[WARNING] this bucket is almost full. {} allocations will be freed", self.max_simultaneous_evictions);
-            self.evict_lru(1); // EVICT THE OLDEST ALLOCATION
+            //   println!("[WARNING] this bucket is almost full. {} allocations will be freed", self.to_evict);
+            if let Some(threshold) = self.eviction_threshold {
+
+                self.evict_older_than(threshold); // EVICT ANY ALLOCATIONS OLDER THAN THE SPECIFIED Ts.
+            }
+            else {
+
+                self.evict_lru(self.to_evict); // EVICT THE OLDEST ALLOCATIONS
+            }
         }
 
-        let timestamp = current_timestamp();
+        self.stats.total_evictions += current_allocations - self.allocation_counts();
+        self.stats.total_allocations = self.allocation_counts() + 1;
 
+        self.stats.av_allocations = self.stats.max_allocations.saturating_sub(self.allocation_counts() + 1);
+
+
+        let timestamp = current_timestamp();
         self.allocations.push((allocation, timestamp));
     }
 
     // Evict oldest allocations from this bucket that are not in active use
-    pub fn evict_lru(&mut self, count_to_evict: usize) -> usize {
+    fn evict_lru(&mut self, count_to_evict: usize) -> usize {
         if count_to_evict == 0 || self.allocations.is_empty() {
             return 0;
         }
@@ -142,7 +185,7 @@ impl<T> PoolBucket<T> {
         actual_evict
     }
 
-    pub fn evict_older_than(&mut self, max_age: u64) -> usize {
+    fn evict_older_than(&mut self, max_age: u64) -> usize {
         if self.allocations.is_empty() {
             return 0;
         }
@@ -157,18 +200,7 @@ impl<T> PoolBucket<T> {
         before_len - self.allocations.len()
     }
 
-    // Get count of allocations older than specified age
-    pub fn count_free_allocations(&self, max_age_ms: u64) -> usize {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
 
-        self.allocations
-            .iter()
-            .filter(|(_, last_access)| current_time.saturating_sub(*last_access) > max_age_ms)
-            .count()
-    }
 
     // Remove all pooled allocations (not in active use)
     pub fn clear_all(&mut self) -> usize {
@@ -183,9 +215,22 @@ impl<T> PoolBucket<T> {
         self.allocations.len()
     }
 
-    pub fn register_allocation(&mut self, allocation_id: u64, slice: PoolAllocation<T>) {
-        self.allocations
-            .insert(allocation_id as usize, (slice, current_timestamp()));
+
+    pub fn stats(&self) -> &BucketStats {
+        &self.stats
+    }
+
+     pub fn print_stats(&self, id: usize)  {
+        let stats = self.stats();
+        println!("==============================================");
+        println!("[INFO] BUCKET {:?}  STATS", id);
+        println!("[INFO] Total bucket allocations {}", stats.total_allocations);
+        println!("[INFO] Total bucket evictions {}", stats.total_evictions);
+        println!("[INFO] Total available allocations {}", stats.av_allocations);
+        println!("[INFO] Available {} %",(stats.av_allocations*100).div_ceil(stats.max_allocations));
+        println!("[INFO] Max allocations {}", stats.max_allocations);
+        println!("==============================================");
+
     }
 }
 

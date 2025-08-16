@@ -203,7 +203,7 @@ where
 {
     // First convolutional block
     conv1: Conv2d<T>,
-    batch_norm1: BatchNorm<T>,
+   batch_norm1: BatchNorm<T>,
     activation1: ReLU<T>,
 
     // Second convolutional block
@@ -260,7 +260,7 @@ where
                 true,
                 device,
             ),
-            batch_norm1: BatchNorm::new(conv1_filters, 1e-7, 0.8, true, device),
+            batch_norm1: BatchNorm::new(conv1_filters, 1e-3, 0.1, true, device),
             activation1: ReLU::new(),
 
             conv2: Conv2d::new(
@@ -272,7 +272,7 @@ where
                 true,
                 device,
             ),
-            batch_norm2: BatchNorm::new(conv2_filters, 1e-7, 0.8, true, device),
+           batch_norm2: BatchNorm::new(conv2_filters, 1e-3, 0.1, true, device),
             activation2: ReLU::new(),
 
             global_pool: GlobalAvgPool2d::new(false),
@@ -288,9 +288,9 @@ where
     pub fn get_parameters(&self) -> Vec<&ferrox::nn::parameter::Parameter<T>> {
         let mut params = Vec::new();
         params.extend(self.conv1.parameters());
-        params.extend(self.batch_norm1.parameters());
+     params.extend(self.batch_norm1.parameters());
         params.extend(self.conv2.parameters());
-        params.extend(self.batch_norm2.parameters());
+       params.extend(self.batch_norm2.parameters());
         params.extend(self.fc1.parameters());
         params.extend(self.output.parameters());
         params
@@ -335,19 +335,19 @@ where
             param_map.insert(format!("conv1_{}", param_name), node_id);
         }
 
-        let bn1_params = self.batch_norm1.create_parameters_in_graph(engine);
-        for (param_name, node_id) in bn1_params {
-            param_map.insert(format!("batch_norm1_{}", param_name), node_id);
-        }
+       let bn1_params = self.batch_norm1.create_parameters_in_graph(engine);
+       for (param_name, node_id) in bn1_params {
+           param_map.insert(format!("batch_norm1_{}", param_name), node_id);
+       }
 
-        let conv2_params = self.conv2.create_parameters_in_graph(engine);
-        for (param_name, node_id) in conv2_params {
+       let conv2_params = self.conv2.create_parameters_in_graph(engine);
+       for (param_name, node_id) in conv2_params {
             param_map.insert(format!("conv2_{}", param_name), node_id);
         }
 
-        let bn2_params = self.batch_norm2.create_parameters_in_graph(engine);
+       let bn2_params = self.batch_norm2.create_parameters_in_graph(engine);
         for (param_name, node_id) in bn2_params {
-            param_map.insert(format!("batch_norm2_{}", param_name), node_id);
+           param_map.insert(format!("batch_norm2_{}", param_name), node_id);
         }
 
         let fc1_params = self.fc1.create_parameters_in_graph(engine);

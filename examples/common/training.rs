@@ -1,5 +1,5 @@
-use super::configs::TrainingConfig;
 use ferrox::backend::manager::show_memory_stats;
+use super::configs::TrainingConfig;
 use ferrox::backend::FerroxCudaF;
 use ferrox::dataset::BatchedDataset;
 use ferrox::graph::{AutoFerroxEngine, NodeId};
@@ -137,6 +137,10 @@ where
 
         if epoch % 20 == 0 {
             graph.print_stats();
+        }
+
+        if (epoch + 1) % 50 == 0 {
+            show_memory_stats::<T>()?;
         }
 
         // Print progress

@@ -45,7 +45,7 @@ fn main() -> Result<(), String> {
     println!("--- CNN Image Classification Demo ---");
 
     let device = best_f32_device();
-    let training_config = TrainingConfig::fast(); // Use fast config for demo
+    let training_config = TrainingConfig::cnn_training(); // Use fast config for demo
 
     // Configuration for image classification
     let image_size = 32;
