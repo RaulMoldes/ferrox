@@ -75,8 +75,6 @@ where
     // Update parameters
     optimizer.step(graph).map_err(|e| e.to_string())?;
 
-
-
     Ok(())
 }
 
@@ -137,10 +135,8 @@ where
             )?;
         }
 
-
-        if epoch % 20  == 0{
+        if epoch % 20 == 0 {
             graph.print_stats();
-
         }
 
         // Print progress

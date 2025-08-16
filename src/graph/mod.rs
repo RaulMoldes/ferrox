@@ -76,9 +76,7 @@ impl<T> NodeState<T>
 where
     T: FerroxCudaF,
 {
-    fn into_state(self, new_state: NodeState<T>) -> NodeState<T> {
-        new_state
-    }
+
 
     fn into_data(self) -> Option<Tensor<T>> {
         match self {
@@ -304,6 +302,24 @@ where
     }
 }
 
+    /// Determine if a node should be kept after backward pass
+fn should_keep<T: FerroxCudaF>(node: &Node<T>) -> bool {
+        // Keep parameters (needed for optimizer)
+        if node.is_parameter() {
+            return true;
+        }
+
+        // Keep explicitly persistent nodes
+        if node.is_persistent() {
+            return true;
+        }
+
+       
+
+        // Remove all intermediate computation nodes
+        false
+}
+
 /// Main computational graph engine.
 #[derive(Debug)]
 pub struct AutoFerroxEngine<T>
@@ -433,7 +449,7 @@ where
 
     // Evaluates a single node and takes its computed tensor.
     pub fn evaluate(&mut self, node_id: NodeId) -> Result<&Tensor<T>, String> {
-        self.safe_evaluate_node(node_id)?;
+        self.evaluate_node(node_id)?;
         self.get_tensor(node_id)
             .ok_or_else(|| format!("Failed to evaluate node {}", node_id.0))
     }
@@ -442,7 +458,7 @@ where
     // Checks if the node is evaluated.
     // If already evaluated, does nothing
     // If not, evaluates all inputs and computes, then frees up everything it does not need anymore.
-    fn safe_evaluate_node(&mut self, node_id: NodeId) -> Result<(), String> {
+    fn evaluate_node(&mut self, node_id: NodeId) -> Result<(), String> {
         // Si ya está evaluado, no hacer nada
         if self.is_evaluated(node_id) {
             return Ok(());
@@ -462,7 +478,7 @@ where
         for &input_id in &inputs {
 
             if !self.is_evaluated(input_id){
-                self.safe_evaluate_node(input_id)?;
+                self.evaluate_node(input_id)?;
             }
         }
 
@@ -472,6 +488,11 @@ where
         // Compute result
         let result_tensor = op.compute(&mut input_tensors)?;
 
+         // Liberar memoria de todos los inputs.
+        if !self.cache_outputs && !op.cache_output() {
+            self.uncache(&inputs);
+        }
+
         // Clean up memory from the input nodes for efficiency.
         for input_id in &inputs {
             // Decrement reference count
@@ -479,7 +500,7 @@ where
 
             if can_cleanup {
                 // Only cleanup if this node doesn't need gradients
-                if let Some(node) = self.nodes.get(&input_id) {
+                if let Some(node) = self.nodes.get(input_id) {
                     // Safe to cleanup if:
                     // 1. Not a parameter (leaf node with requires_grad)
                     // 2. Not persistent
@@ -512,7 +533,7 @@ where
         self.nodes.get(&id).expect("Node not found").requires_grad
     }
 
-    fn free_nodes_data(&mut self, ids: &[NodeId]) {
+    fn uncache(&mut self, ids: &[NodeId]) {
         let filtered : Vec<&NodeId> = ids
             .iter()
             .filter(|id| self.is_evaluated(**id) && ! self.is_leaf(**id) && (self.is_training() && !self.requires_grad(**id)) || !self.is_training()).collect();
@@ -572,6 +593,40 @@ where
 }
 
 
+     /// Cleanup nodes and gradients after backward pass
+    /// Removes intermediate computation nodes while preserving parameters and their gradients
+    fn cleanup(&mut self) -> Result<(), String> {
+        let mut nodes_to_remove = Vec::new();
+        let mut gradients_to_remove = Vec::new();
+
+        // Identify what to keep and what to remove
+        for (&node_id, node) in &self.nodes {
+            let should_keep = should_keep(node);
+
+            if !should_keep {
+                nodes_to_remove.push(node_id);
+
+                // Remove gradient if it's not a parameter
+                if !node.is_parameter() && self.gradients.contains_key(&node_id) {
+                    gradients_to_remove.push(node_id);
+                }
+            }
+        }
+
+        // Remove intermediate nodes
+        for node_id in &nodes_to_remove {
+            self.nodes.remove(node_id);
+        }
+
+        // Remove intermediate gradients
+        for node_id in &gradients_to_remove {
+            self.gradients.remove(node_id);
+        }
+
+        Ok(())
+    }
+
+
     pub fn apply_operation(
         &mut self,
         op: Box<dyn Operator<T>>,
@@ -598,7 +653,7 @@ where
             EvaluationMode::Eager => {
                 for &input_id in &input_ids {
                     if !self.is_evaluated(input_id) {
-                        self.safe_evaluate_node(input_id)?;
+                        self.evaluate_node(input_id)?;
                     }
                 }
 
@@ -613,7 +668,7 @@ where
 
                  // Liberar memoria de todos los inputs.
                 if !self.cache_outputs && !op.cache_output() {
-                    self.free_nodes_data(&input_ids);
+                    self.uncache(&input_ids);
                 }
 
                 // Create evaluated node
@@ -685,6 +740,8 @@ where
             self.backward_node(node_id)?;
         }
 
+
+        self.cleanup()?;
         Ok(())
     }
 

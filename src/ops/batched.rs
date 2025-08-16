@@ -44,17 +44,14 @@ where
         inputs: &mut [&Tensor<T>],
         outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
-
-
         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
 
         if compute_result.shape() != grad_output.shape() {
             return Err("Softmax gradient: shape mismatch".to_string());
         }
-
 
         match self.axis {
             None => {

@@ -36,8 +36,8 @@ where
             return Err("Exp operation requires exactly 1 input".to_string());
         }
 
-         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+        let compute_result = match outputs {
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
 
@@ -129,8 +129,8 @@ where
         if inputs.len() != 1 {
             return Err("Sqrt operation requires exactly 1 input".to_string());
         }
-         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+        let compute_result = match outputs {
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
         // For sqrt: d/dx(sqrt(x)) = 1/(2*sqrt(x))
@@ -260,8 +260,8 @@ where
         if inputs.len() != 1 {
             return Err("Sigmoid operation requires exactly 1 input".to_string());
         }
-         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+        let compute_result = match outputs {
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
 
@@ -314,12 +314,12 @@ where
         }
 
         // For tanh: d/dx(tanh(x)) = 1 - tanh²(x)
-         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+        let compute_result = match outputs {
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
 
-        let tanh_squared =compute_result.mul(compute_result)?;
+        let tanh_squared = compute_result.mul(compute_result)?;
         let one = <T as FerroxF>::one();
         let local_grad = tanh_squared.sub_scalar(one)?.neg()?; // 1 - tanh²(x) = -(tanh²(x) - 1)
         let result = grad_output.mul(&local_grad)?;
@@ -409,8 +409,8 @@ where
             return Err("Power operation requires exactly 2 inputs".to_string());
         }
 
-         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+        let compute_result = match outputs {
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
 

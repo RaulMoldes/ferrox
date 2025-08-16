@@ -184,8 +184,6 @@ where
         inputs[0].mul(inputs[1])
     }
 
-
-
     fn gradient(
         &self,
         grad_output: Tensor<T>,
@@ -247,7 +245,7 @@ where
         }
 
         let compute_result = match outputs {
-            Some(out) => out, // use the cached output
+            Some(out) => out,               // use the cached output
             None => &self.compute(inputs)?, // recompute
         };
 

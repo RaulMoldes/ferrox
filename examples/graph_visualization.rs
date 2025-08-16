@@ -62,12 +62,10 @@ fn create_graph(engine: &mut AutoFerroxEngine<f32>) -> Result<NodeId, Box<dyn st
 
     // Combine branches: sigmoid_branch * tanh_branch + sqrt_branch
     let mul_op2 = Box::new(Mul);
-    let combined_branches =
-        engine.apply_operation(mul_op2, vec![sigmoid_branch, tanh_branch])?;
+    let combined_branches = engine.apply_operation(mul_op2, vec![sigmoid_branch, tanh_branch])?;
 
     let add_op2 = Box::new(Add::new());
-    let final_result =
-        engine.apply_operation(add_op2, vec![combined_branches, sqrt_branch])?;
+    let final_result = engine.apply_operation(add_op2, vec![combined_branches, sqrt_branch])?;
 
     Ok(final_result)
 }
