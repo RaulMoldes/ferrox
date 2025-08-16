@@ -482,7 +482,7 @@ mod serialization_tests {
 
     #[test]
     fn test_adam_save_load() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
         let node = engine.create_variable(param, true);
@@ -518,7 +518,7 @@ mod serialization_tests {
 
     #[test]
     fn test_sgd_save_load() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
         let node = engine.create_variable(param, true);

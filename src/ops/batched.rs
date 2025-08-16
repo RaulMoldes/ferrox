@@ -41,21 +41,29 @@ where
     fn gradient(
         &self,
         grad_output: Tensor<T>,
-        _inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        inputs: &mut [&Tensor<T>],
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
-        if outputs.shape() != grad_output.shape() {
+
+
+        let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
+
+        if compute_result.shape() != grad_output.shape() {
             return Err("Softmax gradient: shape mismatch".to_string());
         }
+
 
         match self.axis {
             None => {
                 // Use existing gradient computation for entire tensor
-                self.compute_global_gradient(grad_output, outputs)
+                self.compute_global_gradient(grad_output, compute_result)
             }
             Some(axis) => {
                 // Use optimized batch-aware gradient computation
-                self.compute_batch_gradient(grad_output, outputs, axis)
+                self.compute_batch_gradient(grad_output, compute_result, axis)
             }
         }
     }
@@ -66,6 +74,10 @@ where
 
     fn num_inputs(&self) -> usize {
         1
+    }
+
+    fn cache_output(&self) -> bool {
+        true // Default value
     }
 }
 
@@ -178,11 +190,15 @@ where
         input.conv2d(filter, self.stride, self.padding)
     }
 
+    fn cache_output(&self) -> bool {
+        false // Default value
+    }
+
     fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("Conv2d operation requires exactly 2 inputs".to_string());

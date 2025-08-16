@@ -132,9 +132,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
         })
     }
 
-
-
-
     /// Create tensor filled with constant value
     /// This is a fundamental building block for scalar operations
     /// More efficient than creating dedicated scalar kernels for each operation
@@ -146,7 +143,6 @@ impl<T: FerroxCudaN> CudaOps<T> {
 
         self.kernels
             .launch_fill(cfg, tensor.data_mut(), value, size.try_into().unwrap())?;
-
 
         Ok(tensor)
     }
@@ -202,8 +198,8 @@ impl<T: FerroxCudaN> CudaOps<T> {
             cfg,
             tensor.data(),                // Input: original small data
             materialized_data.data_mut(), // Output: expanded data
-            shape_alloc.data(),                   // GPU allocated shape array
-            strides_alloc.data(),                 // GPU allocated strides array
+            shape_alloc.data(),           // GPU allocated shape array
+            strides_alloc.data(),         // GPU allocated strides array
             ndim,
             total_elements as i32,
         );

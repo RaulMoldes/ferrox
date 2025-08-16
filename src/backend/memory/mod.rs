@@ -8,23 +8,22 @@ use std::collections::HashMap;
 #[cfg(feature = "cuda")]
 pub use cuda::CudaMemoryPool;
 
-use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // Pool allocation result containing both data and metadata for tracking
 #[derive(Debug)]
 pub struct PoolAllocation<T> {
     pub data: T,
     pub size: usize,
-    pub allocation_id: u64
+    pub allocation_id: u64,
 }
-
 
 impl<T> PoolAllocation<T> {
     fn new(data: T, size: usize, allocation_id: u64) -> Self {
         Self {
             data,
             size,
-            allocation_id
+            allocation_id,
         }
     }
 
@@ -56,7 +55,6 @@ pub trait MemoryPool<T> {
     // Return memory to pool for reuse - critical for avoiding memory leaks
     fn deallocate(&mut self, alloc: PoolAllocation<T>) -> Result<(), String>;
 
-
     // Pool maintenance - clean up unused allocations periodically
     fn cleanup(&mut self) -> Result<(), String>;
 
@@ -77,24 +75,29 @@ pub struct PoolStats {
     pub peak_memory_bytes: usize,
 }
 
-
 #[derive(Debug)]
 pub struct PoolBucket<T> {
     pub size_range: (usize, usize),
-    pub allocations: Vec<(PoolAllocation<T>, u64)>,  // (allocation, last_access_timestamp)
+    pub allocations: Vec<(PoolAllocation<T>, u64)>, // (allocation, last_access_timestamp)
     pub max_allocations: usize, // Maximum number of allocations this bucket can hold
     max_simultaneous_evictions: usize,
-    eviction_threshold: u64
+    eviction_threshold: u64,
 }
 
 impl<T> PoolBucket<T> {
-    pub fn new(min_size: usize, max_size: usize, max_allocations: usize, max_simultaneous_evictions: usize, eviction_threshold: u64) -> Self {
+    pub fn new(
+        min_size: usize,
+        max_size: usize,
+        max_allocations: usize,
+        max_simultaneous_evictions: usize,
+        eviction_threshold: u64,
+    ) -> Self {
         Self {
             size_range: (min_size, max_size),
             allocations: Vec::new(),
             max_allocations,
             max_simultaneous_evictions,
-            eviction_threshold
+            eviction_threshold,
         }
     }
 
@@ -113,7 +116,7 @@ impl<T> PoolBucket<T> {
         // Check if we're at capacity before adding
         if self.allocations.len() >= self.max_allocations {
             // Drop the allocation (let it go out of scope to free memory)
-       //   println!("[WARNING] this bucket is almost full. {} allocations will be freed", self.max_simultaneous_evictions);
+            //   println!("[WARNING] this bucket is almost full. {} allocations will be freed", self.max_simultaneous_evictions);
             self.evict_lru(1); // EVICT THE OLDEST ALLOCATION
         }
 
@@ -139,22 +142,20 @@ impl<T> PoolBucket<T> {
         actual_evict
     }
 
+    pub fn evict_older_than(&mut self, max_age: u64) -> usize {
+        if self.allocations.is_empty() {
+            return 0;
+        }
 
-pub fn evict_older_than(&mut self, max_age: u64) -> usize {
-    if self.allocations.is_empty() {
-        return 0;
+        let now = current_timestamp();
+        let before_len = self.allocations.len();
+
+        // Retener solo las asignaciones recientes
+        self.allocations
+            .retain(|(_, timestamp)| now.saturating_sub(*timestamp) <= max_age);
+
+        before_len - self.allocations.len()
     }
-
-    let now = current_timestamp();
-    let before_len = self.allocations.len();
-
-    // Retener solo las asignaciones recientes
-    self.allocations
-        .retain(|(_, timestamp)| now.saturating_sub(*timestamp) <= max_age );
-
-    before_len - self.allocations.len()
-}
-
 
     // Get count of allocations older than specified age
     pub fn count_free_allocations(&self, max_age_ms: u64) -> usize {
@@ -163,14 +164,13 @@ pub fn evict_older_than(&mut self, max_age: u64) -> usize {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        self.allocations.iter()
-            .filter(|(_, last_access)| {
-                current_time.saturating_sub(*last_access) > max_age_ms
-            })
+        self.allocations
+            .iter()
+            .filter(|(_, last_access)| current_time.saturating_sub(*last_access) > max_age_ms)
             .count()
     }
 
-      // Remove all pooled allocations (not in active use)
+    // Remove all pooled allocations (not in active use)
     pub fn clear_all(&mut self) -> usize {
         let count = self.allocations.len();
         self.allocations.clear();
@@ -184,21 +184,14 @@ pub fn evict_older_than(&mut self, max_age: u64) -> usize {
     }
 
     pub fn register_allocation(&mut self, allocation_id: u64, slice: PoolAllocation<T>) {
-
-        self.allocations.insert(
-                allocation_id as usize,
-                (slice, current_timestamp())
-        );
-
+        self.allocations
+            .insert(allocation_id as usize, (slice, current_timestamp()));
     }
 }
 
-
-
-fn current_timestamp() -> u64{
+fn current_timestamp() -> u64 {
     SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }

@@ -93,7 +93,7 @@ fn main() -> Result<(), String> {
             train_data.into_batches(training_config.batch_size, false)?,
             &training_config,
         )?;
-        trained_graph.print_stats();
+        //   trained_graph.print_stats();
         evaluate_classification(&mut model, &mut trained_graph, test_data)?;
     }
 

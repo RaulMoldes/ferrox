@@ -31,7 +31,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("MatMul operation requires exactly 2 inputs".to_string());
@@ -89,7 +89,7 @@ where
         &self,
         mut grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // For transpose: gradient is just transpose of the grad_output
         // If we transposed with custom axes, we need to invert the permutation

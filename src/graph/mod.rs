@@ -7,9 +7,9 @@ pub use graphviz::EngineVisualization;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::HashSet;
 /// ATOMIC auto incrementing id for all nodes.
 static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 
 #[derive(Debug)]
 pub struct MemoryStats {
@@ -66,10 +66,35 @@ where
 
     /// Node evaluated and cached
     Evaluated {
-        tensor: Tensor<T>,
+        tensor: Option<Tensor<T>>, // Some OPS do not require the output to compute the gradient. This saves memory. In the ops that need it, there is a trade off between the cost of recomputation and the cost of caching (memory BW mainly), that we have to manage.
         op: Option<Box<dyn Operator<T>>>, // Some para nodos computados, None para leaf
         inputs: Vec<NodeId>,
     },
+}
+
+impl<T> NodeState<T>
+where
+    T: FerroxCudaF,
+{
+    fn into_state(self, new_state: NodeState<T>) -> NodeState<T> {
+        new_state
+    }
+
+    fn into_data(self) -> Option<Tensor<T>> {
+        match self {
+            NodeState::Evaluated { tensor, .. } => tensor,
+            NodeState::Leaf(tensor) => Some(tensor),
+            NodeState::Pending { .. } => panic!("Cannot take the data of a pending tensor"),
+        }
+    }
+
+    fn into_inputs(self) -> Vec<NodeId> {
+        match self {
+            NodeState::Evaluated { inputs, .. } => inputs,
+            NodeState::Leaf(_) => panic!("Cannot take the  inputs of a leaf tensor"),
+            NodeState::Pending { inputs, .. } => inputs,
+        }
+    }
 }
 
 impl<T> Clone for NodeState<T>
@@ -147,8 +172,16 @@ where
         }
     }
 
+    pub fn into_inputs(self) -> Vec<NodeId> {
+        self.state.into_inputs()
+    }
+
+    pub fn into_data(self) -> Option<Tensor<T>> {
+        self.state.into_data()
+    }
+
     pub fn new_evaluated(
-        tensor: Tensor<T>,
+        tensor: Option<Tensor<T>>,
         op: Option<Box<dyn Operator<T>>>,
         inputs: Vec<NodeId>,
         requires_grad: bool,
@@ -165,7 +198,35 @@ where
     pub fn get_tensor(&self) -> Option<&Tensor<T>> {
         match &self.state {
             NodeState::Leaf(tensor) => Some(tensor),
-            NodeState::Evaluated { tensor, .. } => Some(tensor),
+            NodeState::Evaluated { tensor, .. } => Some(tensor.as_ref()?),
+            NodeState::Pending { .. } => None,
+        }
+    }
+
+    pub fn get_tensor_mut(&mut self) -> Option<&mut Tensor<T>> {
+        match &mut self.state {
+            NodeState::Leaf(ref mut tensor) => Some(tensor),
+            NodeState::Evaluated { ref mut tensor, .. } => Some(tensor.as_mut()?),
+            NodeState::Pending { .. } => None,
+        }
+    }
+
+    pub fn into_tensor(self) -> Option<Tensor<T>> {
+        match self.state {
+            NodeState::Leaf(tensor) => Some(tensor),
+            NodeState::Evaluated { tensor, .. } => tensor,
+            NodeState::Pending { .. } => None,
+        }
+    }
+
+    pub fn into_state(self) -> NodeState<T> {
+        self.state
+    }
+
+    pub fn get_tensor_owned(&self) -> Option<Tensor<T>> {
+        match &self.state {
+            NodeState::Leaf(tensor) => Some(tensor.clone()),
+            NodeState::Evaluated { tensor, .. } => tensor.clone(),
             NodeState::Pending { .. } => None,
         }
     }
@@ -181,7 +242,7 @@ where
 
                 self.state = NodeState::Evaluated {
                     op: Some(operation),
-                    tensor: new_tensor,
+                    tensor: Some(new_tensor),
                     inputs: inputs.to_vec(),
                 };
 
@@ -201,7 +262,7 @@ where
         matches!(self.state, NodeState::Leaf(_))
     }
 
-       /// Increment reference count
+    /// Increment reference count
     pub fn increment_ref(&mut self) {
         self.ref_count += 1;
     }
@@ -223,6 +284,10 @@ where
     pub fn mark_persistent(&mut self) {
         self.is_persistent = true;
     }
+
+    pub fn is_parameter(&self) -> bool {
+        self.is_leaf() && self.requires_grad
+    }
 }
 
 /// Main computational graph engine.
@@ -235,6 +300,7 @@ where
     gradients: HashMap<NodeId, Tensor<T>>,
     training_mode: bool,
     evaluation_mode: EvaluationMode,
+    cache_outputs: bool
 }
 
 impl<T> Default for AutoFerroxEngine<T>
@@ -242,7 +308,7 @@ where
     T: FerroxCudaF,
 {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
@@ -250,15 +316,17 @@ impl<T> AutoFerroxEngine<T>
 where
     T: FerroxCudaF,
 {
-    pub fn new() -> Self {
+    pub fn new(cache_outputs: bool) -> Self {
         Self {
             nodes: HashMap::new(),
             gradients: HashMap::new(),
             training_mode: true,
             evaluation_mode: EvaluationMode::Eager, // Eager by default as PyTorch
+            cache_outputs
         }
     }
 
+    //// UTILITY METHODS ////
     pub fn get_node(&self, node_id: &NodeId) -> &Node<T> {
         if let Some(node) = self.nodes.get(node_id) {
             node
@@ -329,14 +397,14 @@ where
     }
 
     fn validate_inputs(&self, op: &dyn Operator<T>, input_ids: &[NodeId]) -> Result<(), String> {
-        // Verificar que existen
+        // Verify inputs exist
         for &input_id in input_ids {
             if !self.nodes.contains_key(&input_id) {
                 return Err(format!("Input node {} not found", input_id.0));
             }
         }
 
-        // Verificar número correcto
+        // Verify the number matches with the operation required inputs.
         if input_ids.len() != op.num_inputs() {
             return Err(format!(
                 "Operation {} expects {} inputs, got {}",
@@ -351,18 +419,21 @@ where
 
     // Evaluates a single node and takes its computed tensor.
     pub fn evaluate(&mut self, node_id: NodeId) -> Result<&Tensor<T>, String> {
-        self.evaluate_node(node_id)?;
+        self.safe_evaluate_node(node_id)?;
         self.get_tensor(node_id)
             .ok_or_else(|| format!("Failed to evaluate node {}", node_id.0))
     }
 
-    fn evaluate_node(&mut self, node_id: NodeId) -> Result<(), String> {
+    // Checks if the node is evaluated.
+    // If already evaluated, does nothing
+    // If not, evaluates all inputs and computes, then frees up everything it does not need anymore.
+    fn safe_evaluate_node(&mut self, node_id: NodeId) -> Result<(), String> {
         // Si ya está evaluado, no hacer nada
         if self.is_evaluated(node_id) {
             return Ok(());
         }
 
-        // Obtener información del nodo pending
+        // If not evaluated take the pending node.
         let (op, input_ids) = {
             let node = self
                 .nodes
@@ -375,12 +446,12 @@ where
             }
         };
 
-        // Evaluar entradas recursivamente
+        // Evaluate all inputs recursively
         for &input_id in &input_ids {
-            self.evaluate_node(input_id)?;
+            self.safe_evaluate_node(input_id)?;
         }
 
-        // Obtener tensores de entrada
+        // Obtain input tensors.
         let res: Result<Vec<_>, String> = input_ids
             .iter()
             .map(|&input_id| {
@@ -388,15 +459,37 @@ where
                     .ok_or_else(|| format!("Input node {} not evaluated", input_id.0))
             })
             .collect();
+
         let mut input_tensors = res?;
 
-        // Computar resultado
+        // Compute result
         let result_tensor = op.compute(&mut input_tensors)?;
 
-        // Actualizar nodo a evaluado
+        // Clean up memory from the input nodes for efficiency.
+        for input_id in &input_ids {
+            // Decrement reference count
+            let can_cleanup = self.decrement_ref_count(*input_id);
+
+            if can_cleanup {
+                // Only cleanup if this node doesn't need gradients
+                if let Some(node) = self.nodes.get(&input_id) {
+                    // Safe to cleanup if:
+                    // 1. Not a parameter (leaf node with requires_grad)
+                    // 2. Not persistent
+                    // 3. Ref count is zero
+                    let is_parameter = node.is_leaf() && node.requires_grad;
+
+                    if !is_parameter && !node.is_persistent {
+                        let _ = self.try_clear_node(*input_id);
+                    }
+                }
+            }
+        }
+
+        // Update current state to evaluated.
         if let Some(node) = self.nodes.get_mut(&node_id) {
             node.state = NodeState::Evaluated {
-                tensor: result_tensor,
+                tensor: Some(result_tensor),
                 op: Some(op),
                 inputs: input_ids,
             };
@@ -409,6 +502,14 @@ where
         self.nodes.get(&node_id)?.get_tensor()
     }
 
+    pub fn get_op(&self, node_id: NodeId) -> Option<&dyn Operator<T>> {
+        self.nodes.get(&node_id)?.get_op()
+    }
+
+
+    pub fn is_parameter(&self, node_id: NodeId) -> bool {
+        self.nodes.get(&node_id).expect("Node {node_id} not found").is_parameter()
+    }
     /// Verificar si un nodo está evaluado
     pub fn is_evaluated(&self, node_id: NodeId) -> bool {
         self.nodes
@@ -420,9 +521,9 @@ where
         &mut self,
         op: Box<dyn Operator<T>>,
         input_ids: Vec<NodeId>,
+    //    cache_output: bool,
     ) -> Result<NodeId, String> {
         self.validate_inputs(&op, &input_ids)?;
-
 
         // Increment reference count for all input nodes
         // This indicates they are being used by this new operation
@@ -442,7 +543,7 @@ where
             EvaluationMode::Eager => {
                 for &input_id in &input_ids {
                     if !self.is_evaluated(input_id) {
-                        self.evaluate_node(input_id)?;
+                        self.safe_evaluate_node(input_id)?;
                     }
                 }
 
@@ -459,9 +560,17 @@ where
 
                 // Evaluate inmediately
                 let result_tensor = op.compute(&mut input_tensors)?;
+
+                let cached_tensor = if self.cache_outputs && op.cache_output() { // Si la operación no se va a beneficiar de cachear el resultado me da igual lo que diga el usuario.
+                    Some(result_tensor)
+                } else {
+                    drop(result_tensor);
+                    None // Liberar automaticamente la memoria
+                };
+
                 // Create evaluated node
                 let node = Node::new_evaluated(
-                    result_tensor,
+                    cached_tensor,
                     Some(op), // Save the op for the backward pass
                     input_ids,
                     true,
@@ -484,6 +593,13 @@ where
                 self.gradients.insert(node_id, grad);
             }
         }
+
+
+        if !self.is_parameter(node_id){
+            // Liberar la memoria de este nodo
+             self.try_clear_node(node_id);
+        }
+
         Ok(())
     }
 
@@ -507,10 +623,10 @@ where
         self.gradients.insert(loss_id, ones_grad);
 
         // Ordenamiento topológico y propagación
-        let mut visited = std::collections::HashSet::new();
+        let mut visited = HashSet::new();
         let mut topo_order = Vec::new();
-        self.topological_sort(loss_id, &mut visited, &mut topo_order)?;
 
+        self.topological_sort(loss_id, &mut visited, &mut topo_order)?;
         topo_order.reverse();
 
         // Propagar gradientes
@@ -521,7 +637,14 @@ where
         Ok(())
     }
 
-    /// Backward para un solo nodo
+    fn get_node_owned(&self, node_id: NodeId) -> Node<T> {
+        if let Some(node) = self.nodes.get(&node_id) {
+            node.clone()
+        } else {
+            panic!("Node not found {}", node_id)
+        }
+    }
+
     fn backward_node(&mut self, node_id: NodeId) -> Result<(), String> {
         // Take ownership of the gradient data
         let grad_output = match self.gradients.remove(&node_id) {
@@ -529,48 +652,46 @@ where
             None => return Ok(()),
         };
 
-        // Obtain node information.
-        let node = self
-            .nodes
-            .get(&node_id)
-            .cloned()
-            .ok_or_else(|| format!("Node {} not found", node_id.0))?;
+        // Obtain node information
+        let node = self.get_node_owned(node_id);
 
-        match node.state {
-            NodeState::Evaluated { op, inputs, tensor } => {
-                // Obtain inputs.
-                let res: Result<Vec<_>, String> = inputs
-                    .iter()
-                    .map(|&input_id| {
-                        self.nodes
-                            .get(&input_id)
-                            .and_then(|node| node.get_tensor())
-                            .ok_or_else(|| format!("Input node {} not evaluated", input_id.0))
-                    })
-                    .collect();
-                let mut input_tensors = res?;
-
-                // Compute input gradients.
-                let input_grads = match op {
-                    Some(o) => o.gradient(grad_output.clone(), &mut input_tensors, &tensor)?,
-                    None => {
-                        panic!(
-                            "Cannot compute gradient. Operation not defined for node: {}",
-                            node_id
-                        )
-                    }
-                };
-
-                // Acumulate gradients
-                for (input_id, input_grad) in inputs.iter().zip(input_grads) {
-                    self.accumulate_gradient(*input_id, input_grad)?;
-                }
-            }
-            _ => {
-                // Leaf nodes. The gradient stops here
-                self.gradients.insert(node_id, grad_output);
-            }
+        if node.is_leaf() {
+            self.gradients.insert(node_id, grad_output);
+            return Ok(());
         }
+
+        // Get output tensor (could be None if not cached)
+        let some_output = self.get_tensor(node_id);
+
+        // Get operation
+        let some_op = self
+            .get_op(node_id)
+            .ok_or_else(|| format!("Operation not defined for node {}", node_id))?;
+
+        // Get input node IDs
+        let input_ids = node
+            .get_inputs()
+            .ok_or_else(|| format!("No inputs found for node {}", node_id))?;
+
+        // Collect input tensors
+        let input_tensors: Result<Vec<&Tensor<T>>, String> = input_ids
+            .iter()
+            .map(|&input_id| {
+                self.get_tensor(input_id)
+                    .ok_or_else(|| format!("Input tensor not found for node {}", input_id.0))
+            })
+            .collect();
+        let mut input_tensors = input_tensors?;
+
+        // Compute gradients using the operation's gradient method
+        let input_grads = some_op.gradient(grad_output, &mut input_tensors, some_output)?;
+
+        // Accumulate gradients for input nodes
+        for (&input_id, input_grad) in input_ids.iter().zip(input_grads) {
+            self.accumulate_gradient(input_id, input_grad)?;
+        }
+
+
 
         Ok(())
     }
@@ -579,7 +700,7 @@ where
     pub fn topological_sort(
         &self,
         node_id: NodeId,
-        visited: &mut std::collections::HashSet<NodeId>,
+        visited: &mut HashSet<NodeId>,
         topo_order: &mut Vec<NodeId>,
     ) -> Result<(), String> {
         if visited.contains(&node_id) {
@@ -620,6 +741,7 @@ where
     }
 
     /// Clean up gradients
+    /// This must be used by the caller at the beginning of each training step
     pub fn zero_gradients(&mut self) {
         self.gradients.clear();
     }
@@ -708,52 +830,12 @@ where
         self.nodes.get(&node_id).map(|node| node.ref_count)
     }
 
-
-     /// Remove nodes that have no references and are not persistent
-    pub fn cleanup_unreferenced_nodes(&mut self) -> Result<usize, String> {
-        let mut nodes_to_remove = Vec::new();
-
-        // Find nodes that can be cleaned up
-        for (&node_id, node) in &self.nodes {
-            if node.can_be_cleaned() {
-                nodes_to_remove.push(node_id);
-            }
-        }
-
-        let removed_count = nodes_to_remove.len();
-
-        // Remove the nodes and their gradients
-
-
-        for node_id in nodes_to_remove {
-            let mut nodes_to_decrement: Vec<NodeId> = Vec::new();
-            // Before removing, decrement reference counts of input nodes
-            if let Some(node) = self.nodes.get(&node_id) {
-                if let Some(inputs) = node.get_inputs() {
-                    for input_id in inputs {
-                        nodes_to_decrement.push(*input_id);
-                    }
-                }
-            }
-
-            for node_id in nodes_to_decrement {
-                self.decrement_ref_count(node_id);
-            }
-
-            // Remove node and its gradient
-            self.nodes.remove(&node_id);
-            self.gradients.remove(&node_id);
-        }
-
-        Ok(removed_count)
-    }
-
-    /// Force cleanup of a specific node if it's safe to do so
-    pub fn try_cleanup_node(&mut self, node_id: NodeId) -> Result<bool, String> {
+    /// Remove a node from the graph (but keep its gradient if it's a parameter)
+    pub fn try_clear_node(&mut self, node_id: NodeId) -> Result<bool, String> {
         if self.can_node_be_cleaned(node_id) {
             // Decrement references to input nodes
             let mut nodes_to_decrement: Vec<NodeId> = Vec::new();
-            // Before removing, decrement reference counts of input nodes
+
             if let Some(node) = self.nodes.get(&node_id) {
                 if let Some(inputs) = node.get_inputs() {
                     for input_id in inputs {
@@ -762,73 +844,37 @@ where
                 }
             }
 
-            for node_id in nodes_to_decrement {
-                self.decrement_ref_count(node_id);
+            for input_node_id in nodes_to_decrement {
+                self.decrement_ref_count(input_node_id);
             }
 
-
-            // Remove node and gradient
-            self.nodes.remove(&node_id);
-            self.gradients.remove(&node_id);
-            Ok(true)
+            // Remove only the node (keep gradient if it's a parameter)
+            if let Some(node) = self.nodes.remove(&node_id) {
+                // Only remove gradient if it's NOT a parameter
+                let is_parameter = node.is_leaf() && node.requires_grad;
+                if !is_parameter {
+                    self.gradients.remove(&node_id);
+                }
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         } else {
             Ok(false)
         }
     }
 
-
-    /// Remove a node from the computational graph
-/// This is useful for cleaning up temporary data nodes to prevent memory growth
-/// WARNING: Only remove nodes that are no longer needed for computation or gradient flow
-pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
-    // Check if node exists
-    if !self.nodes.contains_key(&node_id) {
-        return Err(format!("Node {} does not exist in graph", node_id.0));
-    }
-
-    // Get the node to check if it's safe to remove
-    let node = self.nodes.get(&node_id).unwrap();
-
-    // Safety check: Don't remove parameter nodes (nodes with requires_grad = true)
-    // These are needed for gradient computation and parameter updates
-    if node.requires_grad {
-        return Err(format!(
-            "Cannot remove parameter node {} (requires_grad=true). This would break gradient flow.",
-            node_id.0
-        ));
-    }
-
-    // Check if any other nodes depend on this node
-    // This prevents removing nodes that are still referenced by other operations
-    let is_referenced = self.nodes.values().any(|other_node| {
-        if let Some(inputs) = other_node.get_inputs() {
-            inputs.contains(&node_id)
-        } else {
-            false
-        }
-    });
-
-  if is_referenced {
-        return Err(format!(
-            "Cannot remove node {} as it is still referenced by other nodes in the graph",
-            node_id.0
-        ));
-    }
-
-    // Safe to remove: remove from both nodes and gradients maps
-    self.nodes.remove(&node_id);
-    self.gradients.remove(&node_id);
-
-    Ok(())
-}
-
     /// Get statistics about memory usage
     pub fn get_memory_stats(&self) -> MemoryStats {
         let total_nodes = self.nodes.len();
-        let cleanable_nodes = self.nodes.values()
+        let cleanable_nodes = self
+            .nodes
+            .values()
             .filter(|node| node.can_be_cleaned())
             .count();
-        let persistent_nodes = self.nodes.values()
+        let persistent_nodes = self
+            .nodes
+            .values()
             .filter(|node| node.is_persistent)
             .count();
 
@@ -841,7 +887,7 @@ pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
     }
 
 
-     pub fn print_stats(&self) {
+    pub fn print_stats(&self) {
         println!("=== AutoFerrox Engine Statistics ===");
 
         // Basic counts
@@ -906,7 +952,10 @@ pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
         println!("  - Nodes with zero refs: {}", zero_ref_nodes);
 
         if total_nodes > 0 {
-            println!("  - Avg refs per node: {:.2}", total_refs as f32 / total_nodes as f32);
+            println!(
+                "  - Avg refs per node: {:.2}",
+                total_refs as f32 / total_nodes as f32
+            );
         }
 
         // Memory analysis
@@ -925,7 +974,7 @@ pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
         let mut param_gradients = 0;
         let mut intermediate_gradients = 0;
 
-        for &node_id  in self.gradients.keys() {
+        for &node_id in self.gradients.keys() {
             if let Some(node) = self.nodes.get(&node_id) {
                 if node.requires_grad && node.is_leaf() {
                     param_gradients += 1;
@@ -953,582 +1002,5 @@ pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
         }
 
         println!("=====================================");
-    }
-}
-
-#[cfg(test)]
-mod graph_tests {
-
-    use crate::backend::manager::best_f32_device;
-    use crate::backend::Tensor;
-    use crate::graph::{AutoFerroxEngine, EvaluationMode};
-    use crate::ops::*;
-
-    // Helper functions to create test tensors
-    fn create_tensor_2x2(data: [f32; 4]) -> Tensor<f32> {
-        let device = best_f32_device();
-        Tensor::from_vec_with_device(data.to_vec(), &[2, 2], device)
-            .expect("Failed to create tensor")
-    }
-
-    fn create_tensor_1d(data: &[f32]) -> Tensor<f32> {
-        let device = best_f32_device();
-        Tensor::from_vec_with_device(data.to_vec(), &[data.len()], device)
-            .expect("Failed to create tensor")
-    }
-
-    fn create_engine_with_training() -> AutoFerroxEngine<f32> {
-        let mut engine = AutoFerroxEngine::<f32>::new();
-        engine.set_training(true); // Enable gradients
-        engine
-    }
-
-    // Helper to test operation forward pass, gradient computation and shapes
-    fn test_operation_with_gradients<Op: Operator<f32> + 'static>(
-        op: Op,
-        inputs: Vec<Tensor<f32>>,
-        expected_output_shape: &[usize],
-        test_name: &str,
-    ) {
-        let mut engine = create_engine_with_training();
-
-        // Create input nodes with gradients enabled
-        let input_nodes: Vec<_> = inputs
-            .iter()
-            .map(|tensor| engine.create_variable(tensor.clone(), true))
-            .collect();
-
-        // Apply operation
-        let result_node = engine
-            .apply_operation(Box::new(op), input_nodes.clone())
-            .expect("{test_name} operation failed");
-
-        // Verify forward pass result
-        let result_tensor = engine
-            .get_tensor(result_node)
-            .expect("{test_name} result tensor not found");
-        assert_eq!(
-            result_tensor.shape(),
-            expected_output_shape,
-            "{}: shape mismatch",
-            test_name
-        );
-
-        // Test backward pass - create dummy loss and run backward
-        let mean_loss = Box::new(Mean::new());
-        let loss_node = engine
-            .apply_operation(mean_loss, vec![result_node])
-            .expect("{test_name} loss creation failed");
-
-        engine
-            .backward(loss_node)
-            .expect("{test_name} backward pass failed");
-
-        // Verify gradients exist for all inputs
-        for (i, &input_node) in input_nodes.iter().enumerate() {
-            let grad = engine.get_gradient(input_node);
-            assert!(
-                grad.is_some(),
-                "{}: gradient missing for input {}",
-                test_name,
-                i
-            );
-            assert_eq!(
-                grad.unwrap().shape(),
-                inputs[i].shape(),
-                "{}: gradient shape mismatch for input {}",
-                test_name,
-                i
-            );
-        }
-
-        println!("{} test completed successfully", test_name);
-    }
-
-    // ========================= BASIC ARITHMETIC OPERATIONS =========================
-
-    #[test]
-    fn test_add_operation() {
-        // Test element-wise addition with broadcasting support
-        let inputs = vec![
-            create_tensor_2x2([1.0, 2.0, 3.0, 4.0]),
-            create_tensor_2x2([2.0, 3.0, 4.0, 5.0]),
-        ];
-        test_operation_with_gradients(Add::default(), inputs, &[2, 2], "Add");
-    }
-
-    #[test]
-    fn test_sub_operation() {
-        // Test element-wise subtraction
-        let inputs = vec![
-            create_tensor_2x2([5.0, 6.0, 7.0, 8.0]),
-            create_tensor_2x2([1.0, 2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(Sub, inputs, &[2, 2], "Sub");
-    }
-
-    #[test]
-    fn test_mul_operation() {
-        // Test element-wise multiplication
-        let inputs = vec![
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-            create_tensor_1d(&[5.0, 6.0, 7.0]),
-        ];
-        test_operation_with_gradients(Mul, inputs, &[3], "Mul");
-    }
-
-    #[test]
-    fn test_div_operation() {
-        // Test element-wise division
-        let inputs = vec![
-            create_tensor_1d(&[10.0, 15.0, 20.0]),
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(Div, inputs, &[3], "Div");
-    }
-
-    // ========================= SCALAR OPERATIONS =========================
-
-    #[test]
-    fn test_add_scalar_operation() {
-        // Test scalar addition: input + scalar
-        let inputs = vec![create_tensor_1d(&[1.0, 2.0, 3.0])];
-        test_operation_with_gradients(AddScalar::new(5.0f32), inputs, &[3], "AddScalar");
-    }
-
-    #[test]
-    fn test_sub_scalar_operation() {
-        // Test scalar subtraction: input - scalar
-        let inputs = vec![create_tensor_1d(&[10.0, 20.0, 30.0])];
-        test_operation_with_gradients(SubScalar::new(5.0f32), inputs, &[3], "SubScalar");
-    }
-
-    #[test]
-    fn test_mul_scalar_operation() {
-        // Test scalar multiplication: input * scalar
-        let inputs = vec![create_tensor_1d(&[1.0, 2.0, 3.0])];
-        test_operation_with_gradients(MulScalar::new(3.0f32), inputs, &[3], "MulScalar");
-    }
-
-    #[test]
-    fn test_div_scalar_operation() {
-        // Test scalar division: input / scalar
-        let inputs = vec![create_tensor_1d(&[6.0, 9.0, 12.0])];
-        test_operation_with_gradients(DivScalar::new(3.0f32), inputs, &[3], "DivScalar");
-    }
-
-    #[test]
-    fn test_power_scalar_operation() {
-        // Test scalar power: input ^ scalar
-        let inputs = vec![create_tensor_1d(&[2.0, 3.0, 4.0])];
-        test_operation_with_gradients(PowerScalar::new(2.0f32), inputs, &[3], "PowerScalar");
-    }
-
-    // ========================= MATRIX OPERATIONS =========================
-
-    #[test]
-    fn test_matmul_operation() {
-        let device = best_f32_device();
-        // Test matrix multiplication: A @ B
-        let inputs = vec![
-            Tensor::from_vec_with_device(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], device)
-                .expect("Create matrix A"),
-            Tensor::from_vec_with_device(vec![5.0, 6.0, 7.0, 8.0], &[2, 2], device)
-                .expect("Create matrix B"),
-        ];
-        test_operation_with_gradients(MatMul, inputs, &[2, 2], "MatMul");
-    }
-
-    #[test]
-    fn test_transpose_operation() {
-        // Test matrix transpose: A^T
-        let device = best_f32_device();
-        let inputs =
-            vec![
-                Tensor::from_vec_with_device(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], device)
-                    .expect("Create matrix"),
-            ];
-        test_operation_with_gradients(Transpose { axes: None }, inputs, &[3, 2], "Transpose");
-    }
-
-    // ========================= UNARY OPERATIONS =========================
-
-    #[test]
-    fn test_exp_operation() {
-        // Test element-wise exponential: exp(input)
-        let inputs = vec![create_tensor_1d(&[0.0, 1.0, 2.0])];
-        test_operation_with_gradients(Exp, inputs, &[3], "Exp");
-    }
-
-    #[test]
-    fn test_log_operation() {
-        // Test element-wise natural logarithm: log(input)
-        let inputs = vec![create_tensor_1d(&[1.0, 2.0, 3.0])]; // Positive values for log
-        test_operation_with_gradients(Log, inputs, &[3], "Log");
-    }
-
-    #[test]
-    fn test_sqrt_operation() {
-        // Test element-wise square root: sqrt(input)
-        let inputs = vec![create_tensor_1d(&[1.0, 4.0, 9.0])]; // Perfect squares
-        test_operation_with_gradients(Sqrt, inputs, &[3], "Sqrt");
-    }
-
-    #[test]
-    fn test_abs_operation() {
-        // Test element-wise absolute value: abs(input)
-        let inputs = vec![create_tensor_1d(&[-2.0, 0.0, 3.0])];
-        test_operation_with_gradients(Abs, inputs, &[3], "Abs");
-    }
-
-    #[test]
-    fn test_neg_operation() {
-        // Test element-wise negation: -input
-        let inputs = vec![create_tensor_1d(&[1.0, -2.0, 3.0])];
-        test_operation_with_gradients(Neg, inputs, &[3], "Neg");
-    }
-
-    #[test]
-    fn test_power_operation() {
-        // Test element-wise power: input1 ^ input2
-        let inputs = vec![
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-            create_tensor_1d(&[2.0, 2.0, 2.0]),
-        ];
-        test_operation_with_gradients(Power, inputs, &[3], "Power");
-    }
-
-    // ========================= ACTIVATION FUNCTIONS =========================
-
-    #[test]
-    fn test_relu_operation() {
-        // Test ReLU activation: max(0, input)
-        let inputs = vec![create_tensor_1d(&[-2.0, 0.0, 2.0])];
-        test_operation_with_gradients(ReLU, inputs, &[3], "ReLU");
-    }
-
-    #[test]
-    fn test_sigmoid_operation() {
-        // Test sigmoid activation: 1 / (1 + exp(-input))
-        let inputs = vec![create_tensor_1d(&[-1.0, 0.0, 1.0])];
-        test_operation_with_gradients(Sigmoid, inputs, &[3], "Sigmoid");
-    }
-
-    #[test]
-    fn test_tanh_operation() {
-        // Test hyperbolic tangent activation: tanh(input)
-        let inputs = vec![create_tensor_1d(&[-1.0, 0.0, 1.0])];
-        test_operation_with_gradients(Tanh, inputs, &[3], "Tanh");
-    }
-
-    // ========================= REDUCTION OPERATIONS =========================
-
-    #[test]
-    fn test_sum_operation() {
-        // Test sum reduction: sum(input, axes)
-        let inputs = vec![create_tensor_2x2([1.0, 2.0, 3.0, 4.0])];
-        test_operation_with_gradients(Sum::new(false), inputs, &[], "Sum"); // Scalar result
-    }
-
-    #[test]
-    fn test_mean_operation() {
-        // Test mean reduction: mean(input, axes)
-        let inputs = vec![create_tensor_2x2([2.0, 4.0, 6.0, 8.0])];
-        test_operation_with_gradients(Mean::new(), inputs, &[], "Mean"); // Scalar result
-    }
-
-    #[test]
-    fn test_max_operation() {
-        // Test max reduction: max(input, axes)
-        let inputs = vec![create_tensor_2x2([1.0, 4.0, 2.0, 3.0])];
-        test_operation_with_gradients(Max::new(), inputs, &[], "Max"); // Scalar result
-    }
-
-    #[test]
-    fn test_min_operation() {
-        // Test min reduction: min(input, axes)
-        let inputs = vec![create_tensor_2x2([3.0, 1.0, 4.0, 2.0])];
-        test_operation_with_gradients(Min::new(), inputs, &[], "Min"); // Scalar result
-    }
-
-    // ========================= COMPARISON OPERATIONS =========================
-
-    #[test]
-    fn test_greater_operation() {
-        // Test element-wise greater than: input1 > input2
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 3.0, 5.0]),
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(Greater, inputs, &[3], "Greater");
-    }
-
-    #[test]
-    fn test_greater_equal_operation() {
-        // Test element-wise greater than or equal: input1 >= input2
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 3.0, 5.0]),
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(GreaterEqual, inputs, &[3], "GreaterEqual");
-    }
-
-    #[test]
-    fn test_less_operation() {
-        // Test element-wise less than: input1 < input2
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 3.0, 5.0]),
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(Less, inputs, &[3], "Less");
-    }
-
-    #[test]
-    fn test_less_equal_operation() {
-        // Test element-wise less than or equal: input1 <= input2
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 3.0, 5.0]),
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(LessEqual, inputs, &[3], "LessEqual");
-    }
-
-    #[test]
-    fn test_equal_operation() {
-        // Test element-wise equality: input1 == input2
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 3.0, 5.0]),
-            create_tensor_1d(&[2.0, 3.0, 4.0]),
-        ];
-        test_operation_with_gradients(Equal, inputs, &[3], "Equal");
-    }
-
-    #[test]
-    fn test_clamp_operation() {
-        // Test clamp operation: clamp(input, min_val, max_val)
-        let inputs = vec![create_tensor_1d(&[-5.0, 0.0, 10.0])];
-        test_operation_with_gradients(Clamp::new(-2.0f32, 5.0f32), inputs, &[3], "Clamp");
-    }
-
-    // ========================= ELEMENTWISE OPERATIONS =========================
-
-    #[test]
-    fn test_max_elementwise_operation() {
-        // Test element-wise maximum: max(input1, input2)
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 5.0, 3.0]),
-            create_tensor_1d(&[4.0, 2.0, 6.0]),
-        ];
-        test_operation_with_gradients(MaxElementwise, inputs, &[3], "MaxElementwise");
-    }
-
-    #[test]
-    fn test_min_elementwise_operation() {
-        // Test element-wise minimum: min(input1, input2)
-        let inputs = vec![
-            create_tensor_1d(&[1.0, 5.0, 3.0]),
-            create_tensor_1d(&[4.0, 2.0, 6.0]),
-        ];
-        test_operation_with_gradients(MinElementwise, inputs, &[3], "MinElementwise");
-    }
-
-    #[test]
-    fn test_reciprocal_operation() {
-        // Test element-wise reciprocal: 1 / input
-        let inputs = vec![create_tensor_1d(&[1.0, 2.0, 4.0])]; // Non-zero values
-        test_operation_with_gradients(Reciprocal, inputs, &[3], "Reciprocal");
-    }
-
-    #[test]
-    fn test_sign_operation() {
-        // Test element-wise sign: sign(input)
-        let inputs = vec![create_tensor_1d(&[-2.0, 0.0, 3.0])];
-        test_operation_with_gradients(Sign, inputs, &[3], "Sign");
-    }
-
-    // ========================= RESHAPE OPERATIONS =========================
-
-    #[test]
-    fn test_reshape_operation() {
-        let device = best_f32_device();
-        // Test reshape operation: reshape(input, new_shape)
-        let inputs =
-            vec![
-                Tensor::from_vec_with_device(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3], device)
-                    .expect("Create tensor"),
-            ];
-        test_operation_with_gradients(Reshape::new(vec![3, 2]), inputs, &[3, 2], "Reshape");
-    }
-
-    #[test]
-    fn test_unsqueeze_operation() {
-        // Test unsqueeze operation: unsqueeze(input, axis)
-        let inputs = vec![create_tensor_1d(&[1.0, 2.0, 3.0])];
-        test_operation_with_gradients(Unsqueeze::new(0), inputs, &[1, 3], "Unsqueeze");
-    }
-
-    #[test]
-    fn test_squeeze_operation() {
-        let device = best_f32_device();
-        // Test squeeze operation: squeeze(input, axis)
-        let inputs = vec![
-            Tensor::from_vec_with_device(vec![1.0, 2.0, 3.0], &[1, 3], device)
-                .expect("Create tensor with size-1 dimension"),
-        ];
-        test_operation_with_gradients(Squeeze::at_axis(0), inputs, &[3], "Squeeze");
-    }
-
-    #[test]
-    fn test_broadcast_to_operation() {
-        let device = best_f32_device();
-        // Test broadcast_to operation: broadcast_to(input, target_shape)
-        let inputs = vec![
-            Tensor::from_vec_with_device(vec![1.0, 2.0], &[2], device).expect("Create tensor")
-        ];
-        test_operation_with_gradients(BroadcastTo::new(vec![3, 2]), inputs, &[3, 2], "BroadcastTo");
-    }
-
-    // ========================= INTEGRATION TEST =========================
-    #[test]
-    fn test_full_computational_graph() {
-        // Complete end-to-end test demonstrating all major operation categories
-        // This simulates a realistic neural network computation with multiple operation types
-        let device = best_f32_device();
-        let mut engine = create_engine_with_training();
-
-        // Create input data representing a small batch of features
-        let input_data = Tensor::from_vec_with_device(vec![1.0, 2.0, 3.0, 4.0], &[2, 2], device)
-            .expect("Failed to create input");
-        let weights = Tensor::from_vec_with_device(vec![0.5, 0.3, 0.7, 0.1], &[2, 2], device)
-            .expect("Failed to create weights");
-        let bias = 0.2;
-
-        let input_node = engine.create_variable(input_data, true);
-        let weights_node = engine.create_variable(weights, true);
-
-        // Step 1: Linear transformation (MatMul + Add)
-        let linear_op = Box::new(MatMul);
-        let linear_result = engine
-            .apply_operation(linear_op, vec![input_node, weights_node])
-            .expect("Linear transformation failed");
-
-        println!("Matmul operation computed");
-        let add_bias_op = Box::new(AddScalar::new(bias));
-        let biased_result = engine
-            .apply_operation(add_bias_op, vec![linear_result])
-            .expect("Bias addition failed");
-
-        println!("Add scalar op computed");
-
-        // Step 2: Apply activation function (ReLU)
-        let relu_op = Box::new(ReLU);
-        let activated_result = engine
-            .apply_operation(relu_op, vec![biased_result])
-            .expect("ReLU activation failed");
-
-        // Step 3: Apply mathematical transformation (Sqrt of Abs)
-        let abs_op = Box::new(Abs);
-        let abs_result = engine
-            .apply_operation(abs_op, vec![activated_result])
-            .expect("Abs operation failed");
-
-        let sqrt_op = Box::new(Sqrt);
-        let sqrt_result = engine
-            .apply_operation(sqrt_op, vec![abs_result])
-            .expect("Sqrt operation failed");
-
-        // Step 4: Scalar operations (multiply by learning rate, add regularization)
-        let lr_mul_op = Box::new(MulScalar::new(0.01f32));
-        let scaled_result = engine
-            .apply_operation(lr_mul_op, vec![sqrt_result])
-            .expect("Learning rate scaling failed");
-
-        let reg_add_op = Box::new(AddScalar::new(1e-6f32));
-        let regularized_result = engine
-            .apply_operation(reg_add_op, vec![scaled_result])
-            .expect("Regularization failed");
-
-        // Step 5: Apply comparison and clamp (numerical stability)
-        let clamp_op = Box::new(Clamp::new(1e-10f32, 1e10f32));
-        let clamped_result = engine
-            .apply_operation(clamp_op, vec![regularized_result])
-            .expect("Clamping failed");
-
-        // Step 6: Reduction to loss (Mean)
-        let mean_op = Box::new(Mean::new());
-        let loss_node = engine
-            .apply_operation(mean_op, vec![clamped_result])
-            .expect("Mean reduction failed");
-
-        // Verify forward pass completed successfully
-        let loss_tensor = engine.get_tensor(loss_node).expect("Loss tensor not found");
-        assert_eq!(loss_tensor.shape(), &[]); // Scalar loss
-
-        // Step 7: Test backward pass - compute all gradients
-        engine.backward(loss_node).expect("Backward pass failed");
-
-        // Verify gradients exist for all trainable parameters
-        let input_grad = engine.get_gradient(input_node);
-        let weights_grad = engine.get_gradient(weights_node);
-
-        assert!(input_grad.is_some(), "Input gradient should exist");
-        assert!(weights_grad.is_some(), "Weights gradient should exist");
-
-        // Verify gradient shapes match parameter shapes
-        assert_eq!(input_grad.unwrap().shape(), &[2, 2]);
-        assert_eq!(weights_grad.unwrap().shape(), &[2, 2]);
-
-        // Step 8: Test lazy vs eager evaluation modes
-        engine.set_evaluation_mode(EvaluationMode::Lazy);
-
-        // Create new computation graph in lazy mode
-        let lazy_input = create_tensor_2x2([5.0, 6.0, 7.0, 8.0]);
-        let lazy_input_node = engine.create_variable(lazy_input, false);
-
-        // Chain multiple operations in lazy mode
-        let exp_op = Box::new(Exp);
-        let exp_result = engine
-            .apply_operation(exp_op, vec![lazy_input_node])
-            .expect("Lazy Exp failed");
-
-        let log_op = Box::new(Log);
-        let log_result = engine
-            .apply_operation(log_op, vec![exp_result])
-            .expect("Lazy Log failed");
-
-        let sigmoid_op = Box::new(Sigmoid);
-        let sigmoid_result = engine
-            .apply_operation(sigmoid_op, vec![log_result])
-            .expect("Lazy Sigmoid failed");
-
-        // Operations should not be evaluated yet in lazy mode
-        assert!(!engine.is_evaluated(exp_result), "Exp should be lazy");
-        assert!(!engine.is_evaluated(log_result), "Log should be lazy");
-        assert!(
-            !engine.is_evaluated(sigmoid_result),
-            "Sigmoid should be lazy"
-        );
-
-        // Force evaluation of entire lazy chain
-        let final_result = engine
-            .evaluate(sigmoid_result)
-            .expect("Lazy evaluation failed");
-        assert_eq!(final_result.shape(), &[2, 2]);
-
-        // Now all nodes should be evaluated
-        assert!(
-            engine.is_evaluated(exp_result),
-            "Exp should now be evaluated"
-        );
-        assert!(
-            engine.is_evaluated(log_result),
-            "Log should now be evaluated"
-        );
-        assert!(
-            engine.is_evaluated(sigmoid_result),
-            "Sigmoid should now be evaluated"
-        );
-
-        println!("Computational graph test with ALL operations completed successfully!");
     }
 }

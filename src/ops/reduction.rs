@@ -80,7 +80,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Sum operation requires exactly 1 input".to_string());
@@ -157,7 +157,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Mean operation requires exactly 1 input".to_string());
@@ -255,7 +255,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Max operation requires exactly 1 input".to_string());
@@ -270,8 +270,6 @@ where
         if restored_max.shape() != input_shape {
             restored_max.broadcast_to(input_shape)?;
         }
-
-      
 
         // Create mask where input equals max values (gradient flows here)
         let mask = inputs[0].equal(&restored_max)?;
@@ -351,7 +349,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Min operation requires exactly 1 input".to_string());

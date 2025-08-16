@@ -1,6 +1,6 @@
-use crate::graph::{NodeId, AutoFerroxEngine};
-use crate::FerroxCudaF;
+use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::ops::{BroadcastTo, Reshape};
+use crate::FerroxCudaF;
 // Utilities for implementing the layers go here.
 // This function reshapes and broadcasts an scalar tensor (shape == [1] ) into any 2D or 4D target shape
 pub fn reshape_and_broadcast<T>(

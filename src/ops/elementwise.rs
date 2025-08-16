@@ -26,7 +26,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("MinElementwise operation requires exactly 2 inputs".to_string());
@@ -76,7 +76,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("MaxElementwise operation requires exactly 2 inputs".to_string());
@@ -123,7 +123,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Reciprocal operation requires exactly 1 input".to_string());
@@ -169,7 +169,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Sign operation requires exactly 1 input".to_string());

@@ -252,8 +252,6 @@ where
         }
     }
 
-    
-
     fn add_param(&mut self, param_group: usize, param_node_id: NodeId) {
         self.param_groups[param_group].params.insert(param_node_id);
     }
@@ -390,7 +388,7 @@ mod sgd_tests {
 
     #[test]
     fn test_sgd_basic_step() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
         let param = Tensor::from_vec_with_device(vec![2.0f32], &[1], device).unwrap();
         let node = engine.create_variable(param, true);
@@ -421,7 +419,7 @@ mod sgd_tests {
 
     #[test]
     fn test_sgd_momentum() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
         let node = engine.create_variable(param, true);
@@ -461,7 +459,7 @@ mod sgd_tests {
 
     #[test]
     fn test_sgd_gradient_clipping() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
 
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();

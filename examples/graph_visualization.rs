@@ -62,10 +62,12 @@ fn create_graph(engine: &mut AutoFerroxEngine<f32>) -> Result<NodeId, Box<dyn st
 
     // Combine branches: sigmoid_branch * tanh_branch + sqrt_branch
     let mul_op2 = Box::new(Mul);
-    let combined_branches = engine.apply_operation(mul_op2, vec![sigmoid_branch, tanh_branch])?;
+    let combined_branches =
+        engine.apply_operation(mul_op2, vec![sigmoid_branch, tanh_branch])?;
 
     let add_op2 = Box::new(Add::new());
-    let final_result = engine.apply_operation(add_op2, vec![combined_branches, sqrt_branch])?;
+    let final_result =
+        engine.apply_operation(add_op2, vec![combined_branches, sqrt_branch])?;
 
     Ok(final_result)
 }
@@ -74,7 +76,7 @@ fn create_graph(engine: &mut AutoFerroxEngine<f32>) -> Result<NodeId, Box<dyn st
 fn graph_default_config() -> Result<(), Box<dyn std::error::Error>> {
     println!("1. Visualizing Graph with Default Configuration");
 
-    let mut engine = AutoFerroxEngine::<f32>::new();
+    let mut engine = AutoFerroxEngine::<f32>::new(true);
     engine.set_training(true);
     engine.set_evaluation_mode(EvaluationMode::Eager);
 
@@ -121,7 +123,7 @@ fn graph_default_config() -> Result<(), Box<dyn std::error::Error>> {
 fn graph_custom_config() -> Result<(), Box<dyn std::error::Error>> {
     println!("2. Computational Graph with Custom Configuration");
 
-    let mut engine = AutoFerroxEngine::<f32>::new();
+    let mut engine = AutoFerroxEngine::<f32>::new(true);
     engine.set_training(true);
     engine.set_evaluation_mode(EvaluationMode::Lazy); // Different mode for variety
 
@@ -183,7 +185,7 @@ mod tests {
     #[test]
     fn test_graph_creation_and_execution() {
         // Test that graph creation works correctly
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         engine.set_training(true);
 
         let result_node = create_graph(&mut engine).expect("Graph creation failed");
@@ -222,11 +224,11 @@ mod tests {
     #[test]
     fn test_lazy_vs_eager_execution() {
         // Test that both evaluation modes produce equivalent results
-        let mut eager_engine = AutoFerroxEngine::<f32>::new();
+        let mut eager_engine = AutoFerroxEngine::<f32>::new(true);
         eager_engine.set_training(false); // Disable gradients for cleaner comparison
         eager_engine.set_evaluation_mode(EvaluationMode::Eager);
 
-        let mut lazy_engine = AutoFerroxEngine::<f32>::new();
+        let mut lazy_engine = AutoFerroxEngine::<f32>::new(true);
         lazy_engine.set_training(false);
         lazy_engine.set_evaluation_mode(EvaluationMode::Lazy);
 

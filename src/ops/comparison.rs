@@ -23,7 +23,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Comparison operations have zero gradients everywhere
         // They produce step functions which are not differentiable
@@ -64,7 +64,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         _inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Comparison operations have zero gradients
         let zero = FerroxF::zero();
@@ -102,7 +102,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Comparison operations have zero gradients
         let zero = FerroxF::zero();
@@ -141,7 +141,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Comparison operations have zero gradients
         let zero = FerroxF::zero();
@@ -181,7 +181,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Comparison operations have zero gradients
         let zero = FerroxF::zero();
@@ -223,7 +223,7 @@ where
         &self,
         _grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Comparison operations have zero gradients
         let zero = FerroxF::zero();
@@ -271,7 +271,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Clamp operation requires exactly 1 input".to_string());

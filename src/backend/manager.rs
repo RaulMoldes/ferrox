@@ -461,24 +461,17 @@ pub fn return_cuda_slice<T: FerroxCudaN>(
 }
 
 #[cfg(feature = "cuda")]
-pub fn cleanup_pool<T: FerroxCudaN>(
-) -> Result<(), String> {
+pub fn cleanup_pool<T: FerroxCudaN>() -> Result<(), String> {
     with_cuda_pool(|pool: &mut CudaMemoryPool<T>| pool.cleanup())
 }
 
-
 #[cfg(feature = "cuda")]
-pub fn show_memory_stats<T: FerroxCudaN>(
-) -> Result<(), String> {
-    with_cuda_pool(|pool: &mut CudaMemoryPool<T>|{
-
+pub fn show_memory_stats<T: FerroxCudaN>() -> Result<(), String> {
+    with_cuda_pool(|pool: &mut CudaMemoryPool<T>| {
         pool.print_stats();
         Ok(())
-})
-
+    })
 }
-
-
 
 #[cfg(test)]
 mod backend_manager_tests {

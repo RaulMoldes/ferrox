@@ -5,13 +5,13 @@
 use crate::backend::number::FerroxCudaF;
 use crate::backend::{Device, Tensor};
 use crate::graph::{AutoFerroxEngine, NodeId};
+use crate::nn::layers::utils::reshape_and_broadcast;
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
 use crate::ops::basic::Add;
 use crate::ops::batched::Conv2dOp;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::nn::layers::utils::reshape_and_broadcast;
 
 /// 2D Convolutional layer: applies convolution over input tensor
 /// Implements standard convolution operation with configurable kernel size, stride, and padding

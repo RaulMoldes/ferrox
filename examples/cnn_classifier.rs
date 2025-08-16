@@ -6,7 +6,7 @@ mod common;
 use common::{
     compute_loss, generate_synthetic_image_data, run_forward, train, CNNClassifier, TrainingConfig,
 };
-use ferrox::backend::manager::{best_f32_device};
+use ferrox::backend::manager::best_f32_device;
 use ferrox::backend::Device;
 use ferrox::backend::FerroxCudaF;
 use ferrox::nn::losses::{CCELoss, ReductionType};
@@ -48,10 +48,10 @@ fn main() -> Result<(), String> {
     let training_config = TrainingConfig::fast(); // Use fast config for demo
 
     // Configuration for image classification
-    let image_size = 8;
+    let image_size = 16;
     let channels = 1; // Grayscale images
     let num_classes = 3; // Three pattern classes
-    let num_samples = 100;
+    let num_samples = 500;
     println!("\n=== CNN Image Classification Demo ===");
 
     println!("Creating CNN classifier...");
@@ -67,7 +67,7 @@ fn main() -> Result<(), String> {
     )?;
 
     let test_data =
-        generate_synthetic_image_data::<f32>(20, num_classes, image_size, channels, device)?;
+        generate_synthetic_image_data::<f32>(100, num_classes, image_size, channels, device)?;
 
     // Loss function for multiclass classification
     let loss_fn = CCELoss::<f32>::from_logits(ReductionType::Mean, Some(1));

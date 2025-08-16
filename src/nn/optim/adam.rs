@@ -567,7 +567,7 @@ mod adam_tests {
 
     #[test]
     fn test_adam_basic_step() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
         // Single parameter optimization
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
@@ -601,7 +601,7 @@ mod adam_tests {
 
     #[test]
     fn test_adam_weight_decay() {
-        let mut engine = AutoFerroxEngine::<f32>::new();
+        let mut engine = AutoFerroxEngine::<f32>::new(true);
         let device = best_f32_device();
         let param = Tensor::from_vec_with_device(vec![1.0f32], &[1], device).unwrap();
         let node = engine.create_variable(param, true);

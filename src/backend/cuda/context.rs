@@ -14,7 +14,6 @@ use std::default::Default;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-
 pub struct CudaContextManager<T>
 where
     T: FerroxCudaN,
@@ -69,9 +68,9 @@ where
     pub fn alloc_zeros(&self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String>
     where
         T: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits,
-    {        // WARNING .This now goes via the memory pool so there are NO GUARANTEES that the memory is initialized
-            alloc_cuda_slice::<T>(size)
-
+    {
+        // WARNING .This now goes via the memory pool so there are NO GUARANTEES that the memory is initialized
+        alloc_cuda_slice::<T>(size)
     }
 
     pub fn stream_manager(&self) -> &StreamManager {
@@ -90,19 +89,20 @@ where
         // Copy data from host to device using the correct cudarc API
 
         stream
-            .memcpy_htod(data,allocation.data_mut()) // data is now &[T]
+            .memcpy_htod(data, allocation.data_mut()) // data is now &[T]
             .map_err(|e| format!("Host to device transfer failed: {}", e))?;
 
         Ok(allocation)
     }
 
     /// Synchronous device to host transfer
-    pub fn device_to_host(&self, allocation: &PoolAllocation<CudaSlice<T>>) -> Result<Vec<T>, String>
+    pub fn device_to_host(
+        &self,
+        allocation: &PoolAllocation<CudaSlice<T>>,
+    ) -> Result<Vec<T>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
-
-
         let data = allocation.data();
         // Allocate host buffer
         let mut host_buffer = vec![T::default(); data.len()];
@@ -122,7 +122,10 @@ where
     }
 
     /// Synchronous device to host transfer
-    pub fn device_to_device(&self, src: &PoolAllocation<CudaSlice<T>>) -> Result<PoolAllocation<CudaSlice<T>>, String>
+    pub fn device_to_device(
+        &self,
+        src: &PoolAllocation<CudaSlice<T>>,
+    ) -> Result<PoolAllocation<CudaSlice<T>>, String>
     where
         T: cudarc::driver::DeviceRepr + Clone + Default,
     {
@@ -191,7 +194,7 @@ where
             ));
         }
 
-        let cuda_data= self.host_to_device(data)?; // Pass slice reference
+        let cuda_data = self.host_to_device(data)?; // Pass slice reference
         Ok(CudaTensor::new(cuda_data, shape))
     }
 
@@ -302,7 +305,8 @@ where
     pub fn data(&self) -> &CudaSlice<T> {
         self.allocation
             .as_ref()
-            .expect("CudaTensor data was already consumed").data()
+            .expect("CudaTensor data was already consumed")
+            .data()
     }
 
     pub fn get_alloc(&self) -> &PoolAllocation<CudaSlice<T>> {
@@ -320,14 +324,13 @@ where
     pub fn data_mut(&mut self) -> &mut CudaSlice<T> {
         self.allocation
             .as_mut()
-            .expect("CudaTensor data was already consumed").data_mut()
+            .expect("CudaTensor data was already consumed")
+            .data_mut()
     }
 
     // Take ownership of the slice (consuming method)
     pub fn take_alloc(&mut self) -> Option<PoolAllocation<CudaSlice<T>>> {
-        self.allocation
-            .take()
-
+        self.allocation.take()
     }
 
     /// Create tensor from CPU ndarray without taking ownership
@@ -729,7 +732,7 @@ where
         if let Some(alloc) = self.take_alloc() {
             // Move slice to pool - no clone() call means no cuda_free here
             if let Err(e) = return_cuda_slice::<T>(alloc) {
-                 eprintln!("Warning: Failed to return CUDA memory to pool: {:?}", e);
+                eprintln!("Warning: Failed to return CUDA memory to pool: {:?}", e);
                 // slice ownership was transferred to return_cuda_slice
                 // If it fails, the slice will be properly dropped inside the pool function
             }

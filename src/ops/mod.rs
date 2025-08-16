@@ -18,12 +18,16 @@ where
     // Compute function computes the output in the computational graph.
     fn compute(&self, inputs: &mut [&Tensor<T>]) -> Result<Tensor<T>, String>;
 
+    fn cache_output(&self) -> bool {
+        false // Default value
+    }
+
     // Gradient function computes the gradient of the output with respect to the inputs.
     fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String>;
 
     // Get number of inputs this operator expects
@@ -54,7 +58,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         // Delegate to the boxed operator
         self.as_ref().gradient(grad_output, inputs, outputs)
@@ -218,7 +222,7 @@ fn validate_tensor_values(actual: &Tensor<f32>, expected: &[f32], tolerance: f32
 #[allow(unused_macros)]
 macro_rules! test_op_with_values {
     ($op:expr, $inputs:expr, $expected_shape:expr, $expected_values:expr, $tolerance:expr, $name:literal) => {
-        let mut graph = AutoFerroxEngine::<f32>::new();
+        let mut graph = AutoFerroxEngine::<f32>::new(true);
         graph.set_training(true);
 
         let input_nodes: Vec<_> = $inputs
@@ -272,7 +276,7 @@ macro_rules! test_op_with_values {
 #[allow(unused_macros)]
 macro_rules! test_op_shape {
     ($op:expr, $inputs:expr, $expected_shape:expr, $name:literal) => {
-        let mut graph = AutoFerroxEngine::<f32>::new();
+        let mut graph = AutoFerroxEngine::<f32>::new(true);
         graph.set_training(true); // Enable gradient computation
 
         // Create variable nodes with gradient tracking

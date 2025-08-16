@@ -16,8 +16,6 @@ use std::sync::Arc;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-
-
 /// POOL and Bucket Configs
 #[derive(Debug, Clone)]
 pub struct BucketConfig {
@@ -26,19 +24,25 @@ pub struct BucketConfig {
     pub max_allocations: usize,
     pub description: String,
     max_evicted: usize,
-    eviction_threshold: u64
+    eviction_threshold: u64,
 }
 
 impl BucketConfig {
-    pub fn new(min_size: usize, max_size: usize, max_allocations: usize, description: &str,max_evicted: usize,
-            eviction_threshold: u64) -> Self {
+    pub fn new(
+        min_size: usize,
+        max_size: usize,
+        max_allocations: usize,
+        description: &str,
+        max_evicted: usize,
+        eviction_threshold: u64,
+    ) -> Self {
         Self {
             min_size,
             max_size,
             max_allocations,
             description: description.to_string(),
-             max_evicted,
-            eviction_threshold
+            max_evicted,
+            eviction_threshold,
         }
     }
 }
@@ -48,48 +52,95 @@ pub struct PoolConfig {
     pub bucket_configs: Vec<BucketConfig>,
 }
 
-
 impl Default for PoolConfig {
     fn default() -> Self {
-          let bucket_configs = vec![
+        let bucket_configs = vec![
             BucketConfig::new(1, 1024, 100, "Small GPU tensors: weights, biases", 75, 25),
-            BucketConfig::new(1025, 262144, 20, "Medium GPU tensors: layer activations",15,5),
-            BucketConfig::new(262145, 16777216, 5, "Large GPU tensors: batch processing", 3,2),
-            BucketConfig::new(16777217, usize::MAX, 2, "Huge GPU tensors: full model parameters",2,1),
+            BucketConfig::new(
+                1025,
+                262144,
+                20,
+                "Medium GPU tensors: layer activations",
+                15,
+                5,
+            ),
+            BucketConfig::new(
+                262145,
+                16777216,
+                5,
+                "Large GPU tensors: batch processing",
+                3,
+                2,
+            ),
+            BucketConfig::new(
+                16777217,
+                usize::MAX,
+                2,
+                "Huge GPU tensors: full model parameters",
+                2,
+                1,
+            ),
         ];
 
         Self { bucket_configs }
     }
 }
 impl PoolConfig {
-
     // Create buckets from this configuration
     pub fn create_buckets<T>(&self) -> Vec<PoolBucket<T>> {
         self.bucket_configs
             .iter()
-            .map(|config| PoolBucket::new(config.min_size, config.max_size, config.max_allocations, config.max_evicted, config.eviction_threshold))
+            .map(|config| {
+                PoolBucket::new(
+                    config.min_size,
+                    config.max_size,
+                    config.max_allocations,
+                    config.max_evicted,
+                    config.eviction_threshold,
+                )
+            })
             .collect()
     }
 
     // Add a new bucket configuration
-    pub fn add_bucket(&mut self, min_size: usize, max_size: usize, max_allocations: usize, description: &str, max_evicted:usize, eviction_threshold: u64) {
-        self.bucket_configs.push(BucketConfig::new(min_size, max_size, max_allocations, description,max_evicted, eviction_threshold));
+    pub fn add_bucket(
+        &mut self,
+        min_size: usize,
+        max_size: usize,
+        max_allocations: usize,
+        description: &str,
+        max_evicted: usize,
+        eviction_threshold: u64,
+    ) {
+        self.bucket_configs.push(BucketConfig::new(
+            min_size,
+            max_size,
+            max_allocations,
+            description,
+            max_evicted,
+            eviction_threshold,
+        ));
     }
 
     // Print configuration summary
     pub fn print_config(&self) {
         println!("Pool Configuration:");
         for (i, config) in self.bucket_configs.iter().enumerate() {
-            println!("  Bucket {}: {}-{} elements, max {} allocations - {}",
-                     i,
-                     config.min_size,
-                     if config.max_size == usize::MAX { "∞".to_string() } else { config.max_size.to_string() },
-                     config.max_allocations,
-                     config.description);
+            println!(
+                "  Bucket {}: {}-{} elements, max {} allocations - {}",
+                i,
+                config.min_size,
+                if config.max_size == usize::MAX {
+                    "∞".to_string()
+                } else {
+                    config.max_size.to_string()
+                },
+                config.max_allocations,
+                config.description
+            );
         }
     }
 }
-
 
 #[cfg(feature = "cuda")]
 pub struct CudaMemoryPool<T: FerroxCudaN> {
@@ -103,18 +154,17 @@ pub struct CudaMemoryPool<T: FerroxCudaN> {
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaN> CudaMemoryPool<T> {
     pub fn new(stream: Arc<CudaStream>, config: Option<PoolConfig>) -> Self {
-       let config = config.unwrap_or_default();
-       let buckets = config.create_buckets();
+        let config = config.unwrap_or_default();
+        let buckets = config.create_buckets();
 
         Self {
             buckets,
             stream,
             stats: PoolStats::default(),
             active_allocations: HashMap::new(),
-            allocation_counter: 0
+            allocation_counter: 0,
         }
     }
-
 
     fn find_bucket(&self, size: usize) -> Option<usize> {
         self.buckets.iter().position(|bucket| bucket.fits(size))
@@ -129,67 +179,60 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
 
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
+    fn allocate(&mut self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String> {
+        if size == 0 {
+            return Err("Cannot allocate zero-sized CUDA memory".to_string());
+        }
 
+        self.allocation_counter += 1;
+        let allocation_id = self.allocation_counter as u64;
 
-   fn allocate(&mut self, size: usize) -> Result<PoolAllocation<CudaSlice<T>>, String> {
-    if size == 0 {
-        return Err("Cannot allocate zero-sized CUDA memory".to_string());
-    }
-
-    self.allocation_counter += 1;
-    let allocation_id = self.allocation_counter as u64;
-
-    // Find appropriate bucket - panic if no bucket can handle this size
-    let bucket_idx = self.find_bucket(size)
-        .unwrap_or_else(|| {
-            panic!("No bucket configured for allocation size {}. Current buckets: {:?}",
-                   size,
-                   self.buckets.iter().map(|b| b.size_range).collect::<Vec<_>>())
+        // Find appropriate bucket - panic if no bucket can handle this size
+        let bucket_idx = self.find_bucket(size).unwrap_or_else(|| {
+            panic!(
+                "No bucket configured for allocation size {}. Current buckets: {:?}",
+                size,
+                self.buckets
+                    .iter()
+                    .map(|b| b.size_range)
+                    .collect::<Vec<_>>()
+            )
         });
 
-    self.active_allocations.insert(allocation_id, bucket_idx);
+        self.active_allocations.insert(allocation_id, bucket_idx);
 
-    // Try pool reuse first
-    if let Some(pooled_slice) = self.buckets[bucket_idx].get_allocation() {
-        // If the slice fits, return the allocation
-        if pooled_slice.size >= size {
-            self.stats.pool_hits += 1;
-            self.stats.active_allocations += 1;
+        // Try pool reuse first
+        if let Some(pooled_slice) = self.buckets[bucket_idx].get_allocation() {
+            // If the slice fits, return the allocation
+            if pooled_slice.size >= size {
+                self.stats.pool_hits += 1;
+                self.stats.active_allocations += 1;
 
-            //println!("Pool hit - reusing allocation. Active allocations");
-            return Ok(pooled_slice);
-        } else {
-            // Return undersized slice back to pool
-            self.buckets[bucket_idx].return_allocation(pooled_slice);
+                //println!("Pool hit - reusing allocation. Active allocations");
+                return Ok(pooled_slice);
+            } else {
+                // Return undersized slice back to pool
+                self.buckets[bucket_idx].return_allocation(pooled_slice);
+            }
         }
+
+        // No suitable pooled allocation found - create new one
+        let new_slice = self.create_new_allocation(size)?;
+        self.active_allocations.insert(allocation_id, bucket_idx);
+        self.update_stats(size);
+
+        // println!("Pool miss - created new allocation");
+        Ok(PoolAllocation::new(new_slice, size, allocation_id))
     }
 
-    // No suitable pooled allocation found - create new one
-    let new_slice = self.create_new_allocation(size)?;
-    self.active_allocations.insert(allocation_id, bucket_idx);
-    self.update_stats(size);
-
-   // println!("Pool miss - created new allocation");
-    Ok(PoolAllocation::new(new_slice, size, allocation_id))
-}
-
-    fn deallocate(
-        &mut self,
-        allocation: PoolAllocation<CudaSlice<T>>,
-    ) -> Result<(), String> {
-
+    fn deallocate(&mut self, allocation: PoolAllocation<CudaSlice<T>>) -> Result<(), String> {
         let allocation_id = allocation.id();
         if let Some(bucket_idx) = self.active_allocations.remove(&allocation_id) {
             self.stats.active_allocations -= 1;
             let bucket = &mut self.buckets[bucket_idx];
             bucket.return_allocation(allocation);
-
-
-
-
         }
-            Ok(())
-
+        Ok(())
     }
 
     fn cleanup(&mut self) -> Result<(), String> {
@@ -217,8 +260,6 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
 
 #[cfg(feature = "cuda")]
 impl<T: FerroxCudaN> CudaMemoryPool<T> {
-
-
     pub fn print_stats(&self) {
         println!("\n=== CUDA MEMORY POOL STATISTICS ===");
 
@@ -236,13 +277,23 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
         };
 
         println!("Pool Hits: {} ({:.1}%)", self.stats.pool_hits, hit_rate);
-        println!("Pool Misses: {} ({:.1}%)", self.stats.pool_misses, 100.0 - hit_rate);
+        println!(
+            "Pool Misses: {} ({:.1}%)",
+            self.stats.pool_misses,
+            100.0 - hit_rate
+        );
 
         // Memory usage
         let total_mb = self.stats.total_memory_bytes as f64 / (1024.0 * 1024.0);
         let peak_mb = self.stats.peak_memory_bytes as f64 / (1024.0 * 1024.0);
-        println!("Total Memory: {:.2} MB ({} bytes)", total_mb, self.stats.total_memory_bytes);
-        println!("Peak Memory: {:.2} MB ({} bytes)", peak_mb, self.stats.peak_memory_bytes);
+        println!(
+            "Total Memory: {:.2} MB ({} bytes)",
+            total_mb, self.stats.total_memory_bytes
+        );
+        println!(
+            "Peak Memory: {:.2} MB ({} bytes)",
+            peak_mb, self.stats.peak_memory_bytes
+        );
 
         // Per-bucket statistics
         println!("\n--- BUCKET BREAKDOWN ---");
@@ -259,23 +310,32 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
                 0.0
             };
 
-            println!("Bucket {}: {} pooled / {} max ({:.1}% full)",
-                     i, pooled_count, bucket.max_allocations, utilization);
-            println!("  Size Range: {} - {}",
-                     bucket.size_range.0,
-                     if bucket.size_range.1 == usize::MAX { "∞".to_string() } else { bucket.size_range.1.to_string() });
+            println!(
+                "Bucket {}: {} pooled / {} max ({:.1}% full)",
+                i, pooled_count, bucket.max_allocations, utilization
+            );
+            println!(
+                "  Size Range: {} - {}",
+                bucket.size_range.0,
+                if bucket.size_range.1 == usize::MAX {
+                    "∞".to_string()
+                } else {
+                    bucket.size_range.1.to_string()
+                }
+            );
         }
 
         println!("\nTotal Pooled Allocations: {}", total_pooled);
-        println!("Memory Efficiency: {:.1}% (active/total)",
-                 if self.stats.total_allocations > 0 {
-                     (self.stats.active_allocations as f64 / self.stats.total_allocations as f64) * 100.0
-                 } else {
-                     0.0
-                 });
+        println!(
+            "Memory Efficiency: {:.1}% (active/total)",
+            if self.stats.total_allocations > 0 {
+                (self.stats.active_allocations as f64 / self.stats.total_allocations as f64) * 100.0
+            } else {
+                0.0
+            }
+        );
         println!("=======================================\n");
     }
-
 
     // Update statistics when creating new allocation
     fn update_stats(&mut self, size: usize) {
@@ -291,7 +351,7 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
         }
     }
 
-        pub fn evict_lru(&mut self, total_count: usize) -> usize {
+    pub fn evict_lru(&mut self, total_count: usize) -> usize {
         if total_count == 0 {
             return 0;
         }
@@ -326,15 +386,14 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
     }
 }
 
-
 impl<T> Drop for CudaMemoryPool<T>
-where T: FerroxCudaN
+where
+    T: FerroxCudaN,
 {
-    fn drop(&mut self){
+    fn drop(&mut self) {
         self.cleanup().unwrap();
     }
 }
-
 
 // Non-CUDA stub implementation
 #[cfg(not(feature = "cuda"))]

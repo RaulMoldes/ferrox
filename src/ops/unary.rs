@@ -22,19 +22,28 @@ where
         inputs[0].exp()
     }
 
+    fn cache_output(&self) -> bool {
+        true // Default value
+    }
+
     fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Exp operation requires exactly 1 input".to_string());
         }
 
+         let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
+
         // For exp: d/dx(exp(x)) = exp(x)
         // The output of forward pass is exp(input), so we can recompute or cache it
-        let result = grad_output.mul(outputs)?;
+        let result = grad_output.mul(compute_result)?;
 
         Ok(vec![result])
     }
@@ -68,7 +77,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Log operation requires exactly 1 input".to_string());
@@ -85,6 +94,9 @@ where
 
     fn num_inputs(&self) -> usize {
         1
+    }
+    fn cache_output(&self) -> bool {
+        true // Default value
     }
 }
 
@@ -104,20 +116,27 @@ where
         inputs[0].sqrt()
     }
 
+    fn cache_output(&self) -> bool {
+        true // Default value
+    }
+
     fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Sqrt operation requires exactly 1 input".to_string());
         }
-
+         let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
         // For sqrt: d/dx(sqrt(x)) = 1/(2*sqrt(x))
 
         let two = <T as FerroxN>::from_f64(2.0).ok_or("Failed to convert 2.0 to tensor type")?;
-        let denominator = outputs.mul_scalar(two)?;
+        let denominator = compute_result.mul_scalar(two)?;
         let result = grad_output.div(&denominator)?;
 
         Ok(vec![result])
@@ -152,7 +171,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Abs operation requires exactly 1 input".to_string());
@@ -195,7 +214,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Neg operation requires exactly 1 input".to_string());
@@ -236,17 +255,21 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Sigmoid operation requires exactly 1 input".to_string());
         }
+         let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
 
         // For sigmoid: d/dx(sigmoid(x)) = sigmoid(x) * (1 - sigmoid(x))
 
         let one = <T as FerroxF>::one();
-        let one_minus_sigmoid = outputs.sub_scalar(one)?;
-        let local_grad = outputs.mul(&one_minus_sigmoid)?;
+        let one_minus_sigmoid = compute_result.sub_scalar(one)?;
+        let local_grad = compute_result.mul(&one_minus_sigmoid)?;
         let result = grad_output.mul(&local_grad)?;
 
         Ok(vec![result])
@@ -258,6 +281,9 @@ where
 
     fn num_inputs(&self) -> usize {
         1
+    }
+    fn cache_output(&self) -> bool {
+        true // Default value
     }
 }
 
@@ -281,15 +307,19 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("Tanh operation requires exactly 1 input".to_string());
         }
 
         // For tanh: d/dx(tanh(x)) = 1 - tanh²(x)
+         let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
 
-        let tanh_squared = outputs.mul(outputs)?;
+        let tanh_squared =compute_result.mul(compute_result)?;
         let one = <T as FerroxF>::one();
         let local_grad = tanh_squared.sub_scalar(one)?.neg()?; // 1 - tanh²(x) = -(tanh²(x) - 1)
         let result = grad_output.mul(&local_grad)?;
@@ -303,6 +333,9 @@ where
 
     fn num_inputs(&self) -> usize {
         1
+    }
+    fn cache_output(&self) -> bool {
+        true // Default value
     }
 }
 
@@ -326,7 +359,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 1 {
             return Err("ReLU operation requires exactly 1 input".to_string());
@@ -370,24 +403,29 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("Power operation requires exactly 2 inputs".to_string());
         }
+
+         let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
 
         // For power: d/dx(x^y) = y * x^(y-1), d/dy(x^y) = x^y * ln(x)
         // Gradient w.r.t. base: y * x^(y-1)
         // Optimized: x^(y-1) = x^y / x = outputs / x
         let grad_base = grad_output
             .mul(inputs[1])? // * y
-            .mul(&outputs.div(inputs[0])?)?; // * (outputs / x) = * x^(y-1)
+            .mul(&compute_result.div(inputs[0])?)?; // * (outputs / x) = * x^(y-1)
 
         // Gradient w.r.t. exponent: x^y * ln(x)
         // Optimized: x^y is already computed in outputs!
         let log_base = inputs[0].log()?;
         let grad_exponent = grad_output
-            .mul(outputs)? // * x^y (reuse outputs)
+            .mul(compute_result)? // * x^y (reuse outputs)
             .mul(&log_base)?; // * ln(x)
 
         Ok(vec![grad_base, grad_exponent])
@@ -399,5 +437,8 @@ where
 
     fn num_inputs(&self) -> usize {
         2
+    }
+    fn cache_output(&self) -> bool {
+        true // Default value
     }
 }

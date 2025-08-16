@@ -96,7 +96,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("Add operation requires exactly 2 inputs".to_string());
@@ -142,7 +142,7 @@ where
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("Sub operation requires exactly 2 inputs".to_string());
@@ -184,11 +184,13 @@ where
         inputs[0].mul(inputs[1])
     }
 
+
+
     fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        _outputs: &Tensor<T>,
+        _outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("Mul operation requires exactly 2 inputs".to_string());
@@ -230,21 +232,30 @@ where
         inputs[0].div(inputs[1])
     }
 
+    fn cache_output(&self) -> bool {
+        true // Default value
+    }
+
     fn gradient(
         &self,
         grad_output: Tensor<T>,
         inputs: &mut [&Tensor<T>],
-        outputs: &Tensor<T>,
+        outputs: Option<&Tensor<T>>,
     ) -> Result<Vec<Tensor<T>>, String> {
         if inputs.len() != 2 {
             return Err("Div operation requires exactly 2 inputs".to_string());
         }
 
+        let compute_result = match outputs {
+            Some(out) => out, // use the cached output
+            None => &self.compute(inputs)?, // recompute
+        };
+
         // For division: d/dx(x / y) = 1/y, d/dy(x / y) = -x/y²
         let mut grad_input1 = grad_output.div(inputs[1])?;
         reduce_gradient_for_broadcasting(&mut grad_input1, inputs[0].shape())?;
 
-        let neg_output = outputs.div(inputs[1])?.neg()?;
+        let neg_output = compute_result.div(inputs[1])?.neg()?;
         let mut grad_input2 = grad_output.mul(&neg_output)?;
 
         // Handle broadcasting reductions

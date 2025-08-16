@@ -275,7 +275,6 @@ where
         let running_mean_node = graph.create_variable(running_mean.clone(), false);
         let running_var_node = graph.create_variable(running_var.clone(), false);
 
-
         let reshaped_running_avg = reshape_and_broadcast(running_mean_node, input, graph)?;
 
         // Step 1: Compute (x - running_mean)
