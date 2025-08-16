@@ -76,6 +76,8 @@ where
     // Update parameters
     optimizer.step(graph).map_err(|e| e.to_string())?;
 
+   
+
     Ok(())
 }
 
@@ -112,7 +114,7 @@ where
         _ => return Err("Invalid optimizer name! Must be Adam or SGD".to_string()),
     };
 
-    
+
     let mut graph = AutoFerroxEngine::new();
     // Initialize model parameters
     initialize_model(model, &mut graph, &mut optimizer)?;
@@ -121,9 +123,17 @@ where
 
     // Training loop
     for epoch in 0..config.num_epochs {
+        println!("========================================");
+        println!("EPOCH {}", epoch);
+        let stats = graph.get_memory_stats();
+        println!("TOTAL NODES: {:?}", stats.total_nodes);
+        println!("=======================================");
         for (inputs, targets) in &data {
             let input_node = graph.create_variable(inputs.clone(), false);
             let target_node = graph.create_variable(targets.clone(), false);
+
+
+
 
             train_epoch(
                 &mut graph,
@@ -135,6 +145,8 @@ where
                 &mut loss_history,
                 epoch,
             )?;
+
+
         }
 
 

@@ -776,6 +776,52 @@ where
         }
     }
 
+
+    /// Remove a node from the computational graph
+/// This is useful for cleaning up temporary data nodes to prevent memory growth
+/// WARNING: Only remove nodes that are no longer needed for computation or gradient flow
+pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), String> {
+    // Check if node exists
+    if !self.nodes.contains_key(&node_id) {
+        return Err(format!("Node {} does not exist in graph", node_id.0));
+    }
+
+    // Get the node to check if it's safe to remove
+    let node = self.nodes.get(&node_id).unwrap();
+
+    // Safety check: Don't remove parameter nodes (nodes with requires_grad = true)
+    // These are needed for gradient computation and parameter updates
+    if node.requires_grad {
+        return Err(format!(
+            "Cannot remove parameter node {} (requires_grad=true). This would break gradient flow.",
+            node_id.0
+        ));
+    }
+
+    // Check if any other nodes depend on this node
+    // This prevents removing nodes that are still referenced by other operations
+    let is_referenced = self.nodes.values().any(|other_node| {
+        if let Some(inputs) = other_node.get_inputs() {
+            inputs.contains(&node_id)
+        } else {
+            false
+        }
+    });
+
+  if is_referenced {
+        return Err(format!(
+            "Cannot remove node {} as it is still referenced by other nodes in the graph",
+            node_id.0
+        ));
+    }
+
+    // Safe to remove: remove from both nodes and gradients maps
+    self.nodes.remove(&node_id);
+    self.gradients.remove(&node_id);
+
+    Ok(())
+}
+
     /// Get statistics about memory usage
     pub fn get_memory_stats(&self) -> MemoryStats {
         let total_nodes = self.nodes.len();
@@ -879,7 +925,7 @@ where
         let mut param_gradients = 0;
         let mut intermediate_gradients = 0;
 
-        for (&node_id, _) in &self.gradients {
+        for &node_id  in self.gradients.keys() {
             if let Some(node) = self.nodes.get(&node_id) {
                 if node.requires_grad && node.is_leaf() {
                     param_gradients += 1;
