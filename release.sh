@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION=${1:-"1.0.0"}
+VERSION=${1:-"0.0.2"}
 DATE=$(date +%Y%m%d)
 RELEASE_NAME="ferrox-v${VERSION}-${DATE}"
 
@@ -27,8 +27,9 @@ cp kernels/*.ptx ferrox-release/kernels/
 cp -r src/* ferrox-release/src/
 cp -r examples/* ferrox-release/examples/source/
 
+ls
 # Copy documentation
-cp README.md LICENSE Cargo.toml ferrox-release/
+cp Readme.md LICENSE Cargo.toml ferrox-release/
 cp CUDA_DEVELOPMENT.md ferrox-release/docs/ 2>/dev/null || true
 
 # Create archive
@@ -40,3 +41,5 @@ echo "Contents:"
 echo "- Library: $(ls -la ferrox-release/lib/)"
 echo "- Examples: $(ls ferrox-release/examples/ | grep -v source | wc -l) executables"
 echo "- Kernels: $(ls ferrox-release/kernels/*.ptx | wc -l) PTX files"
+
+rm -rf ferrox-release
