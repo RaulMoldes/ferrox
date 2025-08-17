@@ -295,8 +295,7 @@ __device__ void cross_correlation2d_kernel(
     int pad_w
 ) {
     // Each block processes multiple kernel elements
-    extern __shared__ unsigned char smem[];
-    T* shared_data = reinterpret_cast<T*>(smem);
+
 
     // Block processes a 2D region of kernel elements
     int kernel_block_w = min(blockDim.x, kernel_width - blockIdx.x * blockDim.x);
@@ -892,7 +891,7 @@ __device__ void avgpool1d_kernel(const T* input, T* output,
 
 
 // POOLING KERNEL LAUNCHERS
-extern "C" __global__ void maxpool_2d(const float* input, float* output,
+extern "C" __global__ void maxpool2d(const float* input, float* output,
     int N, int C, int H, int W,
     int H_out, int W_out,
     int kernel_size, int stride, int padding) {
@@ -900,7 +899,7 @@ extern "C" __global__ void maxpool_2d(const float* input, float* output,
 }
 
 // POOLING KERNEL LAUNCHERS
-extern "C" __global__ void maxpool_2d_f64(const double* input, double* output,
+extern "C" __global__ void maxpool2d_f64(const double* input, double* output,
     int N, int C, int H, int W,
     int H_out, int W_out,
     int kernel_size, int stride, int padding) {
@@ -908,7 +907,7 @@ extern "C" __global__ void maxpool_2d_f64(const double* input, double* output,
 }
 
 
-extern "C" __global__ void avgpool_2d(const float* input, float* output,
+extern "C" __global__ void avgpool2d(const float* input, float* output,
     int N, int C, int H, int W,
     int H_out, int W_out,
     int kernel_size, int stride, int padding) {
@@ -916,7 +915,7 @@ extern "C" __global__ void avgpool_2d(const float* input, float* output,
 }
 
 // POOLING KERNEL LAUNCHERS
-extern "C" __global__ void avgpool_2d_f64(const double* input, double* output,
+extern "C" __global__ void avgpool2d_f64(const double* input, double* output,
     int N, int C, int H, int W,
     int H_out, int W_out,
     int kernel_size, int stride, int padding) {
@@ -944,7 +943,7 @@ extern "C" __global__ void maxpool1d_f64(const double* input, double* output,
 extern "C" __global__ void avgpool1d(const float* input, float* output,
     int N, int C, int L, int L_out,
     int kernel_size, int stride, int padding) {
-    maxpool1d_kernel<float>(input, output, N, C, L, L_out,
+    avgpool1d_kernel<float>(input, output, N, C, L, L_out,
         kernel_size, stride, padding);
 }
 
@@ -953,6 +952,6 @@ extern "C" __global__ void avgpool1d(const float* input, float* output,
 extern "C" __global__ void avgpool1d_f64(const double* input, double* output,
     int N, int C, int L, int L_out,
     int kernel_size, int stride, int padding) {
-    maxpool1d_kernel<double>(input, output, N, C, L, L_out,
+    avgpool1d_kernel<double>(input, output, N, C, L, L_out,
         kernel_size, stride, padding);
 }

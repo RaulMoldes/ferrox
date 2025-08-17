@@ -30,6 +30,82 @@
       exit(EXIT_FAILURE); \
   }
 
+
+template <typename T>
+void run_and_time_pool2d(const char* name,
+    void (*kernel)(const T*, T*, int, int, int, int, int, int, int, int, int),
+    const T * d_input, T * d_output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    // Calculate total output elements and shared memory size
+    int total_elements = N * C * H_out * W_out;
+    size_t shared_mem_size = BLOCK_SIZE * kernel_size * kernel_size * sizeof(T);
+
+    CHECK_CUDA(cudaEventRecord(start));
+    // Use standard launch config like other elementwise operations
+    int grid_size = (total_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    kernel << <grid_size, BLOCK_SIZE, shared_mem_size >> > (
+        d_input, d_output, N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+
+    float ms;
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
+
+    // Calculate operations count for pooling
+    long long ops = (long long)N * C * H_out * W_out * kernel_size * kernel_size;
+    double gops = ops / (ms * 1e6); // Operations per second in billions
+
+    printf("%-25s took %.3f ms (%.1f GOPS, %dx%dx%dx%d)\n",
+        name, ms, gops, N, C, H_out, W_out);
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+}
+
+template <typename T>
+void run_and_time_pool1d(const char* name,
+    void (*kernel)(const T*, T*, int, int, int, int, int, int, int),
+    const T * d_input, T * d_output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    // Calculate total output elements and shared memory size
+    int total_elements = N * C * L_out;
+    size_t shared_mem_size = BLOCK_SIZE * kernel_size * sizeof(T);
+
+    CHECK_CUDA(cudaEventRecord(start));
+    // Use standard launch config
+    int grid_size = (total_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    kernel << <grid_size, BLOCK_SIZE, shared_mem_size >> > (
+        d_input, d_output, N, C, L, L_out, kernel_size, stride, padding);
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+
+    float ms;
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
+
+    // Calculate operations count for 1D pooling
+    long long ops = (long long)N * C * L_out * kernel_size;
+    double gops = ops / (ms * 1e6);
+
+    printf("%-25s took %.3f ms (%.1f GOPS, %dx%dx%d)\n",
+        name, ms, gops, N, C, L_out);
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+}
+
 template <typename T>
 void run_and_time_kernel_scalar(const char* name, void (*kernel)(const T*, T, T*, int),
     const T* d_in, T scalar, T* d_out, int size) {
@@ -524,7 +600,39 @@ void run_and_time_conv1d(const char* name,
     CHECK_CUDA(cudaEventDestroy(stop));
 }
 
-int main() {
+
+
+
+
+int main(int argc, char** argv) {
+    // Parse command line arguments
+    bool run_f32 = true;  // default: run both
+    bool run_f64 = true;
+
+    if (argc > 1) {
+        run_f32 = false;
+        run_f64 = false;
+
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--f32") == 0) {
+                run_f32 = true;
+            }
+            else if (strcmp(argv[i], "--f64") == 0) {
+                run_f64 = true;
+            }
+            else {
+                printf("Usage: %s [--f32] [--f64]\n", argv[0]);
+                printf("  --f32: Run only float32 kernels\n");
+                printf("  --f64: Run only float64 kernels\n");
+                printf("  (no args): Run both f32 and f64 kernels\n");
+                return 1;
+            }
+        }
+    }
+
+    printf("Running benchmarks: f32=%s, f64=%s\n",
+        run_f32 ? "yes" : "no", run_f64 ? "yes" : "no");
+
     size_t bytes_f32 = SIZE * sizeof(float);
     size_t bytes_f64 = SIZE * sizeof(double);
     size_t reduce_bytes_f32 = REDUCTION_SIZE * sizeof(float);
@@ -532,352 +640,389 @@ int main() {
     size_t matrix_bytes_f32 = MATRIX_SIZE * MATRIX_SIZE * sizeof(float);
     size_t matrix_bytes_f64 = MATRIX_SIZE * MATRIX_SIZE * sizeof(double);
 
-    // Allocate device memory for float32
-    float* d_a_f32, * d_b_f32, * d_c_f32, * d_out_f32;
-    CHECK_CUDA(cudaMalloc(&d_a_f32, bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_b_f32, bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_c_f32, bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_out_f32, bytes_f32));
+    int pool_batch = 32;
+    int pool_channels = 64;
+    int pool_height = 128;
+    int pool_width = 128;
+    int pool_length = 512; // for 1D pooling
+    int pool_kernel = 3;
+    int pool_stride = 2;
+    int pool_padding = 1;
 
-    // Allocate device memory for float64
-    double* d_a_f64, * d_b_f64, * d_c_f64, * d_out_f64;
-    CHECK_CUDA(cudaMalloc(&d_a_f64, bytes_f64));
-    CHECK_CUDA(cudaMalloc(&d_b_f64, bytes_f64));
-    CHECK_CUDA(cudaMalloc(&d_c_f64, bytes_f64));
-    CHECK_CUDA(cudaMalloc(&d_out_f64, bytes_f64));
+    // Calculate output dimensions
+    int pool_h_out = (pool_height + 2 * pool_padding - pool_kernel) / pool_stride + 1;
+    int pool_w_out = (pool_width + 2 * pool_padding - pool_kernel) / pool_stride + 1;
+    int pool_l_out = (pool_length + 2 * pool_padding - pool_kernel) / pool_stride + 1;
 
-    // Allocate smaller arrays for reduction tests
-    float* d_reduce_in_f32, * d_reduce_out_f32;
-    double* d_reduce_in_f64, * d_reduce_out_f64;
-    CHECK_CUDA(cudaMalloc(&d_reduce_in_f32, reduce_bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_reduce_out_f32, reduce_bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_reduce_in_f64, reduce_bytes_f64));
-    CHECK_CUDA(cudaMalloc(&d_reduce_out_f64, reduce_bytes_f64));
+    // Memory sizes
+    int pool2d_input_size = pool_batch * pool_channels * pool_height * pool_width;
+    int pool2d_output_size = pool_batch * pool_channels * pool_h_out * pool_w_out;
+    int pool1d_input_size = pool_batch * pool_channels * pool_length;
+    int pool1d_output_size = pool_batch * pool_channels * pool_l_out;
 
-    // Allocate matrices for matmul tests
-    float* d_mat_a_f32, * d_mat_b_f32, * d_mat_c_f32;
-    double* d_mat_a_f64, * d_mat_b_f64, * d_mat_c_f64;
-    CHECK_CUDA(cudaMalloc(&d_mat_a_f32, matrix_bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_mat_b_f32, matrix_bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_mat_c_f32, matrix_bytes_f32));
-    CHECK_CUDA(cudaMalloc(&d_mat_a_f64, matrix_bytes_f64));
-    CHECK_CUDA(cudaMalloc(&d_mat_b_f64, matrix_bytes_f64));
-    CHECK_CUDA(cudaMalloc(&d_mat_c_f64, matrix_bytes_f64));
+    // Allocate device memory conditionally
+    float* d_a_f32 = nullptr, * d_b_f32 = nullptr, * d_c_f32 = nullptr, * d_out_f32 = nullptr;
+    double* d_a_f64 = nullptr, * d_b_f64 = nullptr, * d_c_f64 = nullptr, * d_out_f64 = nullptr;
 
-    // Allocate memory for convolution tests
-    int conv_input_size = 1 * 3 * CONV_SIZE * CONV_SIZE; // batch=1, channels=3
-    int conv_filter_size = 32 * 3 * 3 * 3; // 32 filters, 3 channels, 3x3 kernel
-    int conv_output_size = 1 * 32 * CONV_SIZE * CONV_SIZE; // approximate
+    if (run_f32) {
+        CHECK_CUDA(cudaMalloc(&d_a_f32, bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_b_f32, bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_c_f32, bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_out_f32, bytes_f32));
+    }
 
-    float* d_conv_input_f32, * d_conv_filter_f32, * d_conv_bias_f32, * d_conv_output_f32;
-    double* d_conv_input_f64, * d_conv_filter_f64, * d_conv_bias_f64, * d_conv_output_f64;
+    if (run_f64) {
+        CHECK_CUDA(cudaMalloc(&d_a_f64, bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_b_f64, bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_c_f64, bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_out_f64, bytes_f64));
+    }
 
+    // Allocate other arrays conditionally
+    float* d_reduce_in_f32 = nullptr, * d_reduce_out_f32 = nullptr;
+    double* d_reduce_in_f64 = nullptr, * d_reduce_out_f64 = nullptr;
+    float* d_mat_a_f32 = nullptr, * d_mat_b_f32 = nullptr, * d_mat_c_f32 = nullptr;
+    double* d_mat_a_f64 = nullptr, * d_mat_b_f64 = nullptr, * d_mat_c_f64 = nullptr;
+    float* d_pool2d_input_f32 = nullptr, * d_pool2d_output_f32 = nullptr;
+    double* d_pool2d_input_f64 = nullptr, * d_pool2d_output_f64 = nullptr;
+    float* d_pool1d_input_f32 = nullptr, * d_pool1d_output_f32 = nullptr;
+    double* d_pool1d_input_f64 = nullptr, * d_pool1d_output_f64 = nullptr;
+    float* d_conv_input_f32 = nullptr, * d_conv_filter_f32 = nullptr, * d_conv_bias_f32 = nullptr, * d_conv_output_f32 = nullptr;
+    double* d_conv_input_f64 = nullptr, * d_conv_filter_f64 = nullptr, * d_conv_bias_f64 = nullptr, * d_conv_output_f64 = nullptr;
+    float* d_conv1d_input_f32 = nullptr, * d_conv1d_filter_f32 = nullptr, * d_conv1d_output_f32 = nullptr;
+    double* d_conv1d_input_f64 = nullptr, * d_conv1d_filter_f64 = nullptr, * d_conv1d_output_f64 = nullptr;
+    float* d_softmax_input_f32 = nullptr, * d_softmax_output_f32 = nullptr;
+    double* d_softmax_input_f64 = nullptr, * d_softmax_output_f64 = nullptr;
+    float* d_mat_input_f32 = nullptr, * d_mat_output_f32 = nullptr;
+    double* d_mat_input_f64 = nullptr, * d_mat_output_f64 = nullptr;
+    int* d_shape = nullptr, * d_strides = nullptr;
 
-    CHECK_CUDA(cudaMalloc(&d_conv_input_f32, conv_input_size * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_conv_filter_f32, conv_filter_size * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_conv_bias_f32, 32 * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_conv_output_f32, conv_output_size * sizeof(float)));
+    if (run_f32) {
+        CHECK_CUDA(cudaMalloc(&d_reduce_in_f32, reduce_bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_reduce_out_f32, reduce_bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_mat_a_f32, matrix_bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_mat_b_f32, matrix_bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_mat_c_f32, matrix_bytes_f32));
+        CHECK_CUDA(cudaMalloc(&d_pool2d_input_f32, pool2d_input_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_pool2d_output_f32, pool2d_output_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_pool1d_input_f32, pool1d_input_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_pool1d_output_f32, pool1d_output_size * sizeof(float)));
 
-    CHECK_CUDA(cudaMalloc(&d_conv_input_f64, conv_input_size * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_conv_filter_f64, conv_filter_size * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_conv_bias_f64, 32 * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_conv_output_f64, conv_output_size * sizeof(double)));
+        int conv_input_size = 1 * 3 * CONV_SIZE * CONV_SIZE;
+        int conv_filter_size = 32 * 3 * 3 * 3;
+        int conv_output_size = 1 * 32 * CONV_SIZE * CONV_SIZE;
+        int conv1d_input_size = CONV_SIZE;
+        int conv1d_kernel_size = 3;
+        int conv1d_output_size = conv1d_input_size + conv1d_kernel_size + 1;
 
-    int conv1d_input_size = CONV_SIZE;
-    int conv1d_kernel_size = 3;
-    int conv1d_output_size = conv1d_input_size + conv1d_kernel_size + 1;
+        CHECK_CUDA(cudaMalloc(&d_conv_input_f32, conv_input_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_conv_filter_f32, conv_filter_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_conv_bias_f32, 32 * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_conv_output_f32, conv_output_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_conv1d_input_f32, conv1d_input_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_conv1d_filter_f32, conv1d_kernel_size * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_conv1d_output_f32, conv1d_output_size * sizeof(float)));
 
-    // Allocate memory for conv1d.
-    float* d_conv1d_input_f32, * d_conv1d_filter_f32, * d_conv1d_output_f32;
-    double* d_conv1d_input_f64, * d_conv1d_filter_f64, * d_conv1d_output_f64;
+        int softmax_total_elements = 32 * 128 * 64;
+        int materialize_elements = 1024 * 1024;
+        CHECK_CUDA(cudaMalloc(&d_softmax_input_f32, softmax_total_elements * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_softmax_output_f32, softmax_total_elements * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_mat_input_f32, materialize_elements * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&d_mat_output_f32, materialize_elements * sizeof(float)));
+    }
 
-    CHECK_CUDA(cudaMalloc(&d_conv1d_input_f32, conv1d_input_size * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_conv1d_filter_f32, conv1d_kernel_size * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_conv1d_output_f32, conv1d_output_size * sizeof(float)));
+    if (run_f64) {
+        CHECK_CUDA(cudaMalloc(&d_reduce_in_f64, reduce_bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_reduce_out_f64, reduce_bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_mat_a_f64, matrix_bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_mat_b_f64, matrix_bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_mat_c_f64, matrix_bytes_f64));
+        CHECK_CUDA(cudaMalloc(&d_pool2d_input_f64, pool2d_input_size * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_pool2d_output_f64, pool2d_output_size * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_pool1d_input_f64, pool1d_input_size * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_pool1d_output_f64, pool1d_output_size * sizeof(double)));
 
-    CHECK_CUDA(cudaMalloc(&d_conv1d_input_f64, conv1d_input_size * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_conv1d_filter_f64, conv1d_kernel_size * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_conv1d_output_f64, conv1d_output_size * sizeof(double)));
+        int conv_input_size = 1 * 3 * CONV_SIZE * CONV_SIZE;
+        int conv_filter_size = 32 * 3 * 3 * 3;
+        int conv_output_size = 1 * 32 * CONV_SIZE * CONV_SIZE;
 
-    // Allocate memory for batch softmax tests
-    int batch_size = 32;
-    int seq_length = 128;
-    int inner_size = 64;
-    int softmax_total_elements = batch_size * seq_length * inner_size;
+        CHECK_CUDA(cudaMalloc(&d_conv_input_f64, conv_input_size * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_conv_filter_f64, conv_filter_size * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_conv_bias_f64, 32 * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_conv_output_f64, conv_output_size * sizeof(double)));
 
-    float* d_softmax_input_f32, * d_softmax_output_f32;
-    double* d_softmax_input_f64, * d_softmax_output_f64;
+        int softmax_total_elements = 32 * 128 * 64;
+        int materialize_elements = 1024 * 1024;
+        CHECK_CUDA(cudaMalloc(&d_softmax_input_f64, softmax_total_elements * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_softmax_output_f64, softmax_total_elements * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_mat_input_f64, materialize_elements * sizeof(double)));
+        CHECK_CUDA(cudaMalloc(&d_mat_output_f64, materialize_elements * sizeof(double)));
+    }
 
-    CHECK_CUDA(cudaMalloc(&d_softmax_input_f32, softmax_total_elements * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_softmax_output_f32, softmax_total_elements * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_softmax_input_f64, softmax_total_elements * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_softmax_output_f64, softmax_total_elements * sizeof(double)));
+    // Allocate shared arrays (needed for both f32 and f64)
+    if (run_f32 || run_f64) {
+        int ndim = 4;
+        CHECK_CUDA(cudaMalloc(&d_shape, ndim * sizeof(int)));
+        CHECK_CUDA(cudaMalloc(&d_strides, ndim * sizeof(int)));
 
-    // Allocate memory for materialize tests
-    int materialize_elements = 1024 * 1024; // 1M elements
-    int ndim = 4;
+        int h_shape[4] = { 16, 16, 32, 32 };
+        int h_strides[4] = { 16384, 1024, 32, 1 };
+        CHECK_CUDA(cudaMemcpy(d_shape, h_shape, ndim * sizeof(int), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy(d_strides, h_strides, ndim * sizeof(int), cudaMemcpyHostToDevice));
+    }
 
-    float* d_mat_input_f32, * d_mat_output_f32;
-    double* d_mat_input_f64, * d_mat_output_f64;
-    int* d_shape, * d_strides;
+    // Initialize arrays and run benchmarks conditionally
+    if (run_f32) {
+        printf("=== FLOAT32 UTILITY OPERATIONS ===\n");
+        run_and_time_fill("fill", fill, d_a_f32, 3.14159f, SIZE);
+        run_and_time_fill("fill (zeros)", fill, d_b_f32, 0.0f, SIZE);
+        run_and_time_random_fill("fill_random", fill_random, d_c_f32, SIZE, 12345UL);
 
-    CHECK_CUDA(cudaMalloc(&d_mat_input_f32, materialize_elements * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_mat_output_f32, materialize_elements * sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_mat_input_f64, materialize_elements * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_mat_output_f64, materialize_elements * sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_shape, ndim * sizeof(int)));
-    CHECK_CUDA(cudaMalloc(&d_strides, ndim * sizeof(int)));
+        // Initialize all f32 test arrays
+        run_and_time_random_fill("init reduce f32", fill_random, d_reduce_in_f32, REDUCTION_SIZE, 98765UL);
+        run_and_time_random_fill("init matrix A f32", fill_random, d_mat_a_f32, MATRIX_SIZE * MATRIX_SIZE, 11111UL);
+        run_and_time_random_fill("init matrix B f32", fill_random, d_mat_b_f32, MATRIX_SIZE * MATRIX_SIZE, 22222UL);
+        run_and_time_random_fill("init conv input f32", fill_random, d_conv_input_f32, 1 * 3 * CONV_SIZE * CONV_SIZE, 33333UL);
+        run_and_time_random_fill("init conv filter f32", fill_random, d_conv_filter_f32, 32 * 3 * 3 * 3, 44444UL);
+        run_and_time_fill("init conv bias f32", fill, d_conv_bias_f32, 0.1f, 32);
+        run_and_time_random_fill("init pool2d input f32", fill_random, d_pool2d_input_f32, pool2d_input_size, 77777UL);
+        run_and_time_random_fill("init pool1d input f32", fill_random, d_pool1d_input_f32, pool1d_input_size, 88888UL);
+        run_and_time_random_fill("init softmax input f32", fill_random, d_softmax_input_f32, 32 * 128 * 64, 55555UL);
+        run_and_time_random_fill("init materialize f32", fill_random, d_mat_input_f32, 1024 * 1024, 66666UL);
 
-    // Initialize host arrays for materialize test
-    int h_shape[4] = { 16, 16, 32, 32 }; // 4D tensor shape
-    int h_strides[4] = { 16384, 1024, 32, 1 }; // Contiguous strides
-    CHECK_CUDA(cudaMemcpy(d_shape, h_shape, ndim * sizeof(int), cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_strides, h_strides, ndim * sizeof(int), cudaMemcpyHostToDevice));
+        run_and_time_random_fill("reinit random f32", fill_random, d_a_f32, SIZE, 54321UL);
+        run_and_time_fill("reinit values f32", fill, d_b_f32, 2.0f, SIZE);
 
+        printf("\n=== FLOAT32 BINARY OPERATIONS ===\n");
+        run_and_time_kernel_binary("elementwise_add", elementwise_add, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("elementwise_sub", elementwise_sub, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("elementwise_mul", elementwise_mul, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("elementwise_div", elementwise_div, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("elementwise_pow", elementwise_pow, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("elementwise_max", elementwise_max, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("elementwise_min", elementwise_min, d_a_f32, d_b_f32, d_out_f32, SIZE);
 
+        printf("\n=== FLOAT32 COMPARISON OPERATIONS ===\n");
+        run_and_time_kernel_binary("greater_equal", greater_equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("greater", greater, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("less_equal", less_equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("less", less, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        run_and_time_kernel_binary("equal", equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        printf("\n=== FLOAT32 SCALAR COMPARISON OPERATIONS ===\n");
+        run_and_time_kernel_scalar("greater_scalar", greater_scalar, d_a_f32, 1.5f, d_out_f32, SIZE);
+        run_and_time_kernel_scalar("less_scalar", less_scalar, d_a_f32, 1.5f, d_out_f32, SIZE);
 
-    // Initialize arrays using GPU kernels
-    printf("=== FLOAT32 UTILITY OPERATIONS ===\n");
-    run_and_time_fill("fill", fill, d_a_f32, 3.14159f, SIZE);
-    run_and_time_fill("fill (zeros)", fill, d_b_f32, 0.0f, SIZE);
-    run_and_time_random_fill("fill_random", fill_random, d_c_f32, SIZE, 12345UL);
+        printf("\n=== FLOAT32 UNARY OPERATIONS ===\n");
+        run_and_time_kernel_unary("logical_not", logical_not, d_a_f32, d_out_f32, SIZE);
+        run_and_time_kernel_unary("sign", sign, d_a_f32, d_out_f32, SIZE);
+        run_and_time_clamp("clamp", clamp, d_a_f32, d_out_f32, -2.0f, 2.0f, SIZE);
+        run_and_time_in_range("in_range", in_range, d_a_f32, -1.0f, 1.0f, d_out_f32, SIZE);
+        run_and_time_where("where_condition", where_condition, d_a_f32, d_b_f32, d_c_f32, d_out_f32, SIZE);
+        printf("\n=== FLOAT32 RECIPROCAL OPERATION ===\n");
+        run_and_time_kernel_unary("elementwise_reciprocal", elementwise_reciprocal, d_a_f32, d_out_f32, SIZE);
 
-    printf("\n=== FLOAT64 UTILITY OPERATIONS ===\n");
-    run_and_time_fill("fill_f64", fill_f64, d_a_f64, 3.14159, SIZE);
-    run_and_time_fill("fill_f64 (zeros)", fill_f64, d_b_f64, 0.0, SIZE);
-    run_and_time_random_fill("fill_random_f64", fill_random_f64, d_c_f64, SIZE, 12345UL);
+        printf("\n=== FLOAT32 ACTIVATION FUNCTIONS ===\n");
+        run_and_time_kernel_unary("relu", relu, d_a_f32, d_out_f32, SIZE);
+        run_and_time_kernel_unary("sigmoid", sigmoid, d_a_f32, d_out_f32, SIZE);
+        run_and_time_kernel_unary("hyperbolic_tangent", hyperbolic_tangent, d_a_f32, d_out_f32, SIZE);
+        run_and_time_kernel_unary("softmax", softmax, d_a_f32, d_out_f32, SIZE);
 
-    // Initialize all test arrays
-    run_and_time_random_fill("init reduce f32", fill_random, d_reduce_in_f32, REDUCTION_SIZE, 98765UL);
-    run_and_time_random_fill("init reduce f64", fill_random_f64, d_reduce_in_f64, REDUCTION_SIZE, 98765UL);
-    run_and_time_random_fill("init matrix A f32", fill_random, d_mat_a_f32, MATRIX_SIZE * MATRIX_SIZE, 11111UL);
-    run_and_time_random_fill("init matrix B f32", fill_random, d_mat_b_f32, MATRIX_SIZE * MATRIX_SIZE, 22222UL);
-    run_and_time_random_fill("init matrix A f64", fill_random_f64, d_mat_a_f64, MATRIX_SIZE * MATRIX_SIZE, 11111UL);
-    run_and_time_random_fill("init matrix B f64", fill_random_f64, d_mat_b_f64, MATRIX_SIZE * MATRIX_SIZE, 22222UL);
-    run_and_time_random_fill("init conv input f32", fill_random, d_conv_input_f32, conv_input_size, 33333UL);
-    run_and_time_random_fill("init conv filter f32", fill_random, d_conv_filter_f32, conv_filter_size, 44444UL);
-    run_and_time_fill("init conv bias f32", fill, d_conv_bias_f32, 0.1f, 32);
-    run_and_time_random_fill("init conv input f64", fill_random_f64, d_conv_input_f64, conv_input_size, 33333UL);
-    run_and_time_random_fill("init conv filter f64", fill_random_f64, d_conv_filter_f64, conv_filter_size, 44444UL);
-    run_and_time_fill("init conv bias f64", fill_f64, d_conv_bias_f64, 0.1, 32);
+        printf("\n=== FLOAT32 BATCH SOFTMAX ===\n");
+        run_and_time_softmax_batch("softmax_batch_axis", softmax_batch_axis,
+            d_softmax_input_f32, d_softmax_output_f32, 32, 128, 64, 32 * 128 * 64);
 
-    // Initialize batch softmax test data
-    run_and_time_random_fill("init softmax input f32", fill_random, d_softmax_input_f32, softmax_total_elements, 55555UL);
-    run_and_time_random_fill("init softmax input f64", fill_random_f64, d_softmax_input_f64, softmax_total_elements, 55555UL);
+        printf("\n=== FLOAT32 MATERIALIZE OPERATIONS ===\n");
+        run_and_time_materialize("materialize", materialize,
+            d_mat_input_f32, d_mat_output_f32, d_shape, d_strides, 4, 1024 * 1024);
 
-    // Initialize materialize test data
-    run_and_time_random_fill("init materialize f32", fill_random, d_mat_input_f32, materialize_elements, 66666UL);
-    run_and_time_random_fill("init materialize f64", fill_random_f64, d_mat_input_f64, materialize_elements, 66666UL);
+        printf("\n=== FLOAT32 REDUCTION OPERATIONS (FULL) ===\n");
+        run_and_time_reduce_all("reduce_sum_all", reduce_sum_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
+        run_and_time_reduce_all("reduce_max_all", reduce_max_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
+        run_and_time_reduce_all("reduce_min_all", reduce_min_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
+        run_and_time_reduce_all("reduce_prod_all", reduce_prod_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
 
-    // Re-initialize with better values for operations
-    run_and_time_random_fill("reinit random f32", fill_random, d_a_f32, SIZE, 54321UL);
-    run_and_time_fill("reinit values f32", fill, d_b_f32, 2.0f, SIZE);
-    run_and_time_random_fill("reinit random f64", fill_random_f64, d_a_f64, SIZE, 54321UL);
-    run_and_time_fill("reinit values f64", fill_f64, d_b_f64, 2.0, SIZE);
+        printf("\n=== FLOAT32 REDUCTION OPERATIONS (AXES) ===\n");
+        run_and_time_reduce_axes("reduce_sum_axes", reduce_sum_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
+        run_and_time_reduce_axes("reduce_max_axes", reduce_max_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
+        run_and_time_reduce_axes("reduce_min_axes", reduce_min_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
+        run_and_time_reduce_axes("reduce_prod_axes", reduce_prod_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
 
-    printf("\n=== FLOAT32 BINARY OPERATIONS ===\n");
-    run_and_time_kernel_binary("elementwise_add", elementwise_add, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("elementwise_sub", elementwise_sub, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("elementwise_mul", elementwise_mul, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("elementwise_div", elementwise_div, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("elementwise_pow", elementwise_pow, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("elementwise_max", elementwise_max, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("elementwise_min", elementwise_min, d_a_f32, d_b_f32, d_out_f32, SIZE);
+        printf("\n=== FLOAT32 MATRIX MULTIPLICATION ===\n");
+        run_and_time_matmul("matmul", matmul, d_mat_a_f32, d_mat_b_f32, d_mat_c_f32, MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE);
 
-    printf("\n=== FLOAT32 COMPARISON OPERATIONS ===\n");
-    run_and_time_kernel_binary("greater_equal", greater_equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("greater", greater, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("less_equal", less_equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("less", less, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    run_and_time_kernel_binary("equal", equal, d_a_f32, d_b_f32, d_out_f32, SIZE);
-    printf("\n=== FLOAT32 SCALAR COMPARISON OPERATIONS ===\n");
-    run_and_time_kernel_scalar("greater_scalar", greater_scalar, d_a_f32, 1.5f, d_out_f32, SIZE);
-    run_and_time_kernel_scalar("less_scalar", less_scalar, d_a_f32, 1.5f, d_out_f32, SIZE);
+        printf("\n=== FLOAT32 CONVOLUTIONS ===\n");
+        run_and_time_conv1d("conv1d_forward", conv1d_forward, d_conv1d_input_f32, d_conv1d_filter_f32, d_conv1d_output_f32, CONV_SIZE, 3);
+        run_and_time_conv2d("conv2d_forward", conv2d_forward, d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
+            1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        run_and_time_deconv2d("deconv2d", deconv2d, d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
+            1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        run_and_time_cross_correlation2d("cross_correlation2d", cross_correlation2d, d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
+            1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
-    printf("\n=== FLOAT32 UNARY OPERATIONS ===\n");
-    run_and_time_kernel_unary("logical_not", logical_not, d_a_f32, d_out_f32, SIZE);
-    run_and_time_kernel_unary("sign", sign, d_a_f32, d_out_f32, SIZE);
-    run_and_time_clamp("clamp", clamp, d_a_f32, d_out_f32, -2.0f, 2.0f, SIZE);
-    run_and_time_in_range("in_range", in_range, d_a_f32, -1.0f, 1.0f, d_out_f32, SIZE);
-    run_and_time_where("where_condition", where_condition, d_a_f32, d_b_f32, d_c_f32, d_out_f32, SIZE);
-    printf("\n=== FLOAT32 RECIPROCAL OPERATION ===\n");
-    run_and_time_kernel_unary("elementwise_reciprocal", elementwise_reciprocal, d_a_f32, d_out_f32, SIZE);
+        printf("\n=== FLOAT32 POOLING OPERATIONS ===\n");
+        run_and_time_pool2d("maxpool2d", maxpool2d, d_pool2d_input_f32, d_pool2d_output_f32,
+            pool_batch, pool_channels, pool_height, pool_width, pool_h_out, pool_w_out, pool_kernel, pool_stride, pool_padding);
+        run_and_time_pool2d("avgpool2d", avgpool2d, d_pool2d_input_f32, d_pool2d_output_f32,
+            pool_batch, pool_channels, pool_height, pool_width, pool_h_out, pool_w_out, pool_kernel, pool_stride, pool_padding);
+        run_and_time_pool1d("maxpool1d", maxpool1d, d_pool1d_input_f32, d_pool1d_output_f32,
+            pool_batch, pool_channels, pool_length, pool_l_out, pool_kernel, pool_stride, pool_padding);
+        run_and_time_pool1d("avgpool1d", avgpool1d, d_pool1d_input_f32, d_pool1d_output_f32,
+            pool_batch, pool_channels, pool_length, pool_l_out, pool_kernel, pool_stride, pool_padding);
+    }
 
-    printf("\n=== FLOAT32 ACTIVATION FUNCTIONS ===\n");
-    run_and_time_kernel_unary("relu", relu, d_a_f32, d_out_f32, SIZE);
-    run_and_time_kernel_unary("sigmoid", sigmoid, d_a_f32, d_out_f32, SIZE);
-    run_and_time_kernel_unary("hyperbolic_tangent", hyperbolic_tangent, d_a_f32, d_out_f32, SIZE);
-    run_and_time_kernel_unary("softmax", softmax, d_a_f32, d_out_f32, SIZE);
+    if (run_f64) {
+        printf("\n=== FLOAT64 UTILITY OPERATIONS ===\n");
+        run_and_time_fill("fill_f64", fill_f64, d_a_f64, 3.14159, SIZE);
+        run_and_time_fill("fill_f64 (zeros)", fill_f64, d_b_f64, 0.0, SIZE);
+        run_and_time_random_fill("fill_random_f64", fill_random_f64, d_c_f64, SIZE, 12345UL);
 
-    printf("\n=== FLOAT32 BATCH SOFTMAX ===\n");
-    run_and_time_softmax_batch("softmax_batch_axis", softmax_batch_axis,
-        d_softmax_input_f32, d_softmax_output_f32,
-        batch_size, seq_length, inner_size, softmax_total_elements);
+        // Initialize all f64 test arrays
+        run_and_time_random_fill("init reduce f64", fill_random_f64, d_reduce_in_f64, REDUCTION_SIZE, 98765UL);
+        run_and_time_random_fill("init matrix A f64", fill_random_f64, d_mat_a_f64, MATRIX_SIZE * MATRIX_SIZE, 11111UL);
+        run_and_time_random_fill("init matrix B f64", fill_random_f64, d_mat_b_f64, MATRIX_SIZE * MATRIX_SIZE, 22222UL);
+        run_and_time_random_fill("init conv input f64", fill_random_f64, d_conv_input_f64, 1 * 3 * CONV_SIZE * CONV_SIZE, 33333UL);
+        run_and_time_random_fill("init conv filter f64", fill_random_f64, d_conv_filter_f64, 32 * 3 * 3 * 3, 44444UL);
+        run_and_time_fill("init conv bias f64", fill_f64, d_conv_bias_f64, 0.1, 32);
+        run_and_time_random_fill("init pool2d input f64", fill_random_f64, d_pool2d_input_f64, pool2d_input_size, 77777UL);
+        run_and_time_random_fill("init pool1d input f64", fill_random_f64, d_pool1d_input_f64, pool1d_input_size, 88888UL);
+        run_and_time_random_fill("init softmax input f64", fill_random_f64, d_softmax_input_f64, 32 * 128 * 64, 55555UL);
+        run_and_time_random_fill("init materialize f64", fill_random_f64, d_mat_input_f64, 1024 * 1024, 66666UL);
 
-    printf("\n=== FLOAT32 MATERIALIZE OPERATIONS ===\n");
-    run_and_time_materialize("materialize", materialize,
-        d_mat_input_f32, d_mat_output_f32,
-        d_shape, d_strides, ndim, materialize_elements);
+        run_and_time_random_fill("reinit random f64", fill_random_f64, d_a_f64, SIZE, 54321UL);
+        run_and_time_fill("reinit values f64", fill_f64, d_b_f64, 2.0, SIZE);
 
-    printf("\n=== FLOAT32 REDUCTION OPERATIONS (FULL) ===\n");
-    run_and_time_reduce_all("reduce_sum_all", reduce_sum_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
-    run_and_time_reduce_all("reduce_max_all", reduce_max_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
-    run_and_time_reduce_all("reduce_min_all", reduce_min_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
-    run_and_time_reduce_all("reduce_prod_all", reduce_prod_all, d_reduce_in_f32, d_reduce_out_f32, REDUCTION_SIZE);
+        printf("\n=== FLOAT64 BINARY OPERATIONS ===\n");
+        run_and_time_kernel_binary("elementwise_add_f64", elementwise_add_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("elementwise_sub_f64", elementwise_sub_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("elementwise_mul_f64", elementwise_mul_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("elementwise_div_f64", elementwise_div_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("elementwise_pow_f64", elementwise_pow_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("elementwise_max_f64", elementwise_max_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("elementwise_min_f64", elementwise_min_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
 
-    printf("\n=== FLOAT32 REDUCTION OPERATIONS (AXES) ===\n");
-    run_and_time_reduce_axes("reduce_sum_axes", reduce_sum_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
-    run_and_time_reduce_axes("reduce_max_axes", reduce_max_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
-    run_and_time_reduce_axes("reduce_min_axes", reduce_min_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
-    run_and_time_reduce_axes("reduce_prod_axes", reduce_prod_axes, d_reduce_in_f32, d_reduce_out_f32, 1000, 1024, 1);
+        printf("\n=== FLOAT64 COMPARISON OPERATIONS ===\n");
+        run_and_time_kernel_binary("greater_equal_f64", greater_equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("greater_f64", greater_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("less_equal_f64", less_equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("less_f64", less_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        run_and_time_kernel_binary("equal_f64", equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        printf("\n=== FLOAT64 SCALAR COMPARISON OPERATIONS ===\n");
+        run_and_time_kernel_scalar("greater_scalar_f64", greater_scalar_f64, d_a_f64, 1.5, d_out_f64, SIZE);
+        run_and_time_kernel_scalar("less_scalar_f64", less_scalar_f64, d_a_f64, 1.5, d_out_f64, SIZE);
 
-    printf("\n=== FLOAT32 MATRIX MULTIPLICATION ===\n");
-    run_and_time_matmul("matmul", matmul, d_mat_a_f32, d_mat_b_f32, d_mat_c_f32, MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE);
+        printf("\n=== FLOAT64 UNARY OPERATIONS ===\n");
+        run_and_time_kernel_unary("logical_not_f64", logical_not_f64, d_a_f64, d_out_f64, SIZE);
+        run_and_time_kernel_unary("sign_f64", sign_f64, d_a_f64, d_out_f64, SIZE);
+        run_and_time_clamp("clamp_f64", clamp_f64, d_a_f64, d_out_f64, -2.0, 2.0, SIZE);
+        run_and_time_in_range("in_range_f64", in_range_f64, d_a_f64, -1.0, 1.0, d_out_f64, SIZE);
+        run_and_time_where("where_condition_f64", where_condition_f64, d_a_f64, d_b_f64, d_c_f64, d_out_f64, SIZE);
+        printf("\n=== FLOAT64 RECIPROCAL OPERATION ===\n");
+        run_and_time_kernel_unary("elementwise_reciprocal_f64", elementwise_reciprocal_f64, d_a_f64, d_out_f64, SIZE);
 
-    printf("\n=== FLOAT32 CONVOLUTIONS ===\n");
-    run_and_time_conv1d("conv1d_forward", conv1d_forward,
-        d_conv1d_input_f32, d_conv1d_filter_f32, d_conv1d_output_f32,
-        CONV_SIZE, 3);
+        printf("\n=== FLOAT64 ACTIVATION FUNCTIONS ===\n");
+        run_and_time_kernel_unary("relu_f64", relu_f64, d_a_f64, d_out_f64, SIZE);
+        run_and_time_kernel_unary("sigmoid_f64", sigmoid_f64, d_a_f64, d_out_f64, SIZE);
+        run_and_time_kernel_unary("hyperbolic_tangent_f64", hyperbolic_tangent_f64, d_a_f64, d_out_f64, SIZE);
+        run_and_time_kernel_unary("softmax_f64", softmax_f64, d_a_f64, d_out_f64, SIZE);
 
+        printf("\n=== FLOAT64 BATCH SOFTMAX ===\n");
+        run_and_time_softmax_batch("softmax_batch_axis_f64", softmax_batch_axis_f64,
+            d_softmax_input_f64, d_softmax_output_f64, 32, 128, 64, 32 * 128 * 64);
 
-    run_and_time_conv2d("conv2d_forward", conv2d_forward,
-        d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
-        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_deconv2d("deconv2d", deconv2d,
-        d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
-        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_cross_correlation2d("cross_correlation2d", cross_correlation2d,
-        d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
-        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        printf("\n=== FLOAT64 MATERIALIZE OPERATIONS ===\n");
+        run_and_time_materialize("materialize_f64", materialize_f64,
+            d_mat_input_f64, d_mat_output_f64, d_shape, d_strides, 4, 1024 * 1024);
 
-    printf("\n=== FLOAT64 BINARY OPERATIONS ===\n");
-    run_and_time_kernel_binary("elementwise_add_f64", elementwise_add_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("elementwise_sub_f64", elementwise_sub_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("elementwise_mul_f64", elementwise_mul_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("elementwise_div_f64", elementwise_div_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("elementwise_pow_f64", elementwise_pow_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("elementwise_max_f64", elementwise_max_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("elementwise_min_f64", elementwise_min_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
+        printf("\n=== FLOAT64 REDUCTION OPERATIONS (FULL) ===\n");
+        run_and_time_reduce_all("reduce_sum_all_f64", reduce_sum_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
+        run_and_time_reduce_all("reduce_max_all_f64", reduce_max_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
+        run_and_time_reduce_all("reduce_min_all_f64", reduce_min_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
+        run_and_time_reduce_all("reduce_prod_all_f64", reduce_prod_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
 
-    printf("\n=== FLOAT64 COMPARISON OPERATIONS ===\n");
-    run_and_time_kernel_binary("greater_equal_f64", greater_equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("greater_f64", greater_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("less_equal_f64", less_equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("less_f64", less_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    run_and_time_kernel_binary("equal_f64", equal_f64, d_a_f64, d_b_f64, d_out_f64, SIZE);
-    printf("\n=== FLOAT64 SCALAR COMPARISON OPERATIONS ===\n");
-    run_and_time_kernel_scalar("greater_scalar_f64", greater_scalar_f64, d_a_f64, 1.5, d_out_f64, SIZE);
-    run_and_time_kernel_scalar("less_scalar_f64", less_scalar_f64, d_a_f64, 1.5, d_out_f64, SIZE);
+        printf("\n=== FLOAT64 REDUCTION OPERATIONS (AXES) ===\n");
+        run_and_time_reduce_axes("reduce_sum_axes_f64", reduce_sum_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
+        run_and_time_reduce_axes("reduce_max_axes_f64", reduce_max_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
+        run_and_time_reduce_axes("reduce_min_axes_f64", reduce_min_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
+        run_and_time_reduce_axes("reduce_prod_axes_f64", reduce_prod_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
 
-    printf("\n=== FLOAT64 UNARY OPERATIONS ===\n");
-    run_and_time_kernel_unary("logical_not_f64", logical_not_f64, d_a_f64, d_out_f64, SIZE);
-    run_and_time_kernel_unary("sign_f64", sign_f64, d_a_f64, d_out_f64, SIZE);
-    run_and_time_clamp("clamp_f64", clamp_f64, d_a_f64, d_out_f64, -2.0, 2.0, SIZE);
-    run_and_time_in_range("in_range_f64", in_range_f64, d_a_f64, -1.0, 1.0, d_out_f64, SIZE);
-    run_and_time_where("where_condition_f64", where_condition_f64, d_a_f64, d_b_f64, d_c_f64, d_out_f64, SIZE);
-    printf("\n=== FLOAT64 RECIPROCAL OPERATION ===\n");
-    run_and_time_kernel_unary("elementwise_reciprocal_f64", elementwise_reciprocal_f64, d_a_f64, d_out_f64, SIZE);
+        printf("\n=== FLOAT64 MATRIX MULTIPLICATION ===\n");
+        run_and_time_matmul("matmul_f64", matmul_f64, d_mat_a_f64, d_mat_b_f64, d_mat_c_f64, MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE);
 
-    printf("\n=== FLOAT64 ACTIVATION FUNCTIONS ===\n");
-    run_and_time_kernel_unary("relu_f64", relu_f64, d_a_f64, d_out_f64, SIZE);
-    run_and_time_kernel_unary("sigmoid_f64", sigmoid_f64, d_a_f64, d_out_f64, SIZE);
-    run_and_time_kernel_unary("hyperbolic_tangent_f64", hyperbolic_tangent_f64, d_a_f64, d_out_f64, SIZE);
-    run_and_time_kernel_unary("softmax_f64", softmax_f64, d_a_f64, d_out_f64, SIZE);
-
-    printf("\n=== FLOAT64 BATCH SOFTMAX ===\n");
-    run_and_time_softmax_batch("softmax_batch_axis_f64", softmax_batch_axis_f64,
-        d_softmax_input_f64, d_softmax_output_f64,
-        batch_size, seq_length, inner_size, softmax_total_elements);
-
-    printf("\n=== FLOAT64 MATERIALIZE OPERATIONS ===\n");
-    run_and_time_materialize("materialize_f64", materialize_f64,
-        d_mat_input_f64, d_mat_output_f64,
-        d_shape, d_strides, ndim, materialize_elements);
-
-    printf("\n=== FLOAT64 REDUCTION OPERATIONS (FULL) ===\n");
-    run_and_time_reduce_all("reduce_sum_all_f64", reduce_sum_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
-    run_and_time_reduce_all("reduce_max_all_f64", reduce_max_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
-    run_and_time_reduce_all("reduce_min_all_f64", reduce_min_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
-    run_and_time_reduce_all("reduce_prod_all_f64", reduce_prod_all_f64, d_reduce_in_f64, d_reduce_out_f64, REDUCTION_SIZE);
-
-    printf("\n=== FLOAT64 REDUCTION OPERATIONS (AXES) ===\n");
-    run_and_time_reduce_axes("reduce_sum_axes_f64", reduce_sum_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
-    run_and_time_reduce_axes("reduce_max_axes_f64", reduce_max_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
-    run_and_time_reduce_axes("reduce_min_axes_f64", reduce_min_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
-    run_and_time_reduce_axes("reduce_prod_axes_f64", reduce_prod_axes_f64, d_reduce_in_f64, d_reduce_out_f64, 1000, 1024, 1);
-
-    printf("\n=== FLOAT64 MATRIX MULTIPLICATION ===\n");
-    run_and_time_matmul("matmul_f64", matmul_f64, d_mat_a_f64, d_mat_b_f64, d_mat_c_f64, MATRIX_SIZE, MATRIX_SIZE, MATRIX_SIZE);
-
-    printf("\n=== FLOAT64 CONVOLUTION ===\n");
-    run_and_time_conv2d("conv2d_forward_f64", conv2d_forward_f64,
-        d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
-        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_deconv2d("deconv2d_f64", deconv2d_f64,
-        d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
-        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_cross_correlation2d("cross_correlation2d_f64", cross_correlation2d_f64,
-        d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
-        1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        printf("\n=== FLOAT64 CONVOLUTION ===\n");
+        run_and_time_conv2d("conv2d_forward_f64", conv2d_forward_f64, d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
+            1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        run_and_time_deconv2d("deconv2d_f64", deconv2d_f64, d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
+            1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        run_and_time_cross_correlation2d("cross_correlation2d_f64", cross_correlation2d_f64, d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
+            1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
+        run_and_time_conv1d("conv1d_forward_f64", conv1d_forward_f64, d_conv1d_input_f64, d_conv1d_filter_f64, d_conv1d_output_f64, CONV_SIZE, 3);
+        printf("\n=== FLOAT64 POOLING OPERATIONS ===\n");
+        run_and_time_pool2d("maxpool2d_f64", maxpool2d_f64, d_pool2d_input_f64, d_pool2d_output_f64,
+            pool_batch, pool_channels, pool_height, pool_width, pool_h_out, pool_w_out, pool_kernel, pool_stride, pool_padding);
+        run_and_time_pool2d("avgpool2d_f64", avgpool2d_f64, d_pool2d_input_f64, d_pool2d_output_f64,
+            pool_batch, pool_channels, pool_height, pool_width, pool_h_out, pool_w_out, pool_kernel, pool_stride, pool_padding);
+        run_and_time_pool1d("maxpool1d_f64", maxpool1d_f64, d_pool1d_input_f64, d_pool1d_output_f64,
+            pool_batch, pool_channels, pool_length, pool_l_out, pool_kernel, pool_stride, pool_padding);
+        run_and_time_pool1d("avgpool1d_f64", avgpool1d_f64, d_pool1d_input_f64, d_pool1d_output_f64,
+            pool_batch, pool_channels, pool_length, pool_l_out, pool_kernel, pool_stride, pool_padding);
+    }
 
     // Cleanup all allocated memory
     printf("\n=== CLEANUP ===\n");
 
-    // Basic arrays
-    cudaFree(d_a_f32);
-    cudaFree(d_b_f32);
-    cudaFree(d_c_f32);
-    cudaFree(d_out_f32);
-    cudaFree(d_a_f64);
-    cudaFree(d_b_f64);
-    cudaFree(d_c_f64);
-    cudaFree(d_out_f64);
+    if (run_f32) {
+        if (d_a_f32) cudaFree(d_a_f32);
+        if (d_b_f32) cudaFree(d_b_f32);
+        if (d_c_f32) cudaFree(d_c_f32);
+        if (d_out_f32) cudaFree(d_out_f32);
+        if (d_reduce_in_f32) cudaFree(d_reduce_in_f32);
+        if (d_reduce_out_f32) cudaFree(d_reduce_out_f32);
+        if (d_mat_a_f32) cudaFree(d_mat_a_f32);
+        if (d_mat_b_f32) cudaFree(d_mat_b_f32);
+        if (d_mat_c_f32) cudaFree(d_mat_c_f32);
+        if (d_conv_input_f32) cudaFree(d_conv_input_f32);
+        if (d_conv_filter_f32) cudaFree(d_conv_filter_f32);
+        if (d_conv_bias_f32) cudaFree(d_conv_bias_f32);
+        if (d_conv_output_f32) cudaFree(d_conv_output_f32);
+        if (d_conv1d_input_f32) cudaFree(d_conv1d_input_f32);
+        if (d_conv1d_filter_f32) cudaFree(d_conv1d_filter_f32);
+        if (d_conv1d_output_f32) cudaFree(d_conv1d_output_f32);
+        if (d_softmax_input_f32) cudaFree(d_softmax_input_f32);
+        if (d_softmax_output_f32) cudaFree(d_softmax_output_f32);
+        if (d_mat_input_f32) cudaFree(d_mat_input_f32);
+        if (d_mat_output_f32) cudaFree(d_mat_output_f32);
+        if (d_pool2d_input_f32) cudaFree(d_pool2d_input_f32);
+        if (d_pool2d_output_f32) cudaFree(d_pool2d_output_f32);
+        if (d_pool1d_input_f32) cudaFree(d_pool1d_input_f32);
+        if (d_pool1d_output_f32) cudaFree(d_pool1d_output_f32);
+    }
 
-    // Reduction arrays
-    cudaFree(d_reduce_in_f32);
-    cudaFree(d_reduce_out_f32);
-    cudaFree(d_reduce_in_f64);
-    cudaFree(d_reduce_out_f64);
+    if (run_f64) {
+        if (d_a_f64) cudaFree(d_a_f64);
+        if (d_b_f64) cudaFree(d_b_f64);
+        if (d_c_f64) cudaFree(d_c_f64);
+        if (d_out_f64) cudaFree(d_out_f64);
+        if (d_reduce_in_f64) cudaFree(d_reduce_in_f64);
+        if (d_reduce_out_f64) cudaFree(d_reduce_out_f64);
+        if (d_mat_a_f64) cudaFree(d_mat_a_f64);
+        if (d_mat_b_f64) cudaFree(d_mat_b_f64);
+        if (d_mat_c_f64) cudaFree(d_mat_c_f64);
+        if (d_conv_input_f64) cudaFree(d_conv_input_f64);
+        if (d_conv_filter_f64) cudaFree(d_conv_filter_f64);
+        if (d_conv_bias_f64) cudaFree(d_conv_bias_f64);
+        if (d_conv_output_f64) cudaFree(d_conv_output_f64);
+        if (d_softmax_input_f64) cudaFree(d_softmax_input_f64);
+        if (d_softmax_output_f64) cudaFree(d_softmax_output_f64);
+        if (d_mat_input_f64) cudaFree(d_mat_input_f64);
+        if (d_mat_output_f64) cudaFree(d_mat_output_f64);
+        if (d_pool2d_input_f64) cudaFree(d_pool2d_input_f64);
+        if (d_pool2d_output_f64) cudaFree(d_pool2d_output_f64);
+        if (d_pool1d_input_f64) cudaFree(d_pool1d_input_f64);
+        if (d_pool1d_output_f64) cudaFree(d_pool1d_output_f64);
+    }
 
-    // Matrix arrays
-    cudaFree(d_mat_a_f32);
-    cudaFree(d_mat_b_f32);
-    cudaFree(d_mat_c_f32);
-    cudaFree(d_mat_a_f64);
-    cudaFree(d_mat_b_f64);
-    cudaFree(d_mat_c_f64);
-
-    // Convolution arrays
-    cudaFree(d_conv_input_f32);
-    cudaFree(d_conv_filter_f32);
-    cudaFree(d_conv_bias_f32);
-    cudaFree(d_conv_output_f32);
-    cudaFree(d_conv_input_f64);
-    cudaFree(d_conv_filter_f64);
-    cudaFree(d_conv_bias_f64);
-    cudaFree(d_conv_output_f64);
-
-    // Convolution arrays
-    cudaFree(d_conv1d_input_f32);
-    cudaFree(d_conv1d_filter_f32);
-    cudaFree(d_conv1d_output_f32);
-    cudaFree(d_conv1d_input_f64);
-    cudaFree(d_conv1d_filter_f64);
-    cudaFree(d_conv1d_output_f64);
-
-    // Batch softmax arrays
-    cudaFree(d_softmax_input_f32);
-    cudaFree(d_softmax_output_f32);
-    cudaFree(d_softmax_input_f64);
-    cudaFree(d_softmax_output_f64);
-
-    // Materialize arrays
-    cudaFree(d_mat_input_f32);
-    cudaFree(d_mat_output_f32);
-    cudaFree(d_mat_input_f64);
-    cudaFree(d_mat_output_f64);
-    cudaFree(d_shape);
-    cudaFree(d_strides);
+    if (d_shape) cudaFree(d_shape);
+    if (d_strides) cudaFree(d_strides);
 
     printf("All tests completed successfully!\n");
     return 0;
