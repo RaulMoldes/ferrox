@@ -365,6 +365,59 @@ where
         padding: usize,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+
+    /// 2D Max Unpooling operation for gradient computation
+    /// Distributes gradients back to positions that were selected as maximum
+    /// Used in backward pass of max pooling operations
+    fn max_unpool2d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// 2D Average Unpooling operation for gradient computation
+    /// Distributes gradients uniformly to all contributing positions
+    /// Used in backward pass of average pooling operations
+    fn avg_unpool2d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// 1D Max Unpooling operation for gradient computation
+    /// Distributes gradients back to positions that were selected as maximum
+    /// Used in backward pass of 1D max pooling operations
+    fn max_unpool1d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// 1D Average Unpooling operation for gradient computation
+    /// Distributes gradients uniformly to all contributing positions
+    /// Used in backward pass of 1D average pooling operations
+    fn avg_unpool1d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;*/
 }
 

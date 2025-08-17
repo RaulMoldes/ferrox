@@ -1472,6 +1472,51 @@ impl KernelManager {
         )
     }
 
+
+    #[allow(clippy::too_many_arguments)]
+    fn launch_unpool2d<T>(
+        &self,
+        operation: &str, // "maxpool2d" or "avgpool2d"
+        cfg: LaunchConfig,
+        input1: &CudaSlice<T>,
+        input2: &CudaSlice<T>,
+        input3: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        height: i32,
+        width: i32,
+        height_out: i32,
+        width_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(operation);
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input1,
+            input2,
+            input3,
+            output,
+            &batch_size,
+            &channels,
+            &height,
+            &width,
+            &height_out,
+            &width_out,
+            &kernel_size,
+            &stride,
+            &padding
+        )
+    }
+
+
     // ===== PUBLIC API - 2D POOLING OPERATIONS =====
 
     /// Launch 2D max pooling operation
@@ -1556,7 +1601,9 @@ impl KernelManager {
         &self,
         cfg: LaunchConfig,
         grad_output: &CudaSlice<T>,
-        original_input: &mut CudaSlice<T>,
+        original_input: &CudaSlice<T>,
+        pooled_output: &CudaSlice<T>,
+        grad_input: &mut CudaSlice<T>,
         batch_size: i32,
         channels: i32,
         height: i32,
@@ -1571,11 +1618,13 @@ impl KernelManager {
     where
         T: FerroxCudaN + 'static,
     {
-        self.launch_pool2d(
+        self.launch_unpool2d(
             "max_unpool2d",
             cfg,
             grad_output,
             original_input,
+            pooled_output,
+            grad_input,
             batch_size,
             channels,
             height,
@@ -1594,7 +1643,9 @@ impl KernelManager {
         &self,
         cfg: LaunchConfig,
         grad_output: &CudaSlice<T>,
-        original_input: &mut CudaSlice<T>,
+        original_input: &CudaSlice<T>,
+        pooled_output: &CudaSlice<T>,
+        grad_input: &mut CudaSlice<T>,
         batch_size: i32,
         channels: i32,
         height: i32,
@@ -1609,11 +1660,13 @@ impl KernelManager {
     where
         T: FerroxCudaN + 'static,
     {
-        self.launch_pool2d(
+        self.launch_unpool2d(
             "avg_unpool2d",
             cfg,
             grad_output,
             original_input,
+            pooled_output,
+            grad_input,
             batch_size,
             channels,
             height,
@@ -1656,6 +1709,49 @@ impl KernelManager {
             &kernel_name,
             cfg,
             input,
+            output,
+            &batch_size,
+            &channels,
+            &length,
+            &length_out,
+            &kernel_size,
+            &stride,
+            &padding
+        )
+    }
+
+
+    /// Generic launcher for 1D pooling operations (maxpool1d, avgpool1d)
+    /// This handles all 1D pooling where input tensor (N,C,L) produces output tensor (N,C,L_out)
+    /// The operation parameter determines which specific pooling kernel to dispatch to
+    #[allow(clippy::too_many_arguments)]
+    fn launch_unpool1d<T>(
+        &self,
+        operation: &str, // "maxpool1d" or "avgpool1d"
+        cfg: LaunchConfig,
+        input1: &CudaSlice<T>,
+         input2: &CudaSlice<T>,
+          input3: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        length: i32,
+        length_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(operation);
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input1,
+            input2,
+            input3,
             output,
             &batch_size,
             &channels,
@@ -1745,7 +1841,9 @@ impl KernelManager {
         &self,
         cfg: LaunchConfig,
         grad_output: &CudaSlice<T>,
-        original_input: &mut CudaSlice<T>,
+        original_input: &CudaSlice<T>,
+        pooled_output: &CudaSlice<T>,
+        grad_input: &mut CudaSlice<T>,
         batch_size: i32,
         channels: i32,
         length: i32,
@@ -1757,11 +1855,13 @@ impl KernelManager {
     where
         T: FerroxCudaN + 'static,
     {
-        self.launch_pool1d(
+        self.launch_unpool1d(
             "max_unpool1d",
             cfg,
             grad_output,
             original_input,
+            pooled_output,
+            grad_input,
             batch_size,
             channels,
             length,
@@ -1777,8 +1877,10 @@ impl KernelManager {
     pub fn launch_avg_unpool1d<T>(
         &self,
         cfg: LaunchConfig,
-        grad_output: &CudaSlice<T>,
-        original_input: &mut CudaSlice<T>,
+            grad_output: &CudaSlice<T>,
+        original_input: &CudaSlice<T>,
+        pooled_output: &CudaSlice<T>,
+        grad_input: &mut CudaSlice<T>,
         batch_size: i32,
         channels: i32,
         length: i32,
@@ -1790,11 +1892,13 @@ impl KernelManager {
     where
         T: FerroxCudaN + 'static,
     {
-        self.launch_pool1d(
+        self.launch_unpool1d(
             "avg_unpool1d",
             cfg,
             grad_output,
             original_input,
+              pooled_output,
+        grad_input,
             batch_size,
             channels,
             length,

@@ -11,6 +11,7 @@ use crate::graph::AutoFerroxEngine;
 use std::any::type_name;
 
 pub mod pooling;
+pub use pooling::*;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
 where
@@ -178,6 +179,20 @@ fn tensor_2d(data: &[f32], rows: usize, cols: usize) -> Tensor<f32> {
 #[allow(dead_code)]
 fn tensor_to_vec(tensor: &Tensor<f32>) -> Vec<f32> {
     tensor.to_vec().unwrap()
+}
+
+ /// Helper function to create tensor from vec with shape (similar to tensor_1d, tensor_2d in ops/mod.rs)
+ #[allow(dead_code)]
+fn tensor_1d_batch_channel(data: &[f32]) -> Tensor<f32> {
+    let device = best_f32_device();
+    Tensor::from_vec_with_device(data.to_vec(), &[1, 1, data.len()], device)
+            .expect("Failed to create 1D tensor")
+ }
+#[allow(dead_code)]
+fn tensor_2d_batch_channel(data: &[f32], h: usize, w: usize) -> Tensor<f32> {
+    let device = best_f32_device();
+        Tensor::from_vec_with_device(data.to_vec(), &[1, 1, h, w], device)
+            .expect("Failed to create 2D tensor")
 }
 
 #[allow(dead_code)]
@@ -970,5 +985,294 @@ mod ops_tests {
             1e-6,
             "Conv2dOp_1x1Kernel"
         );
+    }
+
+
+
+      #[test]
+    fn test_maxpool1d_forward() {
+        // PyTorch reference: MaxPool1D: tensor([[[2., 4., 6.]]])
+        let input = tensor_1d_batch_channel(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let expected_output = &[2.0, 4.0, 6.0];
+
+        test_op_with_values!(
+            MaxPool1D::new(2, 2, 0), // kernel_size=2, stride=2, padding=0
+            vec![input.clone()],
+            &[1, 1, 3], // Expected shape: [batch=1, channels=1, length_out=3]
+            expected_output,
+            1e-4,
+            "MaxPool1D forward"
+        );
+    }
+
+    #[test]
+    fn test_avgpool1d_forward() {
+        // PyTorch reference: AvgPool1D: tensor([[[1.5000, 3.5000, 5.5000]]])
+        let input = tensor_1d_batch_channel(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let expected_output = &[1.5, 3.5, 5.5];
+
+        test_op_with_values!(
+            AvgPool1D::new(2, 2, 0), // kernel_size=2, stride=2, padding=0
+            vec![input.clone()],
+            &[1, 1, 3], // Expected shape: [batch=1, channels=1, length_out=3]
+            expected_output,
+            1e-4,
+            "AvgPool1D forward"
+        );
+    }
+
+    #[test]
+    fn test_maxpool2d_forward() {
+        // PyTorch reference: MaxPool2D: tensor([[[[ 6.,  8.], [14., 16.]]]])
+        let input = tensor_2d_batch_channel(&[
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        ], 4, 4);
+        let expected_output = &[6.0, 8.0, 14.0, 16.0];
+
+        test_op_with_values!(
+            MaxPool2D::new(2, 2, 0), // kernel_size=2, stride=2, padding=0
+            vec![input.clone()],
+            &[1, 1, 2, 2], // Expected shape: [batch=1, channels=1, height_out=2, width_out=2]
+            expected_output,
+            1e-4,
+            "MaxPool2D forward"
+        );
+    }
+
+    #[test]
+    fn test_avgpool2d_forward() {
+        // PyTorch reference: AvgPool2D: tensor([[[[ 3.5000,  5.5000], [11.5000, 13.5000]]]])
+        let input = tensor_2d_batch_channel(&[
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        ], 4, 4);
+        let expected_output = &[3.5, 5.5, 11.5, 13.5];
+
+        test_op_with_values!(
+            AvgPool2D::new(2, 2, 0), // kernel_size=2, stride=2, padding=0
+            vec![input.clone()],
+            &[1, 1, 2, 2], // Expected shape: [batch=1, channels=1, height_out=2, width_out=2]
+            expected_output,
+            1e-4,
+            "AvgPool2D forward"
+        );
+    }
+
+    #[test]
+    fn test_global_avgpool2d_forward() {
+        // PyTorch reference: GlobalAvg2D: tensor([[[[8.5000]]]])
+        // Average of 1..16 = (1+2+...+16)/16 = 136/16 = 8.5
+        let input = tensor_2d_batch_channel(&[
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        ], 4, 4);
+        let expected_output = &[8.5];
+
+        test_op_with_values!(
+            GlobalAvgPool2D::new(),
+            vec![input.clone()],
+            &[1, 1, 1, 1], // Expected shape: [batch=1, channels=1, height_out=1, width_out=1]
+            expected_output,
+            1e-4,
+            "GlobalAvgPool2D forward"
+        );
+    }
+
+   /// Test complex gradient computation scenario matching PyTorch
+    /// This tests the complete backward pass including multiple pooling operations
+    #[test]
+    fn test_pooling_gradients_1d() {
+        // PyTorch gradient reference for x1d: tensor([[[0.6667, 1.6667, 0.6667, 1.6667, 0.6667, 1.6667]]])
+        let mut graph = AutoFerroxEngine::<f32>::new(true);
+        graph.set_training(true);
+
+        // Create input tensor [[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]]
+        let x1d = tensor_1d_batch_channel(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let x1d_node = graph.create_variable(x1d, true);
+
+        // Apply MaxPool1D
+        let maxpool1d_node = graph
+            .apply_operation(Box::new(MaxPool1D::new(2, 2, 0)), vec![x1d_node])
+            .expect("MaxPool1D failed");
+
+        // Apply AvgPool1D
+        let avgpool1d_node = graph
+            .apply_operation(Box::new(AvgPool1D::new(2, 2, 0)), vec![x1d_node])
+            .expect("AvgPool1D failed");
+
+        // Apply GlobalAvgPool1D (using AdaptiveAvgPool with output size 1)
+        let global_avg1d_node = graph
+            .apply_operation(Box::new(AdaptiveAvgPool1D::new(1)), vec![x1d_node])
+            .expect("AdaptiveAvgPool1D failed");
+
+        // Convert all to scalars before adding
+        let maxpool_scalar = graph
+            .apply_operation(Box::new(Sum::new(false)), vec![maxpool1d_node])
+            .expect("MaxPool sum failed");
+
+        let avgpool_scalar = graph
+            .apply_operation(Box::new(Sum::new(false)), vec![avgpool1d_node])
+            .expect("AvgPool sum failed");
+
+        let global_scalar = graph
+            .apply_operation(Box::new(Sum::new(false)), vec![global_avg1d_node])
+            .expect("Global sum failed");
+
+        // Add scalars together
+        let sum1_node = graph
+            .apply_operation(Box::new(Add::new()), vec![maxpool_scalar, avgpool_scalar])
+            .expect("Add scalars 1 failed");
+
+        let total_sum_node = graph
+            .apply_operation(Box::new(Add::new()), vec![sum1_node, global_scalar])
+            .expect("Add scalars 2 failed");
+
+        // Backward pass (total_sum_node is already a scalar)
+        graph.backward(total_sum_node).expect("Backward failed");
+
+        // Get gradients
+        let grad = graph
+            .get_gradient(x1d_node)
+            .expect("No gradient found");
+
+        // Validate against PyTorch reference: [0.6667, 1.6667, 0.6667, 1.6667, 0.6667, 1.6667]
+        let expected_grad = &[0.6667, 1.6667, 0.6667, 1.6667, 0.6667, 1.6667];
+        let grad_data = grad.to_vec().expect("Failed to get gradient data");
+
+        for (i, (&got, &exp)) in grad_data.iter().zip(expected_grad.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-3, // Slightly higher tolerance for accumulated gradients
+                "1D gradient mismatch at index {}: got {}, expected {}, diff = {}",
+                i, got, exp, (got - exp).abs()
+            );
+        }
+    }
+
+    /// Test 2D gradient computation matching PyTorch
+    #[test]
+    fn test_pooling_gradients_2d() {
+        // PyTorch gradient reference for x2d (flattened):
+        // [0.3125, 0.3125, 0.3125, 0.3125, 0.3125, 1.3125, 0.3125, 1.3125,
+        //  0.3125, 0.3125, 0.3125, 0.3125, 0.3125, 1.3125, 0.3125, 1.3125]
+        let mut graph = AutoFerroxEngine::<f32>::new(true);
+        graph.set_training(true);
+
+        // Create input tensor 4x4
+        let x2d = tensor_2d_batch_channel(&[
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        ], 4, 4);
+        let x2d_node = graph.create_variable(x2d, true);
+
+        // Apply MaxPool2D
+        let maxpool2d_node = graph
+            .apply_operation(Box::new(MaxPool2D::new(2, 2, 0)), vec![x2d_node])
+            .expect("MaxPool2D failed");
+
+        // Apply AvgPool2D
+        let avgpool2d_node = graph
+            .apply_operation(Box::new(AvgPool2D::new(2, 2, 0)), vec![x2d_node])
+            .expect("AvgPool2D failed");
+
+        // Apply GlobalAvgPool2D
+        let global_avg2d_node = graph
+            .apply_operation(Box::new(GlobalAvgPool2D::new()), vec![x2d_node])
+            .expect("GlobalAvgPool2D failed");
+
+        // Convert all to scalars before adding
+        let maxpool_scalar = graph
+            .apply_operation(Box::new(Sum::new(false)), vec![maxpool2d_node])
+            .expect("MaxPool sum failed");
+
+        let avgpool_scalar = graph
+            .apply_operation(Box::new(Sum::new(false)), vec![avgpool2d_node])
+            .expect("AvgPool sum failed");
+
+        let global_scalar = graph
+            .apply_operation(Box::new(Sum::new(false)), vec![global_avg2d_node])
+            .expect("Global sum failed");
+
+        // Add scalars together
+        let sum1_node = graph
+            .apply_operation(Box::new(Add::new()), vec![maxpool_scalar, avgpool_scalar])
+            .expect("Add scalars 1 failed");
+
+        let total_sum_node = graph
+            .apply_operation(Box::new(Add::new()), vec![sum1_node, global_scalar])
+            .expect("Add scalars 2 failed");
+
+        // Backward pass (total_sum_node is already a scalar)
+        graph.backward(total_sum_node).expect("Backward failed");
+
+        // Get gradients
+        let grad = graph
+            .get_gradient(x2d_node)
+            .expect("No gradient found");
+
+        // Validate against PyTorch reference
+        let expected_grad = &[
+            0.3125, 0.3125, 0.3125, 0.3125,
+            0.3125, 1.3125, 0.3125, 1.3125,
+            0.3125, 0.3125, 0.3125, 0.3125,
+            0.3125, 1.3125, 0.3125, 1.3125
+        ];
+        let grad_data = grad.to_vec().expect("Failed to get gradient data");
+
+        for (i, (&got, &exp)) in grad_data.iter().zip(expected_grad.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-3, // Slightly higher tolerance for accumulated gradients
+                "2D gradient mismatch at index {}: got {}, expected {}, diff = {}",
+                i, got, exp, (got - exp).abs()
+            );
+        }
+    }
+    /// Helper test to validate individual operation forward passes
+    #[test]
+    fn test_individual_operations_forward() {
+        // Test each operation individually to isolate potential issues
+
+        // 1D input: [1, 2, 3, 4, 5, 6]
+        let input_1d = tensor_1d_batch_channel(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+
+        // MaxPool1D: should select [2, 4, 6] from windows [(1,2), (3,4), (5,6)]
+        let maxpool_op = MaxPool1D::new(2, 2, 0);
+        let mut input_refs = vec![&input_1d];
+        let maxpool_result = maxpool_op.compute(&mut input_refs).expect("MaxPool1D compute failed");
+
+        let maxpool_data = maxpool_result.to_vec().expect("Failed to get maxpool data");
+        assert_eq!(maxpool_data, vec![2.0, 4.0, 6.0]);
+
+        // AvgPool1D: should compute [(1+2)/2, (3+4)/2, (5+6)/2] = [1.5, 3.5, 5.5]
+        let avgpool_op = AvgPool1D::new(2, 2, 0);
+        let mut input_refs = vec![&input_1d];
+        let avgpool_result = avgpool_op.compute(&mut input_refs).expect("AvgPool1D compute failed");
+
+        let avgpool_data = avgpool_result.to_vec().expect("Failed to get avgpool data");
+        assert_eq!(avgpool_data, vec![1.5, 3.5, 5.5]);
+
+        // 2D input: 4x4 matrix [1..16]
+        let input_2d = tensor_2d_batch_channel(&[
+            1.0, 2.0, 3.0, 4.0,
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+            13.0, 14.0, 15.0, 16.0
+        ], 4, 4);
+
+        // MaxPool2D: should select max from each 2x2 window
+        let maxpool2d_op = MaxPool2D::new(2, 2, 0);
+        let mut input_refs_2d = vec![&input_2d];
+        let maxpool2d_result = maxpool2d_op.compute(&mut input_refs_2d).expect("MaxPool2D compute failed");
+
+        let maxpool2d_data = maxpool2d_result.to_vec().expect("Failed to get maxpool2d data");
+        assert_eq!(maxpool2d_data, vec![6.0, 8.0, 14.0, 16.0]);
     }
 }

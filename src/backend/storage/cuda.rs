@@ -1192,6 +1192,188 @@ where
         Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
+
+
+       fn max_unpool2d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Check if all tensors are on GPU
+        if grad_output.is_gpu() && original_input.is_gpu() && pooled_output.is_gpu() {
+            // All tensors on GPU - use CUDA kernels
+            let grad_output_gpu = grad_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast grad_output to GPU storage")?;
+
+            let original_input_gpu = original_input
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast original_input to GPU storage")?;
+
+            let pooled_output_gpu = pooled_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast pooled_output to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.max_unpool2d(
+                    &grad_output_gpu.cuda_data,
+                    &original_input_gpu.cuda_data,
+                    &pooled_output_gpu.cuda_data,
+                    kernel_size,
+                    stride,
+                    padding,
+                )
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err("Mixed GPU/CPU max unpool2d not supported - move all tensors to same device".to_string())
+        }
+    }
+
+    fn avg_unpool2d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Check if all tensors are on GPU
+        if grad_output.is_gpu() && original_input.is_gpu() && pooled_output.is_gpu() {
+            // All tensors on GPU - use CUDA kernels
+            let grad_output_gpu = grad_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast grad_output to GPU storage")?;
+
+            let original_input_gpu = original_input
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast original_input to GPU storage")?;
+
+            let pooled_output_gpu = pooled_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast pooled_output to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.avg_unpool2d(
+                    &grad_output_gpu.cuda_data,
+                    &original_input_gpu.cuda_data,
+                    &pooled_output_gpu.cuda_data,
+                    kernel_size,
+                    stride,
+                    padding,
+                )
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err("Mixed GPU/CPU avg unpool2d not supported - move all tensors to same device".to_string())
+        }
+    }
+
+    fn max_unpool1d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Check if all tensors are on GPU
+        if grad_output.is_gpu() && original_input.is_gpu() && pooled_output.is_gpu() {
+            // All tensors on GPU - use CUDA kernels
+            let grad_output_gpu = grad_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast grad_output to GPU storage")?;
+
+            let original_input_gpu = original_input
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast original_input to GPU storage")?;
+
+            let pooled_output_gpu = pooled_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast pooled_output to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.max_unpool1d(
+                    &grad_output_gpu.cuda_data,
+                    &original_input_gpu.cuda_data,
+                    &pooled_output_gpu.cuda_data,
+                    kernel_size,
+                    stride,
+                    padding,
+                )
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err("Mixed GPU/CPU max unpool1d not supported - move all tensors to same device".to_string())
+        }
+    }
+
+    fn avg_unpool1d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Check if all tensors are on GPU
+        if grad_output.is_gpu() && original_input.is_gpu() && pooled_output.is_gpu() {
+            // All tensors on GPU - use CUDA kernels
+            let grad_output_gpu = grad_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast grad_output to GPU storage")?;
+
+            let original_input_gpu = original_input
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast original_input to GPU storage")?;
+
+            let pooled_output_gpu = pooled_output
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast pooled_output to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.avg_unpool1d(
+                    &grad_output_gpu.cuda_data,
+                    &original_input_gpu.cuda_data,
+                    &pooled_output_gpu.cuda_data,
+                    kernel_size,
+                    stride,
+                    padding,
+                )
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err("Mixed GPU/CPU avg unpool1d not supported - move all tensors to same device".to_string())
+        }
+    }
+
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Executes custom operation through CUDA ops interface
         with_cuda_ops(|cuda_ops: &CudaOps<T>| op.execute_cuda(cuda_ops, &self.cuda_data))

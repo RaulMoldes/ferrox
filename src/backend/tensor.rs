@@ -1651,6 +1651,32 @@ where
         self.avgpool2d(h.max(w), 1, 0)
     }
 
+       /// Global Average Pooling 1D
+    /// Pools the entire sequence dimension to a single value by averaging all positions
+    /// Common in sequence models for creating fixed-size representations
+    ///
+    /// # Input Shape
+    /// [batch_size, channels, length]
+    ///
+    /// # Output Shape
+    /// [batch_size, channels, 1]
+    ///
+    /// # Example
+    /// ```rust
+    /// let input = Tensor::ones(&[2, 128, 100])?; // Sequence of length 100
+    /// let output = input.global_avgpool1d()?; // Results in [2, 128, 1]
+    /// ```
+    pub fn global_avgpool1d(&self) -> Result<Self, String> {
+        let shape = self.shape();
+        if shape.len() != 3 {
+            return Err("Global average pooling 1D requires 3D tensor [N, C, L]".to_string());
+        }
+
+        let length = shape[2];
+        // Use kernel size equal to sequence length with stride 1 and no padding
+        self.avgpool1d(length, 1, 0)
+    }
+
     /// Adaptive Average Pooling 2D
     /// Pools to a specific output size regardless of input size
     /// Useful for handling variable input sizes
@@ -1668,7 +1694,7 @@ where
 
         // Calculate adaptive kernel size and stride
         let kernel_h = in_h.div_ceil(out_h); // Ceiling division
-        let kernel_w = in_h.div_ceil(out_h); 
+        let kernel_w = in_h.div_ceil(out_h);
 
         let stride_h = in_h / out_h;
         let stride_w = in_w / out_w;
@@ -1678,6 +1704,228 @@ where
         let stride = (stride_h + stride_w) / 2;
 
         self.avgpool2d(kernel_size, stride, 0)
+    }
+}
+
+
+
+impl<T> Tensor<T>
+where
+    T: FerroxCudaF,
+{
+    /// 2D Max Unpooling operation for gradient computation
+    /// Distributes gradients back to positions that were selected as maximum during forward pass
+    ///
+    /// # Arguments
+    /// * `original_input` - The original input tensor to max pooling
+    /// * `pooled_output` - The output from max pooling (needed to determine selected positions)
+    /// * `kernel_size` - Size of the pooling window that was used
+    /// * `stride` - Stride that was used in pooling
+    /// * `padding` - Padding that was used in pooling
+    ///
+    /// # Input Shapes
+    /// * `self` (grad_output): [batch, channels, height_out, width_out]
+    /// * `original_input`: [batch, channels, height, width]
+    /// * `pooled_output`: [batch, channels, height_out, width_out]
+    ///
+    /// # Output Shape
+    /// [batch, channels, height, width] - same as original_input
+    ///
+    /// # Usage
+    /// This method is primarily used internally by the MaxPool2D operation's gradient computation.
+    /// It's not typically called directly by users.
+    pub fn max_unpool2d(
+        &self,
+        original_input: &Self,
+        pooled_output: &Self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let grad_output_storage = self
+            .storage
+            .as_ref()
+            .ok_or("Grad output tensor has no storage backend")?;
+        let original_input_storage = original_input
+            .storage
+            .as_ref()
+            .ok_or("Original input tensor has no storage backend")?;
+        let pooled_output_storage = pooled_output
+            .storage
+            .as_ref()
+            .ok_or("Pooled output tensor has no storage backend")?;
+
+        let result_storage = grad_output_storage.max_unpool2d(
+            grad_output_storage.as_ref(),
+            original_input_storage.as_ref(),
+            pooled_output_storage.as_ref(),
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    /// 2D Average Unpooling operation for gradient computation
+    /// Distributes gradients uniformly to all positions that contributed to each pooled output
+    ///
+    /// # Arguments
+    /// * `original_input` - The original input tensor to average pooling
+    /// * `pooled_output` - The output from average pooling
+    /// * `kernel_size` - Size of the pooling window that was used
+    /// * `stride` - Stride that was used in pooling
+    /// * `padding` - Padding that was used in pooling
+    ///
+    /// # Input Shapes
+    /// * `self` (grad_output): [batch, channels, height_out, width_out]
+    /// * `original_input`: [batch, channels, height, width]
+    /// * `pooled_output`: [batch, channels, height_out, width_out]
+    ///
+    /// # Output Shape
+    /// [batch, channels, height, width] - same as original_input
+    ///
+    /// # Usage
+    /// This method is primarily used internally by the AvgPool2D operation's gradient computation.
+    pub fn avg_unpool2d(
+        &self,
+        original_input: &Self,
+        pooled_output: &Self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let grad_output_storage = self
+            .storage
+            .as_ref()
+            .ok_or("Grad output tensor has no storage backend")?;
+        let original_input_storage = original_input
+            .storage
+            .as_ref()
+            .ok_or("Original input tensor has no storage backend")?;
+        let pooled_output_storage = pooled_output
+            .storage
+            .as_ref()
+            .ok_or("Pooled output tensor has no storage backend")?;
+
+        let result_storage = grad_output_storage.avg_unpool2d(
+            grad_output_storage.as_ref(),
+            original_input_storage.as_ref(),
+            pooled_output_storage.as_ref(),
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    /// 1D Max Unpooling operation for gradient computation
+    /// Distributes gradients back to positions that were selected as maximum during forward pass
+    ///
+    /// # Arguments
+    /// * `original_input` - The original input tensor to max pooling
+    /// * `pooled_output` - The output from max pooling (needed to determine selected positions)
+    /// * `kernel_size` - Size of the pooling window that was used
+    /// * `stride` - Stride that was used in pooling
+    /// * `padding` - Padding that was used in pooling
+    ///
+    /// # Input Shapes
+    /// * `self` (grad_output): [batch, channels, length_out]
+    /// * `original_input`: [batch, channels, length]
+    /// * `pooled_output`: [batch, channels, length_out]
+    ///
+    /// # Output Shape
+    /// [batch, channels, length] - same as original_input
+    ///
+    /// # Usage
+    /// This method is primarily used internally by the MaxPool1D operation's gradient computation.
+    /// Commonly used in sequence models and 1D CNNs.
+    pub fn max_unpool1d(
+        &self,
+        original_input: &Self,
+        pooled_output: &Self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let grad_output_storage = self
+            .storage
+            .as_ref()
+            .ok_or("Grad output tensor has no storage backend")?;
+        let original_input_storage = original_input
+            .storage
+            .as_ref()
+            .ok_or("Original input tensor has no storage backend")?;
+        let pooled_output_storage = pooled_output
+            .storage
+            .as_ref()
+            .ok_or("Pooled output tensor has no storage backend")?;
+
+        let result_storage = grad_output_storage.max_unpool1d(
+            grad_output_storage.as_ref(),
+            original_input_storage.as_ref(),
+            pooled_output_storage.as_ref(),
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    /// 1D Average Unpooling operation for gradient computation
+    /// Distributes gradients uniformly to all positions that contributed to each pooled output
+    ///
+    /// # Arguments
+    /// * `original_input` - The original input tensor to average pooling
+    /// * `pooled_output` - The output from average pooling
+    /// * `kernel_size` - Size of the pooling window that was used
+    /// * `stride` - Stride that was used in pooling
+    /// * `padding` - Padding that was used in pooling
+    ///
+    /// # Input Shapes
+    /// * `self` (grad_output): [batch, channels, length_out]
+    /// * `original_input`: [batch, channels, length]
+    /// * `pooled_output`: [batch, channels, length_out]
+    ///
+    /// # Output Shape
+    /// [batch, channels, length] - same as original_input
+    ///
+    /// # Usage
+    /// This method is primarily used internally by the AvgPool1D operation's gradient computation.
+    /// Used in sequence modeling and temporal pooling operations.
+    pub fn avg_unpool1d(
+        &self,
+        original_input: &Self,
+        pooled_output: &Self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let grad_output_storage = self
+            .storage
+            .as_ref()
+            .ok_or("Grad output tensor has no storage backend")?;
+        let original_input_storage = original_input
+            .storage
+            .as_ref()
+            .ok_or("Original input tensor has no storage backend")?;
+        let pooled_output_storage = pooled_output
+            .storage
+            .as_ref()
+            .ok_or("Pooled output tensor has no storage backend")?;
+
+        let result_storage = grad_output_storage.avg_unpool1d(
+            grad_output_storage.as_ref(),
+            original_input_storage.as_ref(),
+            pooled_output_storage.as_ref(),
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Self::from_storage_backend(result_storage, self.device)
     }
 }
 

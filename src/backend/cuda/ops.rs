@@ -1847,6 +1847,289 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
+
+
+
+    /// 2D Max Unpooling for gradient computation
+    /// Distributes gradients back to positions that were selected as maximum
+    /// Used in backward pass of max pooling operations
+    pub fn max_unpool2d(
+        &self,
+        grad_output_in: &CudaTensor<T>,
+        original_input_in: &CudaTensor<T>,
+        pooled_output_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let grad_output = if grad_output_in.needs_materialization() {
+            &self.materialize(grad_output_in)?
+        } else {
+            grad_output_in
+        };
+
+        let original_input = if original_input_in.needs_materialization() {
+            &self.materialize(original_input_in)?
+        } else {
+            original_input_in
+        };
+
+        let pooled_output = if pooled_output_in.needs_materialization() {
+            &self.materialize(pooled_output_in)?
+        } else {
+            pooled_output_in
+        };
+
+        // Validate input dimensions
+        if original_input.shape.len() != 4 || grad_output.shape.len() != 4 {
+            return Err("Max unpool2d requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+
+        let batch_size = original_input.shape[0];
+        let channels = original_input.shape[1];
+        let height = original_input.shape[2];
+        let width = original_input.shape[3];
+
+        let height_out = grad_output.shape[2];
+        let width_out = grad_output.shape[3];
+
+        // Create result tensor with same shape as original input
+        let output_shape = [batch_size, channels, height, width];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total input elements for launch configuration
+        let total_elements = batch_size * channels * height * width;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch max unpool2d kernel
+        self.kernels.launch_max_unpool2d(
+            cfg,
+            grad_output.data(),
+            original_input.data(),
+            pooled_output.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            height as i32,
+            width as i32,
+            height_out as i32,
+            width_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 2D Average Unpooling for gradient computation
+    /// Distributes gradients uniformly to all contributing positions
+    /// Used in backward pass of average pooling operations
+    pub fn avg_unpool2d(
+        &self,
+        grad_output_in: &CudaTensor<T>,
+        original_input_in: &CudaTensor<T>,
+        pooled_output_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let grad_output = if grad_output_in.needs_materialization() {
+            &self.materialize(grad_output_in)?
+        } else {
+            grad_output_in
+        };
+
+        let original_input = if original_input_in.needs_materialization() {
+            &self.materialize(original_input_in)?
+        } else {
+            original_input_in
+        };
+
+        let pooled_output = if pooled_output_in.needs_materialization() {
+            &self.materialize(pooled_output_in)?
+        } else {
+            pooled_output_in
+        };
+
+        // Validate input dimensions
+        if original_input.shape.len() != 4 || grad_output.shape.len() != 4 {
+            return Err("Avg unpool2d requires 4D tensors [batch, channels, height, width]".to_string());
+        }
+
+        let batch_size = original_input.shape[0];
+        let channels = original_input.shape[1];
+        let height = original_input.shape[2];
+        let width = original_input.shape[3];
+
+        let height_out = grad_output.shape[2];
+        let width_out = grad_output.shape[3];
+
+        // Create result tensor with same shape as original input
+        let output_shape = [batch_size, channels, height, width];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total input elements for launch configuration
+        let total_elements = batch_size * channels * height * width;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch avg unpool2d kernel
+        self.kernels.launch_avg_unpool2d(
+            cfg,
+            grad_output.data(),
+            original_input.data(),
+            pooled_output.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            height as i32,
+            width as i32,
+            height_out as i32,
+            width_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 1D Max Unpooling for gradient computation
+    /// Distributes gradients back to positions that were selected as maximum
+    /// Used in backward pass of 1D max pooling operations
+    pub fn max_unpool1d(
+        &self,
+        grad_output_in: &CudaTensor<T>,
+        original_input_in: &CudaTensor<T>,
+        pooled_output_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let grad_output = if grad_output_in.needs_materialization() {
+            &self.materialize(grad_output_in)?
+        } else {
+            grad_output_in
+        };
+
+        let original_input = if original_input_in.needs_materialization() {
+            &self.materialize(original_input_in)?
+        } else {
+            original_input_in
+        };
+
+        let pooled_output = if pooled_output_in.needs_materialization() {
+            &self.materialize(pooled_output_in)?
+        } else {
+            pooled_output_in
+        };
+
+        // Validate input dimensions
+        if original_input.shape.len() != 3 || grad_output.shape.len() != 3 {
+            return Err("Max unpool1d requires 3D tensors [batch, channels, length]".to_string());
+        }
+
+        let batch_size = original_input.shape[0];
+        let channels = original_input.shape[1];
+        let length = original_input.shape[2];
+
+        let length_out = grad_output.shape[2];
+
+        // Create result tensor with same shape as original input
+        let output_shape = [batch_size, channels, length];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total input elements for launch configuration
+        let total_elements = batch_size * channels * length;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch max unpool1d kernel
+        self.kernels.launch_max_unpool1d(
+            cfg,
+            grad_output.data(),
+            original_input.data(),
+            pooled_output.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            length as i32,
+            length_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 1D Average Unpooling for gradient computation
+    /// Distributes gradients uniformly to all contributing positions
+    /// Used in backward pass of 1D average pooling operations
+    pub fn avg_unpool1d(
+        &self,
+        grad_output_in: &CudaTensor<T>,
+        original_input_in: &CudaTensor<T>,
+        pooled_output_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let grad_output = if grad_output_in.needs_materialization() {
+            &self.materialize(grad_output_in)?
+        } else {
+            grad_output_in
+        };
+
+        let original_input = if original_input_in.needs_materialization() {
+            &self.materialize(original_input_in)?
+        } else {
+            original_input_in
+        };
+
+        let pooled_output = if pooled_output_in.needs_materialization() {
+            &self.materialize(pooled_output_in)?
+        } else {
+            pooled_output_in
+        };
+
+        // Validate input dimensions
+        if original_input.shape.len() != 3 || grad_output.shape.len() != 3 {
+            return Err("Avg unpool1d requires 3D tensors [batch, channels, length]".to_string());
+        }
+
+        let batch_size = original_input.shape[0];
+        let channels = original_input.shape[1];
+        let length = original_input.shape[2];
+
+        let length_out = grad_output.shape[2];
+
+        // Create result tensor with same shape as original input
+        let output_shape = [batch_size, channels, length];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total input elements for launch configuration
+        let total_elements = batch_size * channels * length;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch avg unpool1d kernel
+        self.kernels.launch_avg_unpool1d(
+            cfg,
+            grad_output.data(),
+            original_input.data(),
+            pooled_output.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            length as i32,
+            length_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
     pub fn debug_cuda_tensor(&self, tensor: &CudaTensor<T>, name: &str) -> Result<(), String> {
         with_cuda_context(|ctx| {
             let data = tensor.clone().to_vec(ctx)?;

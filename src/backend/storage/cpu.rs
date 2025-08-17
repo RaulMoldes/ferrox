@@ -395,6 +395,117 @@ where
         Ok(Box::new(CPUStorage::new(result)))
     }
 
+
+
+
+    fn max_unpool2d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Get CPU data from all storage backends
+        let grad_output_data = grad_output.cpu_data()?;
+        let original_input_data = original_input.cpu_data()?;
+        let pooled_output_data = pooled_output.cpu_data()?;
+
+        // Use the implementation from extensions
+        let result = self.max_unpool2d_impl(
+            grad_output_data,
+            original_input_data,
+            pooled_output_data,
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
+    fn avg_unpool2d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Get CPU data from all storage backends
+        let grad_output_data = grad_output.cpu_data()?;
+        let original_input_data = original_input.cpu_data()?;
+        let pooled_output_data = pooled_output.cpu_data()?;
+
+        // Use the implementation from extensions
+        let result = self.avg_unpool2d_impl(
+            grad_output_data,
+            original_input_data,
+            pooled_output_data,
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
+    fn max_unpool1d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Get CPU data from all storage backends
+        let grad_output_data = grad_output.cpu_data()?;
+        let original_input_data = original_input.cpu_data()?;
+        let pooled_output_data = pooled_output.cpu_data()?;
+
+        // Use the implementation from extensions
+        let result = self.max_unpool1d_impl(
+            grad_output_data,
+            original_input_data,
+            pooled_output_data,
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
+    fn avg_unpool1d(
+        &self,
+        grad_output: &dyn StorageBackend<T>,
+        original_input: &dyn StorageBackend<T>,
+        pooled_output: &dyn StorageBackend<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        // Get CPU data from all storage backends
+        let grad_output_data = grad_output.cpu_data()?;
+        let original_input_data = original_input.cpu_data()?;
+        let pooled_output_data = pooled_output.cpu_data()?;
+
+        // Use the implementation from extensions
+        let result = self.avg_unpool1d_impl(
+            grad_output_data,
+            original_input_data,
+            pooled_output_data,
+            kernel_size,
+            stride,
+            padding,
+        )?;
+
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
     // Efficient in-place operations using helper method
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
         let current_shape = self.shape();
