@@ -1,4 +1,5 @@
-use crate::backend::memory::cuda::PoolConfig;
+
+use crate::backend::memory::PoolConfig;
 // src/backend/manager.rs
 #[cfg(feature = "cuda")]
 use crate::backend::memory::CudaMemoryPool;
@@ -48,6 +49,7 @@ impl<T: FerroxCudaN> BackendManager<T> {
     pub fn cuda_pool(&self) -> Option<&std::sync::Mutex<CudaMemoryPool<T>>> {
         self.cuda_pool.as_ref()
     }
+
 
     pub fn init(pool_config: Option<PoolConfig>) -> Self {
         #[cfg(not(feature = "cuda"))]

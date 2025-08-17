@@ -230,6 +230,40 @@ The process you should follow:
 5. Run Rust test to validate against references
 6. If test fails, debug the Rust implementation (not the reference generation)
 
+Example:
+
+```python
+import torch
+import torch.nn.functional as F
+
+# Input: tensor 1D simple (será leaf tensor)
+x = torch.tensor([10.0, 4.0, 6.0, 5.0, 4.0], requires_grad=True)
+# Kernel: tensor 1D simple (será leaf tensor)
+w = torch.tensor([1.0, 0.5, -1.0], requires_grad=True)
+
+# Para conv1d necesitamos reshape a 3D: (batch, channels, length)
+x_reshaped = x.reshape(1, 1, -1)  # (1, 1, 5)
+w_reshaped = w.reshape(1, 1, -1)  # (1, 1, 3)
+
+# Convolución 1D
+y = F.conv1d(x_reshaped, w_reshaped)  # Output de la conv1d: tensor([[[6.0000, 2.0000, 4.5000]]], grad_fn=<ConvolutionBackward0>)
+
+
+print("Output de la conv1d:", y)
+print("Shape del output:", y.shape) # Shape del output: torch.Size([1, 1, 3])
+
+# Para habilitar backward, reducimos a un escalar
+loss = y.sum()
+loss.backward()
+
+print("Gradiente respecto al input:", x.grad) # Gradiente respecto al input: tensor([ 1.0000,  1.5000,  0.5000, -0.5000, -1.0000])
+print("Gradiente respecto al filtro:", w.grad) # Gradiente respecto al filtro: tensor([20., 15., 15.])
+
+# También podemos ver los valores flattened del output para comparar con tu implementación
+print("Output flattened:", y.flatten()) # Output flattened: tensor([6.0000, 2.0000, 4.5000], grad_fn=<ViewBackward0>)
+
+```
+
 ## Optimization Guidelines
 
 ### Launch Configuration Strategy

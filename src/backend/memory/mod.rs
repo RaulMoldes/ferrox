@@ -1,6 +1,7 @@
 // src/backend/memory/mod.rs
 // Memory pool abstraction that provides efficient allocation/deallocation
 // The pool reduces frequent GPU allocations which are expensive operations
+#[cfg(feature = "cuda")]
 pub mod cuda;
 
 use std::collections::HashMap;
@@ -9,6 +10,132 @@ use std::collections::HashMap;
 pub use cuda::CudaMemoryPool;
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// POOL and Bucket Configs
+#[derive(Debug, Clone)]
+pub struct BucketConfig {
+    pub min_size: usize,
+    pub max_size: usize,
+    pub max_allocations: usize,
+    pub description: String,
+    to_be_evicted: usize,
+    eviction_threshold: Option<u64>,
+}
+
+impl BucketConfig {
+    pub fn new(
+        min_size: usize,
+        max_size: usize,
+        max_allocations: usize,
+        description: &str,
+        to_be_evicted: usize,
+        eviction_threshold: Option<u64>,
+    ) -> Self {
+        Self {
+            min_size,
+            max_size,
+            max_allocations,
+            description: description.to_string(),
+            to_be_evicted,
+            eviction_threshold,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PoolConfig {
+    pub bucket_configs: Vec<BucketConfig>,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        let bucket_configs = vec![
+            BucketConfig::new(1, 1024, 500, "Small GPU tensors: weights, biases", 50, None), // Evict 10% of the tensors
+            BucketConfig::new(
+                1025,
+                262144,
+                50,
+                "Medium GPU tensors: layer activations",
+                15,
+                None,
+            ),
+            BucketConfig::new(
+                262145,
+                16777216,
+                10,
+                "Large GPU tensors: batch processing",
+                5,
+                None,
+            ),
+            BucketConfig::new(
+                16777217,
+                usize::MAX,
+                2,
+                "Huge GPU tensors: full model parameters", // These are very big so we evict them all
+                2,
+                None,
+            ),
+        ];
+
+        Self { bucket_configs }
+    }
+}
+impl PoolConfig {
+    // Create buckets from this configuration
+    pub fn create_buckets<T>(&self) -> Vec<PoolBucket<T>> {
+        self.bucket_configs
+            .iter()
+            .map(|config| {
+                PoolBucket::new(
+                    config.min_size,
+                    config.max_size,
+                    config.max_allocations,
+                    config.to_be_evicted,
+                    config.eviction_threshold,
+                )
+            })
+            .collect()
+    }
+
+    // Add a new bucket configuration
+    pub fn add_bucket(
+        &mut self,
+        min_size: usize,
+        max_size: usize,
+        max_allocations: usize,
+        description: &str,
+        to_be_evicted: usize,
+        eviction_threshold: u64,
+    ) {
+        self.bucket_configs.push(BucketConfig::new(
+            min_size,
+            max_size,
+            max_allocations,
+            description,
+            to_be_evicted,
+            Some(eviction_threshold),
+        ));
+    }
+
+    // Print configuration summary
+    pub fn print_config(&self) {
+        println!("Pool Configuration:");
+        for (i, config) in self.bucket_configs.iter().enumerate() {
+            println!(
+                "  Bucket {}: {}-{} elements, max {} allocations - {}",
+                i,
+                config.min_size,
+                if config.max_size == usize::MAX {
+                    "∞".to_string()
+                } else {
+                    config.max_size.to_string()
+                },
+                config.max_allocations,
+                config.description
+            );
+        }
+    }
+}
 
 // Pool allocation result containing both data and metadata for tracking
 #[derive(Debug)]

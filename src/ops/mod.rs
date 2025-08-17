@@ -885,6 +885,61 @@ mod ops_tests {
     }
 
     #[test]
+fn conv1d_operation() {
+    let input = tensor_1d(&[10.0, 4.0, 6.0, 5.0, 4.0]);
+    let filter = tensor_1d(&[1.0, 0.5, -1.0]);
+    let inputs = vec![input, filter];
+
+    // Expected output from PyTorch: [6.0, 2.0, 4.5]
+    // Input size (5) - kernel size (3) + 1 = 3
+    test_op_with_values!(
+        Conv1dOp,
+        inputs,
+        &[3],
+        &[6.0, 2.0, 4.5],
+        1e-6,
+        "Conv1d"
+    );
+}
+
+#[test]
+fn conv1d_small_kernel() {
+    // Test with smaller kernel
+    let input = tensor_1d(&[1.0, 2.0, 3.0, 4.0]);
+    let filter = tensor_1d(&[0.5, -0.5]);
+    let inputs = vec![input, filter];
+
+    // Manual calculation: [1*0.5 + 2*(-0.5), 2*0.5 + 3*(-0.5), 3*0.5 + 4*(-0.5)]
+    // = [-0.5, -0.5, -0.5]
+    test_op_with_values!(
+        Conv1dOp,
+        inputs,
+        &[3],
+        &[-0.5, -0.5, -0.5],
+        1e-6,
+        "Conv1d_SmallKernel"
+    );
+}
+
+#[test]
+fn conv1d_single_element() {
+    // Test edge case with minimal sizes
+    let input = tensor_1d(&[5.0, 3.0]);
+    let filter = tensor_1d(&[2.0]);
+    let inputs = vec![input, filter];
+
+    // Expected: [5*2, 3*2] = [10.0, 6.0]
+    test_op_with_values!(
+        Conv1dOp,
+        inputs,
+        &[2],
+        &[10.0, 6.0],
+        1e-6,
+        "Conv1d_SingleElement"
+    );
+}
+
+    #[test]
     fn conv2d_larger_kernel() {
         // Test with 5x5 kernel on 6x6 input
         let input_data: Vec<f32> = (0..36).map(|x| x as f32).collect(); // 1x1x6x6

@@ -447,7 +447,7 @@ where
 
             // For each position in grad_output that affects grad_input[i]
             for j in 0..grad_size {
-                let k = i - j; // Filter index (will be flipped)
+                let k = i.saturating_sub(j); // Filter index (will be flipped)
                 if k == 0_usize && k < kernel_size {
                     // Use flipped filter: filter[kernel_size - 1 - k]
                     let filter_idx = kernel_size - 1 - k;
