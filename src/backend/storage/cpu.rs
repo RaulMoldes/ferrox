@@ -312,6 +312,13 @@ where
         Ok(())
     }
 
+    fn conv1d(&self, filter: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let filter_data = filter.cpu_data()?;
+
+        let result = self.conv1d_impl(filter_data)?;
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
     // Efficient in-place operations using helper method
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
         let current_shape = self.shape();

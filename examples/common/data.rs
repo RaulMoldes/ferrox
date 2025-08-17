@@ -188,7 +188,8 @@ where
                             let quarter_size = image_size / 4;
 
                             if (x as i32 - center_x as i32).abs() < quarter_size as i32
-                                && (y as i32 - center_y as i32).abs() < quarter_size as i32 {
+                                && (y as i32 - center_y as i32).abs() < quarter_size as i32
+                            {
                                 1.0
                             } else {
                                 0.0

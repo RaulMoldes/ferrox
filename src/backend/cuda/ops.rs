@@ -1297,6 +1297,61 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
+    pub fn conv1d_forward(
+        &self,
+        input_in: &CudaTensor<T>,
+        filter_in: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String> {
+        // Materialize inputs if needed
+        let input = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        let filter = if filter_in.needs_materialization() {
+            &self.materialize(filter_in)?
+        } else {
+            filter_in
+        };
+
+        // Simple 1D convolution - expect flattened tensors
+        let input_size = input.shape.iter().product::<usize>();
+        let kernel_size = filter.shape.iter().product::<usize>();
+
+        // Calculate output size
+        let output_size = input_size - kernel_size + 1;
+        if output_size == 0 {
+            return Err("Kernel size cannot be larger than input size".to_string());
+        }
+
+        let output_shape = [output_size];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Configure launch parameters to match benchmark
+        let grid_size = output_size.div_ceil(BLOCK_SIZE as usize);
+        let shared_mem_size =
+            (kernel_size + BLOCK_SIZE as usize + kernel_size - 1) * std::mem::size_of::<T>();
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (BLOCK_SIZE, 1, 1),
+            shared_mem_bytes: shared_mem_size as u32,
+        };
+
+        // Launch kernel
+        self.kernels.launch_conv1d_forward(
+            cfg,
+            input.data(),
+            filter.data(),
+            result.data_mut(),
+            input_size as i32,
+            kernel_size as i32,
+        )?;
+
+        Ok(result)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn deconv2d(
         &self,

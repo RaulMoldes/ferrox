@@ -187,7 +187,6 @@ impl<T: FerroxCudaN> MemoryPool<CudaSlice<T>> for CudaMemoryPool<T> {
         self.allocation_counter += 1;
         let allocation_id = self.allocation_counter as u64;
 
-
         // Find appropriate bucket - panic if no bucket can handle this size
         let bucket_idx = self.find_bucket(size).unwrap_or_else(|| {
             panic!(
@@ -266,19 +265,29 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
         println!("\n==========================================");
 
         // Pool-level statistics
-        println!("[INFO] Memory allocation counter: {}", self.allocation_counter);
-        println!("[INFO] Active Allocations: {}", self.active_allocations.len());
+        println!(
+            "[INFO] Memory allocation counter: {}",
+            self.allocation_counter
+        );
+        println!(
+            "[INFO] Active Allocations: {}",
+            self.active_allocations.len()
+        );
         println!("[INFO] Total Allocations: {}", self.stats.total_allocations);
 
         // Hit/miss ratios with percentages
-        let total_requests = self.stats.pool_hits + self.stats.pool_misses + self.stats.underflow_misses;
+        let total_requests =
+            self.stats.pool_hits + self.stats.pool_misses + self.stats.underflow_misses;
         let hit_rate = if total_requests > 0 {
             (self.stats.pool_hits as f64 / total_requests as f64) * 100.0
         } else {
             0.0
         };
 
-        println!("[INFO] Pool Hits: {} ({:.1}%)", self.stats.pool_hits, hit_rate);
+        println!(
+            "[INFO] Pool Hits: {} ({:.1}%)",
+            self.stats.pool_hits, hit_rate
+        );
         println!(
             "[INFO] Total pool Misses: {} ({:.1}%)",
             self.stats.pool_misses + self.stats.underflow_misses,
@@ -293,16 +302,12 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
 
         println!(
             "[INFO] Underflow misses: {} ({:.1}%)",
-            self.stats.underflow_misses,
-            underflow_rate
+            self.stats.underflow_misses, underflow_rate
         );
 
         for (idx, bucket) in self.buckets.iter().enumerate() {
             bucket.print_stats(idx);
         }
-
-
-
     }
 
     // Update statistics when creating new allocation
@@ -311,11 +316,7 @@ impl<T: FerroxCudaN> CudaMemoryPool<T> {
         self.stats.total_allocations += 1;
         self.stats.active_allocations += 1;
     }
-
 }
-
-
-
 
 impl<T> Drop for CudaMemoryPool<T>
 where

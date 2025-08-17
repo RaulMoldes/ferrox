@@ -56,8 +56,6 @@ impl MLPConfig {
             num_samples: 1000,
         }
     }
-
-
 }
 
 /// Training configuration supporting multiple optimizers

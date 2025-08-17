@@ -6,8 +6,8 @@ use crate::ops::Operator;
 pub use graphviz::EngineVisualization;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 /// ATOMIC auto incrementing id for all nodes.
 static NODE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -76,8 +76,6 @@ impl<T> NodeState<T>
 where
     T: FerroxCudaF,
 {
-
-
     fn into_data(self) -> Option<Tensor<T>> {
         match self {
             NodeState::Evaluated { tensor, .. } => tensor,
@@ -183,13 +181,13 @@ where
     }
 
     pub fn take_data(&mut self) -> Tensor<T> {
-
         match self.state {
-            NodeState::Evaluated { ref mut tensor, .. } => tensor.take().expect("Evaluated node {self.id} is empty"),
+            NodeState::Evaluated { ref mut tensor, .. } => {
+                tensor.take().expect("Evaluated node {self.id} is empty")
+            }
             NodeState::Leaf(_) => panic!("Cannot take the data of a leaf tensor"),
             NodeState::Pending { .. } => panic!("Cannot take the data of a pending tensor"),
         }
-
     }
 
     pub fn new_evaluated(
@@ -302,22 +300,20 @@ where
     }
 }
 
-    /// Determine if a node should be kept after backward pass
+/// Determine if a node should be kept after backward pass
 fn should_keep<T: FerroxCudaF>(node: &Node<T>) -> bool {
-        // Keep parameters (needed for optimizer)
-        if node.is_parameter() {
-            return true;
-        }
+    // Keep parameters (needed for optimizer)
+    if node.is_parameter() {
+        return true;
+    }
 
-        // Keep explicitly persistent nodes
-        if node.is_persistent() {
-            return true;
-        }
+    // Keep explicitly persistent nodes
+    if node.is_persistent() {
+        return true;
+    }
 
-       
-
-        // Remove all intermediate computation nodes
-        false
+    // Remove all intermediate computation nodes
+    false
 }
 
 /// Main computational graph engine.
@@ -352,7 +348,7 @@ where
             gradients: HashMap::new(),
             training_mode: true,
             evaluation_mode: EvaluationMode::Eager, // Eager by default as PyTorch
-            cache_outputs
+            cache_outputs,
         }
     }
 
@@ -454,7 +450,6 @@ where
             .ok_or_else(|| format!("Failed to evaluate node {}", node_id.0))
     }
 
-
     // Checks if the node is evaluated.
     // If already evaluated, does nothing
     // If not, evaluates all inputs and computes, then frees up everything it does not need anymore.
@@ -464,31 +459,28 @@ where
             return Ok(());
         }
 
-
         let node = self.get_node_owned(node_id);
         let pending = node.into_state();
 
         let (op, inputs) = match pending {
-                NodeState::Pending { op, inputs } => (op, inputs),
-                _ => return Ok(()), // Already evaluated
+            NodeState::Pending { op, inputs } => (op, inputs),
+            _ => return Ok(()), // Already evaluated
         };
-
 
         // Evaluate all inputs recursively
         for &input_id in &inputs {
-
-            if !self.is_evaluated(input_id){
+            if !self.is_evaluated(input_id) {
                 self.evaluate_node(input_id)?;
             }
         }
 
         // Obtain input tensors.
-         let mut input_tensors =  self.collect_nodes_data(&inputs)?;
+        let mut input_tensors = self.collect_nodes_data(&inputs)?;
 
         // Compute result
         let result_tensor = op.compute(&mut input_tensors)?;
 
-         // Liberar memoria de todos los inputs.
+        // Liberar memoria de todos los inputs.
         if !self.cache_outputs && !op.cache_output() {
             self.uncache(&inputs);
         }
@@ -534,12 +526,19 @@ where
     }
 
     fn uncache(&mut self, ids: &[NodeId]) {
-        let filtered : Vec<&NodeId> = ids
+        let filtered: Vec<&NodeId> = ids
             .iter()
-            .filter(|id| self.is_evaluated(**id) && ! self.is_leaf(**id) && (self.is_training() && !self.requires_grad(**id)) || !self.is_training()).collect();
-        let _: Vec<Tensor<T>> = filtered.into_iter().map(|id| {
-                self.take_result(*id)
-            }).collect();
+            .filter(|id| {
+                self.is_evaluated(**id)
+                    && !self.is_leaf(**id)
+                    && (self.is_training() && !self.requires_grad(**id))
+                    || !self.is_training()
+            })
+            .collect();
+        let _: Vec<Tensor<T>> = filtered
+            .into_iter()
+            .map(|id| self.take_result(*id))
+            .collect();
     }
 
     pub fn get_tensor(&self, node_id: NodeId) -> Option<&Tensor<T>> {
@@ -550,9 +549,11 @@ where
         self.nodes.get(&node_id)?.get_op()
     }
 
-
     pub fn is_parameter(&self, node_id: NodeId) -> bool {
-        self.nodes.get(&node_id).expect("Node {node_id} not found").is_parameter()
+        self.nodes
+            .get(&node_id)
+            .expect("Node {node_id} not found")
+            .is_parameter()
     }
     /// Verificar si un nodo está evaluado
     pub fn is_evaluated(&self, node_id: NodeId) -> bool {
@@ -562,11 +563,8 @@ where
     }
 
     pub fn is_leaf(&self, node_id: NodeId) -> bool {
-        self.nodes
-            .get(&node_id)
-            .is_some_and(|node| node.is_leaf())
+        self.nodes.get(&node_id).is_some_and(|node| node.is_leaf())
     }
-
 
     pub fn debug(&self) {
         println!("Available ids:");
@@ -575,11 +573,8 @@ where
         }
     }
 
-   fn collect_nodes_data(
-    &self,
-    input_ids: &[NodeId],
-) -> Result<Vec<&Tensor<T>>, String> {
-    // Obtain input tensors.
+    fn collect_nodes_data(&self, input_ids: &[NodeId]) -> Result<Vec<&Tensor<T>>, String> {
+        // Obtain input tensors.
         let input_tensors: Result<Vec<_>, String> = input_ids
             .iter()
             .map(|&input_id| {
@@ -588,12 +583,10 @@ where
             })
             .collect();
 
+        input_tensors
+    }
 
-    input_tensors
-}
-
-
-     /// Cleanup nodes and gradients after backward pass
+    /// Cleanup nodes and gradients after backward pass
     /// Removes intermediate computation nodes while preserving parameters and their gradients
     fn cleanup(&mut self) -> Result<(), String> {
         let mut nodes_to_remove = Vec::new();
@@ -626,12 +619,11 @@ where
         Ok(())
     }
 
-
     pub fn apply_operation(
         &mut self,
         op: Box<dyn Operator<T>>,
         input_ids: Vec<NodeId>,
-    //    cache_output: bool,
+        //    cache_output: bool,
     ) -> Result<NodeId, String> {
         self.validate_inputs(&op, &input_ids)?;
 
@@ -658,15 +650,15 @@ where
                 }
 
                 //self.debug();
-               // println!("[DEBUG] collecting input data");
+                // println!("[DEBUG] collecting input data");
                 // Obtain input tensors.
                 let mut input_tensors = self.collect_nodes_data(&input_ids)?;
 
                 // Evaluate inmediately
                 let result_tensor = op.compute(&mut input_tensors)?;
-            //    println!("[DEBUG] result has been computed");
+                //    println!("[DEBUG] result has been computed");
 
-                 // Liberar memoria de todos los inputs.
+                // Liberar memoria de todos los inputs.
                 if !self.cache_outputs && !op.cache_output() {
                     self.uncache(&input_ids);
                 }
@@ -697,13 +689,9 @@ where
             }
         }
 
-
-
-
-
-        if !self.is_parameter(node_id){
+        if !self.is_parameter(node_id) {
             // Liberar la memoria de este nodo
-             self.try_clear_node(node_id)?;
+            self.try_clear_node(node_id)?;
         }
 
         Ok(())
@@ -739,7 +727,6 @@ where
         for &node_id in &topo_order {
             self.backward_node(node_id)?;
         }
-
 
         self.cleanup()?;
         Ok(())
@@ -782,7 +769,7 @@ where
             .ok_or_else(|| format!("No inputs found for node {}", node_id))?;
 
         // Collect input tensors
-        let mut input_tensors =  self.collect_nodes_data(input_ids)?;
+        let mut input_tensors = self.collect_nodes_data(input_ids)?;
 
         // Compute gradients using the operation's gradient method
         let input_grads = some_op.gradient(grad_output, &mut input_tensors, some_output)?;
@@ -791,8 +778,6 @@ where
         for (&input_id, input_grad) in input_ids.iter().zip(input_grads) {
             self.accumulate_gradient(input_id, input_grad)?;
         }
-
-
 
         Ok(())
     }
@@ -967,11 +952,11 @@ where
 
     /// Get statistics about memory usage
     pub fn get_memory_stats(&self) -> MemoryStats {
-        let total_nodes_vec: Vec<&Node<T>> = self.nodes.values().filter(
-
-            |node| node.is_evaluated() && node.get_tensor().is_some()
-
-        ).collect();
+        let total_nodes_vec: Vec<&Node<T>> = self
+            .nodes
+            .values()
+            .filter(|node| node.is_evaluated() && node.get_tensor().is_some())
+            .collect();
         let total_nodes = total_nodes_vec.len();
         let cleanable_nodes = self
             .nodes
@@ -992,7 +977,6 @@ where
         }
     }
 
-
     pub fn print_stats(&self) {
         let graph_stats = self.get_memory_stats();
 
@@ -1009,6 +993,5 @@ where
         let count = graph_stats.cleanable_nodes;
         println!("[DEBUG]: CLEANABLE NODES: {}", count);
         println!("==============================================");
-
     }
 }

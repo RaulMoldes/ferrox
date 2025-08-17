@@ -3,7 +3,7 @@
 
 use crate::backend::storage::{CPUStorage, StorageBackend};
 use crate::{FerroxCudaF, FerroxCudaN, FerroxN};
-use ndarray::{Array2, ArrayD, IxDyn};
+use ndarray::{Array1, Array2, ArrayD, ArrayView1, Ix1, IxDyn};
 
 /// Function to convert image patches to column matrix (im2col)
 /// This transforms 4D convolution into efficient 2D matrix multiplication
@@ -335,5 +335,41 @@ where
         let result_data: Vec<T> = result_2d.iter().cloned().collect();
         ArrayD::from_shape_vec(IxDyn(output_shape), result_data)
             .map_err(|e| format!("Filter reshape failed: {e}"))
+    }
+
+    /// Performs 1D convolution on flattened arrays
+    /// This matches the CUDA kernel behavior for simple 1D convolution
+    pub fn conv1d_impl(&self, filter_data: &ArrayD<T>) -> Result<ArrayD<T>, String> {
+        let arrayd = self.cpu_data()?;
+        let input: ArrayView1<T> = arrayd
+            .view()
+            .into_dimensionality::<Ix1>()
+            .map_err(|_| "Input array is not 1D".to_string())?;
+
+        let filter: ArrayView1<T> = filter_data
+            .view()
+            .into_dimensionality::<Ix1>()
+            .map_err(|_| "Filter array is not 1D".to_string())?;
+        let input_size = input.len();
+        let kernel_size = filter.len();
+
+        // Calculate output size
+        let output_size = input_size.saturating_sub(kernel_size).saturating_add(1);
+        if output_size == 0_usize {
+            return Err("Kernel size cannot be larger than input size".to_string());
+        }
+
+        let mut output = Array1::zeros(output_size);
+
+        // Perform 1D convolution
+        for i in 0..output_size {
+            let mut sum = FerroxN::zero();
+            for j in 0..kernel_size {
+                sum += input[i + j] * filter[j];
+            }
+            output[i] = sum;
+        }
+
+        Ok(output.into_dyn())
     }
 }

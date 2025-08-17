@@ -1235,9 +1235,7 @@ impl KernelManager {
         )
     }
 
-
-
-     pub fn launch_conv1d_forward<T>(
+    pub fn launch_conv1d_forward<T>(
         &self,
         cfg: LaunchConfig,
         input: &CudaSlice<T>,
@@ -1245,13 +1243,11 @@ impl KernelManager {
         output: &mut CudaSlice<T>,
         input_size: i32,
         kernel_size: i32,
-
     ) -> Result<(), String>
     where
         T: FerroxCudaN + 'static,
     {
-
-         let kernel_name = self.get_kernel_name::<T>("conv1d_forward");
+        let kernel_name = self.get_kernel_name::<T>("conv1d_forward");
         launch_kernel!(
             self,
             &kernel_name,
@@ -1259,11 +1255,10 @@ impl KernelManager {
             input,
             filter,
             output,
-        &input_size,
-        &kernel_size
+            &input_size,
+            &kernel_size
         )
     }
-
 
     #[allow(clippy::too_many_arguments)]
     pub fn launch_deconv2d<T>(

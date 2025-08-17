@@ -280,6 +280,8 @@ where
         padding: (usize, usize),
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
+    fn conv1d(&self, filter: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+
     fn cross_correlation(
         &self,
         other: &dyn StorageBackend<T>,

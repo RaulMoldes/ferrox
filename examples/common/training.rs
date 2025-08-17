@@ -1,5 +1,5 @@
-use ferrox::backend::manager::show_memory_stats;
 use super::configs::TrainingConfig;
+use ferrox::backend::manager::show_memory_stats;
 use ferrox::backend::FerroxCudaF;
 use ferrox::dataset::BatchedDataset;
 use ferrox::graph::{AutoFerroxEngine, NodeId};
