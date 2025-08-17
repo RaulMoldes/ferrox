@@ -1352,6 +1352,61 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
+
+
+    pub fn cross_correlation1d(
+    &self,
+    input1_in: &CudaTensor<T>,
+    input2_in: &CudaTensor<T>,
+) -> Result<CudaTensor<T>, String> {
+    // Materialize inputs if needed
+    let input1 = if input1_in.needs_materialization() {
+        &self.materialize(input1_in)?
+    } else {
+        input1_in
+    };
+
+    let input2 = if input2_in.needs_materialization() {
+        &self.materialize(input2_in)?
+    } else {
+        input2_in
+    };
+
+    // Calculate sizes
+    let input1_size = input1.shape.iter().product::<usize>();
+    let input2_size = input2.shape.iter().product::<usize>();
+    let kernel_size = input1_size - input2_size + 1;
+
+    if kernel_size == 0 {
+        return Err("Invalid sizes for cross-correlation".to_string());
+    }
+
+    let output_shape = [kernel_size];
+    let mut result = self.get_tensor(&output_shape)?;
+
+    // Configure launch parameters
+    let grid_size = kernel_size.div_ceil(BLOCK_SIZE as usize);
+
+    let cfg = LaunchConfig {
+        grid_dim: (grid_size as u32, 1, 1),
+        block_dim: (BLOCK_SIZE, 1, 1),
+        shared_mem_bytes: 0,
+    };
+
+    // Launch kernel
+    self.kernels.launch_cross_correlation1d(
+        cfg,
+        input1.data(),
+        input2.data(),
+        result.data_mut(),
+        input1_size as i32,
+        input2_size as i32,
+        kernel_size as i32,
+    )?;
+
+    Ok(result)
+}
+
     #[allow(clippy::too_many_arguments)]
     pub fn deconv2d(
         &self,
@@ -1439,7 +1494,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
     /// 2D Convolution backward pass - gradient w.r.t. filter weights
     /// Used in automatic differentiation for Conv2d operator
     #[allow(clippy::too_many_arguments)]
-    pub fn cross_correlation(
+    pub fn cross_correlation2d(
         &self,
         input_in1: &CudaTensor<T>,
         input_in2: &CudaTensor<T>,
@@ -1496,7 +1551,7 @@ impl<T: FerroxCudaN> CudaOps<T> {
         };
 
         // Launch backward filter kernel
-        self.kernels.launch_cross_correlation(
+        self.kernels.launch_cross_correlation2d(
             cfg,
             input1.data(),
             input2.data(),

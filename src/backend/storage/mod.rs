@@ -282,12 +282,18 @@ where
 
     fn conv1d(&self, filter: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn cross_correlation(
+    fn cross_correlation2d(
         &self,
         other: &dyn StorageBackend<T>,
         output_shape: &[usize],
         stride: (usize, usize),
         padding: (usize, usize),
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+
+    fn cross_correlation1d(
+        &self,
+        other: &dyn StorageBackend<T>
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     fn deconv2d(

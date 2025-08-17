@@ -978,7 +978,7 @@ where
         }
     }
 
-    fn cross_correlation(
+    fn cross_correlation2d(
         &self,
         other: &dyn StorageBackend<T>,
         output_shape: &[usize],
@@ -1001,7 +1001,7 @@ where
                 .ok_or("Failed to cast filter to GPU storage")?;
 
             let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
-                ops.cross_correlation(
+                ops.cross_correlation2d(
                     &self.cuda_data,
                     &filter_gpu.cuda_data,
                     output_shape,
@@ -1060,6 +1060,36 @@ where
             )
         }
     }
+
+
+     fn cross_correlation1d(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_shape = other.shape();
+        // Validate input dimensions for conv2d
+        if other_shape.len() != 1 || self.shape().len() != 1 {
+            return Err("Cross correlation 1D requires flattened tensors ".to_string());
+        }
+
+        if other.is_gpu() {
+            // Both tensors on GPU - use CUDA kernels
+            let other_gpu = other
+                .as_any()
+                .downcast_ref::<CUDAStorage<T>>()
+                .ok_or("Failed to cast other to GPU storage")?;
+
+            let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+                ops.conv1d_forward(&self.cuda_data, &other_gpu.cuda_data)
+            })?;
+
+            Ok(Box::new(CUDAStorage::new(result_cuda)))
+        } else {
+            // Mixed GPU/CPU - fall back to CPU computation
+            Err(
+                "Mixed GPU/CPU 1D convolution not supported - move both tensors to same device"
+                    .to_string(),
+            )
+        }
+    }
+
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {
         // Executes custom operation through CUDA ops interface

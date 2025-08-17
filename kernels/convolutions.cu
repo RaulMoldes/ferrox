@@ -30,7 +30,7 @@ __device__ void conv2d_forward_kernel(
     // Shared memory size: input tile + filter
     // Total shared memory size: (TILE_SIZE + kernel_height - 1) *
     extern __shared__ unsigned char smem[];
-    T *shared_mem = reinterpret_cast<T*>(smem);
+    T* shared_mem = reinterpret_cast<T*>(smem);
 
     // Compute the size of the input tile
     // Input tile size is the size of the output tile plus the kernel size minus 1
@@ -276,7 +276,7 @@ void conv2d_forward_f64(
 }
 
 template<typename T>
-__device__ void cross_correlation_kernel(
+__device__ void cross_correlation2d_kernel(
     const T* input1,
     const T* input2,
     T* output,
@@ -335,12 +335,12 @@ __device__ void cross_correlation_kernel(
 
                 if (in_y >= 0 && in_y < in_height && in_x >= 0 && in_x < in_width) {
                     int input_idx = batch_idx * (in_channels * in_height * in_width) +
-                                   in_c * (in_height * in_width) +
-                                   in_y * in_width + in_x;
+                        in_c * (in_height * in_width) +
+                        in_y * in_width + in_x;
 
                     int grad_idx = batch_idx * (out_channels * out_height * out_width) +
-                                  out_c * (out_height * out_width) +
-                                  out_y * out_width + out_x;
+                        out_c * (out_height * out_width) +
+                        out_y * out_width + out_x;
 
                     sum += input1[input_idx] * input2[grad_idx];
                 }
@@ -350,8 +350,8 @@ __device__ void cross_correlation_kernel(
 
     // Write result
     int output_idx = out_c * (in_channels * kernel_height * kernel_width) +
-                    in_c * (kernel_height * kernel_width) +
-                    ky * kernel_width + kx;
+        in_c * (kernel_height * kernel_width) +
+        ky * kernel_width + kx;
     output[output_idx] = sum;
 }
 
@@ -518,7 +518,7 @@ extern "C" __global__ void deconv2d_f64(
 
 
 
-extern "C" __global__ void  cross_correlation(
+extern "C" __global__ void  cross_correlation2d(
     const float* input1,
     const float* input2,
     float* output,
@@ -536,7 +536,7 @@ extern "C" __global__ void  cross_correlation(
     int pad_h,
     int pad_w) {
 
-    cross_correlation_kernel<float>(input1,
+    cross_correlation2d_kernel<float>(input1,
         input2,
         output,
         batch_size,
@@ -556,7 +556,7 @@ extern "C" __global__ void  cross_correlation(
 
 
 
-extern "C" __global__ void cross_correlation_f64(
+extern "C" __global__ void cross_correlation2d_f64(
     const double* input1,
     const double* input2,
     double* output,
@@ -574,7 +574,7 @@ extern "C" __global__ void cross_correlation_f64(
     int pad_h,
     int pad_w) {
 
-    cross_correlation_kernel<double>(input1,
+    cross_correlation2d_kernel<double>(input1,
         input2,
         output,
         batch_size,
@@ -590,4 +590,35 @@ extern "C" __global__ void cross_correlation_f64(
         stride_w,
         pad_h,
         pad_w);
+}
+
+
+
+template <typename T>
+__device__ void cross_correlation1d_kernel(const T* __restrict__ input1,
+    const T* __restrict__ input2,
+    T* __restrict__ output,
+    int input1_size, int input2_size, int output_size)
+{
+    int k = get_global_idx();
+    if (k >= output_size) return;
+
+    T sum = 0;
+    for (int i = 0; i < input2_size; ++i) {
+        sum += input1[i + k] * input2[i];
+    }
+    output[k] = sum;
+}
+
+// Convenience wrappers
+extern "C" __global__
+void cross_correlation1d(const float* input, const float* grad_output, float* grad_filter,
+    int input_size, int grad_size, int kernel_size) {
+    cross_correlation1d_kernel<float>(input, grad_output, grad_filter, input_size, grad_size, kernel_size);
+}
+
+extern "C" __global__
+void cross_correlation1d_f64(const double* input, const double* grad_output, double* grad_filter,
+    int input_size, int grad_size, int kernel_size) {
+    cross_correlation1d_kernel<double>(input, grad_output, grad_filter, input_size, grad_size, kernel_size);
 }

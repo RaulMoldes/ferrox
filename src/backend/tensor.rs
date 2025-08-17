@@ -1341,13 +1341,8 @@ impl<T> Tensor<T>
 where
     T: FerroxCudaF,
 {
-
-
-     /// 2D Convolution using storage backend - replaces old direct implementation
-    pub fn conv1d(
-        &self,
-        filter: &Self,
-    ) -> Result<Self, String> {
+    /// 2D Convolution using storage backend - replaces old direct implementation
+    pub fn conv1d(&self, filter: &Self) -> Result<Self, String> {
         let storage = self
             .storage
             .as_ref()
@@ -1430,7 +1425,7 @@ where
     ///
     /// # Returns
     /// Gradient w.r.t. filter weights with shape `filter_shape`
-    pub fn cross_correlation(
+    pub fn cross_correlation2d(
         &self, // self = input
         grad_output: &Self,
         filter_shape: &[usize],
@@ -1446,7 +1441,7 @@ where
             .as_ref()
             .ok_or("Grad_output tensor has no storage backend")?;
 
-        let result_storage = storage.cross_correlation(
+        let result_storage = storage.cross_correlation2d(
             grad_output_storage.as_ref(),
             filter_shape,
             stride,

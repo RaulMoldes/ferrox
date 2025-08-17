@@ -211,7 +211,7 @@ where
 
         // 2. Gradient w.r.t. filter (weight gradient) using cross-correlation
         let grad_filter =
-            input.cross_correlation(&grad_output, filter.shape(), self.stride, self.padding)?;
+            input.cross_correlation2d(&grad_output, filter.shape(), self.stride, self.padding)?;
 
         Ok(vec![grad_input, grad_filter])
     }

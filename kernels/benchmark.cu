@@ -391,7 +391,7 @@ void run_and_time_conv2d(const char* name,
 }
 
 template <typename T>
-void run_and_time_cross_correlation(const char* name,
+void run_and_time_cross_correlation2d(const char* name,
     void (*kernel)(const T*, const T*, T*, int, int, int, int, int, int, int, int, int, int, int, int, int),
     const T* d_input1, const T* d_input2, T* d_output,
     int batch_size, int in_channels, int in_height, int in_width,
@@ -402,7 +402,7 @@ void run_and_time_cross_correlation(const char* name,
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
 
-    // CORRECTED: Match ops.rs cross_correlation launch config exactly
+    // CORRECTED: Match ops.rs cross_correlation2d launch config exactly
     // ops.rs uses: grid_x = kernel_width.div_ceil(16), grid_y = kernel_height.div_ceil(16), grid_z = in_channels * out_channels
     // block_dim: (16, 16, 1), shared_mem_bytes: 0
 
@@ -746,7 +746,7 @@ int main() {
     run_and_time_deconv2d("deconv2d", deconv2d,
         d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_cross_correlation("cross_correlation", cross_correlation,
+    run_and_time_cross_correlation2d("cross_correlation2d", cross_correlation2d,
         d_conv_input_f32, d_conv_filter_f32, d_conv_output_f32,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 
@@ -816,7 +816,7 @@ int main() {
     run_and_time_deconv2d("deconv2d_f64", deconv2d_f64,
         d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
-    run_and_time_cross_correlation("cross_correlation_f64", cross_correlation_f64,
+    run_and_time_cross_correlation2d("cross_correlation2d_f64", cross_correlation2d_f64,
         d_conv_input_f64, d_conv_filter_f64, d_conv_output_f64,
         1, 3, CONV_SIZE, CONV_SIZE, 32, CONV_SIZE, CONV_SIZE, 3, 3, 1, 1, 1, 1);
 

@@ -307,7 +307,7 @@ where
     }
 
     /// Cross-correlation implementation (gradient w.r.t. filter)
-    pub fn cross_correlation_impl(
+    pub fn cross_correlation2d_impl(
         &self,
         grad_output: &ArrayD<T>,
         output_shape: &[usize],
@@ -368,6 +368,51 @@ where
                 sum += input[i + j] * filter[j];
             }
             output[i] = sum;
+        }
+
+        Ok(output.into_dyn())
+    }
+
+
+
+    /// Performs 1D cross-correlation for gradient computation
+    /// Used to compute filter gradients in conv1d backward pass
+    /// input: original input tensor, grad_output: gradient from next layer
+    /// Returns: gradient w.r.t. filter
+    pub fn cross_correlation1d(
+        &self,
+        input2_data: ArrayD<T>,
+    ) -> Result<ArrayD<T>, String> {
+
+         let arrayd = self.cpu_data()?;
+        let input1: ArrayView1<T> = arrayd
+            .view()
+            .into_dimensionality::<Ix1>()
+            .map_err(|_| "Input 1 array is not 1D".to_string())?;
+
+         let input2: ArrayView1<T> = input2_data
+            .view()
+            .into_dimensionality::<Ix1>()
+            .map_err(|_| "Input 2 array is not 1D".to_string())?;
+
+        let input1_size = input1.len();
+        let input2_size = input2.len();
+
+        // Calculate kernel size from input and output sizes
+        let kernel_size = input1_size.saturating_sub(input2_size).saturating_add(1);
+        if kernel_size == 0 {
+            return Err("Invalid sizes for cross-correlation".to_string());
+        }
+
+        let mut output = Array1::zeros(kernel_size);
+
+        // Cross-correlation: for each position in filter, compute dot product
+        for k in 0..kernel_size {
+            let mut sum = FerroxN::zero();
+            for i in 0..input2_size {
+                sum += input1[i + k] * input2[i];
+            }
+            output[k] = sum;
         }
 
         Ok(output.into_dyn())

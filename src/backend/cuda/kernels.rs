@@ -139,8 +139,8 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "conv2d_forward_f64",
             "deconv2d",
             "deconv2d_f64",
-            "cross_correlation",
-            "cross_correlation_f64",
+            "cross_correlation2d",
+            "cross_correlation2d_f64",
             "conv1d_forward",
             "conv1d_forward_f64",
         ],
@@ -1261,6 +1261,34 @@ impl KernelManager {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn launch_cross_correlation1d<T>(
+    &self,
+    cfg: LaunchConfig,
+    input1: &CudaSlice<T>,
+    input2: &CudaSlice<T>,
+    output: &mut CudaSlice<T>,
+    input1_size: i32,
+    input2_size: i32,
+    output_size: i32,
+) -> Result<(), String>
+where
+    T: FerroxCudaN + 'static,
+{
+    let kernel_name = self.get_kernel_name::<T>("cross_correlation1d");
+    launch_kernel!(
+        self,
+        &kernel_name,
+        cfg,
+        input1,
+        input2,
+        output,
+        &input1_size,
+        &input2_size,
+        &output_size
+    )
+}
+
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_deconv2d<T>(
         &self,
         cfg: LaunchConfig,
@@ -1307,7 +1335,7 @@ impl KernelManager {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn launch_cross_correlation<T>(
+    pub fn launch_cross_correlation2d<T>(
         &self,
         cfg: LaunchConfig,
         input1: &CudaSlice<T>,
@@ -1331,7 +1359,7 @@ impl KernelManager {
         T: FerroxCudaN + 'static,
     {
         self.launch_conv2d(
-            "cross_correlation",
+            "cross_correlation2d",
             cfg,
             input1,
             input2,

@@ -2467,24 +2467,24 @@ $L__BB5_58:
 	ret;
 
 }
-	// .globl	cross_correlation
-.visible .entry cross_correlation(
-	.param .u64 cross_correlation_param_0,
-	.param .u64 cross_correlation_param_1,
-	.param .u64 cross_correlation_param_2,
-	.param .u32 cross_correlation_param_3,
-	.param .u32 cross_correlation_param_4,
-	.param .u32 cross_correlation_param_5,
-	.param .u32 cross_correlation_param_6,
-	.param .u32 cross_correlation_param_7,
-	.param .u32 cross_correlation_param_8,
-	.param .u32 cross_correlation_param_9,
-	.param .u32 cross_correlation_param_10,
-	.param .u32 cross_correlation_param_11,
-	.param .u32 cross_correlation_param_12,
-	.param .u32 cross_correlation_param_13,
-	.param .u32 cross_correlation_param_14,
-	.param .u32 cross_correlation_param_15
+	// .globl	cross_correlation2d
+.visible .entry cross_correlation2d(
+	.param .u64 cross_correlation2d_param_0,
+	.param .u64 cross_correlation2d_param_1,
+	.param .u64 cross_correlation2d_param_2,
+	.param .u32 cross_correlation2d_param_3,
+	.param .u32 cross_correlation2d_param_4,
+	.param .u32 cross_correlation2d_param_5,
+	.param .u32 cross_correlation2d_param_6,
+	.param .u32 cross_correlation2d_param_7,
+	.param .u32 cross_correlation2d_param_8,
+	.param .u32 cross_correlation2d_param_9,
+	.param .u32 cross_correlation2d_param_10,
+	.param .u32 cross_correlation2d_param_11,
+	.param .u32 cross_correlation2d_param_12,
+	.param .u32 cross_correlation2d_param_13,
+	.param .u32 cross_correlation2d_param_14,
+	.param .u32 cross_correlation2d_param_15
 )
 {
 	.reg .pred 	%p<49>;
@@ -2493,22 +2493,22 @@ $L__BB5_58:
 	.reg .b64 	%rd<37>;
 
 
-	ld.param.u64 	%rd4, [cross_correlation_param_0];
-	ld.param.u64 	%rd5, [cross_correlation_param_1];
-	ld.param.u64 	%rd3, [cross_correlation_param_2];
-	ld.param.u32 	%r57, [cross_correlation_param_3];
-	ld.param.u32 	%r58, [cross_correlation_param_4];
-	ld.param.u32 	%r59, [cross_correlation_param_5];
-	ld.param.u32 	%r60, [cross_correlation_param_6];
-	ld.param.u32 	%r61, [cross_correlation_param_7];
-	ld.param.u32 	%r62, [cross_correlation_param_8];
-	ld.param.u32 	%r63, [cross_correlation_param_9];
-	ld.param.u32 	%r64, [cross_correlation_param_10];
-	ld.param.u32 	%r65, [cross_correlation_param_11];
-	ld.param.u32 	%r66, [cross_correlation_param_12];
-	ld.param.u32 	%r67, [cross_correlation_param_13];
-	ld.param.u32 	%r68, [cross_correlation_param_14];
-	ld.param.u32 	%r69, [cross_correlation_param_15];
+	ld.param.u64 	%rd4, [cross_correlation2d_param_0];
+	ld.param.u64 	%rd5, [cross_correlation2d_param_1];
+	ld.param.u64 	%rd3, [cross_correlation2d_param_2];
+	ld.param.u32 	%r57, [cross_correlation2d_param_3];
+	ld.param.u32 	%r58, [cross_correlation2d_param_4];
+	ld.param.u32 	%r59, [cross_correlation2d_param_5];
+	ld.param.u32 	%r60, [cross_correlation2d_param_6];
+	ld.param.u32 	%r61, [cross_correlation2d_param_7];
+	ld.param.u32 	%r62, [cross_correlation2d_param_8];
+	ld.param.u32 	%r63, [cross_correlation2d_param_9];
+	ld.param.u32 	%r64, [cross_correlation2d_param_10];
+	ld.param.u32 	%r65, [cross_correlation2d_param_11];
+	ld.param.u32 	%r66, [cross_correlation2d_param_12];
+	ld.param.u32 	%r67, [cross_correlation2d_param_13];
+	ld.param.u32 	%r68, [cross_correlation2d_param_14];
+	ld.param.u32 	%r69, [cross_correlation2d_param_15];
 	cvta.to.global.u64 	%rd1, %rd5;
 	cvta.to.global.u64 	%rd2, %rd4;
 	mov.u32 	%r70, %ntid.x;
@@ -2829,24 +2829,24 @@ $L__BB6_29:
 	ret;
 
 }
-	// .globl	cross_correlation_f64
-.visible .entry cross_correlation_f64(
-	.param .u64 cross_correlation_f64_param_0,
-	.param .u64 cross_correlation_f64_param_1,
-	.param .u64 cross_correlation_f64_param_2,
-	.param .u32 cross_correlation_f64_param_3,
-	.param .u32 cross_correlation_f64_param_4,
-	.param .u32 cross_correlation_f64_param_5,
-	.param .u32 cross_correlation_f64_param_6,
-	.param .u32 cross_correlation_f64_param_7,
-	.param .u32 cross_correlation_f64_param_8,
-	.param .u32 cross_correlation_f64_param_9,
-	.param .u32 cross_correlation_f64_param_10,
-	.param .u32 cross_correlation_f64_param_11,
-	.param .u32 cross_correlation_f64_param_12,
-	.param .u32 cross_correlation_f64_param_13,
-	.param .u32 cross_correlation_f64_param_14,
-	.param .u32 cross_correlation_f64_param_15
+	// .globl	cross_correlation2d_f64
+.visible .entry cross_correlation2d_f64(
+	.param .u64 cross_correlation2d_f64_param_0,
+	.param .u64 cross_correlation2d_f64_param_1,
+	.param .u64 cross_correlation2d_f64_param_2,
+	.param .u32 cross_correlation2d_f64_param_3,
+	.param .u32 cross_correlation2d_f64_param_4,
+	.param .u32 cross_correlation2d_f64_param_5,
+	.param .u32 cross_correlation2d_f64_param_6,
+	.param .u32 cross_correlation2d_f64_param_7,
+	.param .u32 cross_correlation2d_f64_param_8,
+	.param .u32 cross_correlation2d_f64_param_9,
+	.param .u32 cross_correlation2d_f64_param_10,
+	.param .u32 cross_correlation2d_f64_param_11,
+	.param .u32 cross_correlation2d_f64_param_12,
+	.param .u32 cross_correlation2d_f64_param_13,
+	.param .u32 cross_correlation2d_f64_param_14,
+	.param .u32 cross_correlation2d_f64_param_15
 )
 {
 	.reg .pred 	%p<49>;
@@ -2855,21 +2855,21 @@ $L__BB6_29:
 	.reg .b64 	%rd<38>;
 
 
-	ld.param.u64 	%rd4, [cross_correlation_f64_param_0];
-	ld.param.u64 	%rd5, [cross_correlation_f64_param_1];
-	ld.param.u32 	%r57, [cross_correlation_f64_param_3];
-	ld.param.u32 	%r58, [cross_correlation_f64_param_4];
-	ld.param.u32 	%r59, [cross_correlation_f64_param_5];
-	ld.param.u32 	%r60, [cross_correlation_f64_param_6];
-	ld.param.u32 	%r61, [cross_correlation_f64_param_7];
-	ld.param.u32 	%r62, [cross_correlation_f64_param_8];
-	ld.param.u32 	%r63, [cross_correlation_f64_param_9];
-	ld.param.u32 	%r64, [cross_correlation_f64_param_10];
-	ld.param.u32 	%r65, [cross_correlation_f64_param_11];
-	ld.param.u32 	%r66, [cross_correlation_f64_param_12];
-	ld.param.u32 	%r67, [cross_correlation_f64_param_13];
-	ld.param.u32 	%r68, [cross_correlation_f64_param_14];
-	ld.param.u32 	%r69, [cross_correlation_f64_param_15];
+	ld.param.u64 	%rd4, [cross_correlation2d_f64_param_0];
+	ld.param.u64 	%rd5, [cross_correlation2d_f64_param_1];
+	ld.param.u32 	%r57, [cross_correlation2d_f64_param_3];
+	ld.param.u32 	%r58, [cross_correlation2d_f64_param_4];
+	ld.param.u32 	%r59, [cross_correlation2d_f64_param_5];
+	ld.param.u32 	%r60, [cross_correlation2d_f64_param_6];
+	ld.param.u32 	%r61, [cross_correlation2d_f64_param_7];
+	ld.param.u32 	%r62, [cross_correlation2d_f64_param_8];
+	ld.param.u32 	%r63, [cross_correlation2d_f64_param_9];
+	ld.param.u32 	%r64, [cross_correlation2d_f64_param_10];
+	ld.param.u32 	%r65, [cross_correlation2d_f64_param_11];
+	ld.param.u32 	%r66, [cross_correlation2d_f64_param_12];
+	ld.param.u32 	%r67, [cross_correlation2d_f64_param_13];
+	ld.param.u32 	%r68, [cross_correlation2d_f64_param_14];
+	ld.param.u32 	%r69, [cross_correlation2d_f64_param_15];
 	cvta.to.global.u64 	%rd1, %rd5;
 	cvta.to.global.u64 	%rd2, %rd4;
 	mov.u32 	%r70, %ntid.x;
@@ -3172,15 +3172,15 @@ $L__BB7_26:
 	add.s32 	%r178, %r178, 1;
 	@%p47 bra 	$L__BB7_5;
 
-	ld.param.u32 	%r173, [cross_correlation_f64_param_3];
+	ld.param.u32 	%r173, [cross_correlation2d_f64_param_3];
 	add.s32 	%r177, %r177, 1;
 	setp.lt.s32 	%p48, %r177, %r173;
 	@%p48 bra 	$L__BB7_4;
 
 $L__BB7_28:
-	ld.param.u64 	%rd37, [cross_correlation_f64_param_2];
-	ld.param.u32 	%r175, [cross_correlation_f64_param_11];
-	ld.param.u32 	%r174, [cross_correlation_f64_param_10];
+	ld.param.u64 	%rd37, [cross_correlation2d_f64_param_2];
+	ld.param.u32 	%r175, [cross_correlation2d_f64_param_11];
+	ld.param.u32 	%r174, [cross_correlation2d_f64_param_10];
 	mad.lo.s32 	%r170, %r2, %r58, %r1;
 	mad.lo.s32 	%r171, %r170, %r174, %r4;
 	mad.lo.s32 	%r172, %r171, %r175, %r3;
@@ -3190,6 +3190,206 @@ $L__BB7_28:
 	st.global.f64 	[%rd36], %fd43;
 
 $L__BB7_29:
+	ret;
+
+}
+	// .globl	cross_correlation1d
+.visible .entry cross_correlation1d(
+	.param .u64 cross_correlation1d_param_0,
+	.param .u64 cross_correlation1d_param_1,
+	.param .u64 cross_correlation1d_param_2,
+	.param .u32 cross_correlation1d_param_3,
+	.param .u32 cross_correlation1d_param_4,
+	.param .u32 cross_correlation1d_param_5
+)
+{
+	.reg .pred 	%p<7>;
+	.reg .f32 	%f<30>;
+	.reg .b32 	%r<26>;
+	.reg .b64 	%rd<28>;
+
+
+	ld.param.u64 	%rd15, [cross_correlation1d_param_0];
+	ld.param.u64 	%rd16, [cross_correlation1d_param_1];
+	ld.param.u64 	%rd14, [cross_correlation1d_param_2];
+	ld.param.u32 	%r13, [cross_correlation1d_param_4];
+	ld.param.u32 	%r14, [cross_correlation1d_param_5];
+	cvta.to.global.u64 	%rd1, %rd16;
+	cvta.to.global.u64 	%rd2, %rd15;
+	mov.u32 	%r15, %ntid.x;
+	mov.u32 	%r16, %ctaid.x;
+	mul.lo.s32 	%r1, %r16, %r15;
+	mov.u32 	%r2, %tid.x;
+	add.s32 	%r3, %r1, %r2;
+	setp.ge.s32 	%p1, %r3, %r14;
+	@%p1 bra 	$L__BB8_9;
+
+	setp.lt.s32 	%p2, %r13, 1;
+	mov.f32 	%f29, 0f00000000;
+	@%p2 bra 	$L__BB8_8;
+
+	add.s32 	%r18, %r13, -1;
+	and.b32  	%r25, %r13, 3;
+	setp.lt.u32 	%p3, %r18, 3;
+	mov.f32 	%f29, 0f00000000;
+	mov.u32 	%r24, 0;
+	@%p3 bra 	$L__BB8_5;
+
+	sub.s32 	%r23, %r13, %r25;
+	mul.wide.s32 	%rd17, %r3, 4;
+	add.s64 	%rd18, %rd2, %rd17;
+	add.s64 	%rd25, %rd18, 8;
+	mov.u64 	%rd24, %rd1;
+
+$L__BB8_4:
+	ld.global.nc.f32 	%f12, [%rd24];
+	ld.global.nc.f32 	%f13, [%rd25+-8];
+	fma.rn.f32 	%f14, %f13, %f12, %f29;
+	ld.global.nc.f32 	%f15, [%rd24+4];
+	ld.global.nc.f32 	%f16, [%rd25+-4];
+	fma.rn.f32 	%f17, %f16, %f15, %f14;
+	ld.global.nc.f32 	%f18, [%rd24+8];
+	ld.global.nc.f32 	%f19, [%rd25];
+	fma.rn.f32 	%f20, %f19, %f18, %f17;
+	ld.global.nc.f32 	%f21, [%rd24+12];
+	ld.global.nc.f32 	%f22, [%rd25+4];
+	fma.rn.f32 	%f29, %f22, %f21, %f20;
+	add.s32 	%r24, %r24, 4;
+	add.s64 	%rd25, %rd25, 16;
+	add.s64 	%rd24, %rd24, 16;
+	add.s32 	%r23, %r23, -4;
+	setp.ne.s32 	%p4, %r23, 0;
+	@%p4 bra 	$L__BB8_4;
+
+$L__BB8_5:
+	setp.eq.s32 	%p5, %r25, 0;
+	@%p5 bra 	$L__BB8_8;
+
+	mul.wide.s32 	%rd19, %r24, 4;
+	add.s64 	%rd27, %rd1, %rd19;
+	add.s32 	%r20, %r2, %r24;
+	add.s32 	%r21, %r20, %r1;
+	mul.wide.s32 	%rd20, %r21, 4;
+	add.s64 	%rd26, %rd2, %rd20;
+
+$L__BB8_7:
+	.pragma "nounroll";
+	ld.global.nc.f32 	%f23, [%rd27];
+	ld.global.nc.f32 	%f24, [%rd26];
+	fma.rn.f32 	%f29, %f24, %f23, %f29;
+	add.s64 	%rd27, %rd27, 4;
+	add.s64 	%rd26, %rd26, 4;
+	add.s32 	%r25, %r25, -1;
+	setp.ne.s32 	%p6, %r25, 0;
+	@%p6 bra 	$L__BB8_7;
+
+$L__BB8_8:
+	cvta.to.global.u64 	%rd21, %rd14;
+	mul.wide.s32 	%rd22, %r3, 4;
+	add.s64 	%rd23, %rd21, %rd22;
+	st.global.f32 	[%rd23], %f29;
+
+$L__BB8_9:
+	ret;
+
+}
+	// .globl	cross_correlation1d_f64
+.visible .entry cross_correlation1d_f64(
+	.param .u64 cross_correlation1d_f64_param_0,
+	.param .u64 cross_correlation1d_f64_param_1,
+	.param .u64 cross_correlation1d_f64_param_2,
+	.param .u32 cross_correlation1d_f64_param_3,
+	.param .u32 cross_correlation1d_f64_param_4,
+	.param .u32 cross_correlation1d_f64_param_5
+)
+{
+	.reg .pred 	%p<7>;
+	.reg .b32 	%r<26>;
+	.reg .f64 	%fd<30>;
+	.reg .b64 	%rd<28>;
+
+
+	ld.param.u64 	%rd15, [cross_correlation1d_f64_param_0];
+	ld.param.u64 	%rd16, [cross_correlation1d_f64_param_1];
+	ld.param.u64 	%rd14, [cross_correlation1d_f64_param_2];
+	ld.param.u32 	%r13, [cross_correlation1d_f64_param_4];
+	ld.param.u32 	%r14, [cross_correlation1d_f64_param_5];
+	cvta.to.global.u64 	%rd1, %rd16;
+	cvta.to.global.u64 	%rd2, %rd15;
+	mov.u32 	%r15, %ntid.x;
+	mov.u32 	%r16, %ctaid.x;
+	mul.lo.s32 	%r1, %r16, %r15;
+	mov.u32 	%r2, %tid.x;
+	add.s32 	%r3, %r1, %r2;
+	setp.ge.s32 	%p1, %r3, %r14;
+	@%p1 bra 	$L__BB9_9;
+
+	setp.lt.s32 	%p2, %r13, 1;
+	mov.f64 	%fd29, 0d0000000000000000;
+	@%p2 bra 	$L__BB9_8;
+
+	add.s32 	%r18, %r13, -1;
+	and.b32  	%r25, %r13, 3;
+	setp.lt.u32 	%p3, %r18, 3;
+	mov.f64 	%fd29, 0d0000000000000000;
+	mov.u32 	%r24, 0;
+	@%p3 bra 	$L__BB9_5;
+
+	sub.s32 	%r23, %r13, %r25;
+	mul.wide.s32 	%rd17, %r3, 8;
+	add.s64 	%rd18, %rd2, %rd17;
+	add.s64 	%rd25, %rd18, 16;
+	mov.u64 	%rd24, %rd1;
+
+$L__BB9_4:
+	ld.global.nc.f64 	%fd12, [%rd24];
+	ld.global.nc.f64 	%fd13, [%rd25+-16];
+	fma.rn.f64 	%fd14, %fd13, %fd12, %fd29;
+	ld.global.nc.f64 	%fd15, [%rd24+8];
+	ld.global.nc.f64 	%fd16, [%rd25+-8];
+	fma.rn.f64 	%fd17, %fd16, %fd15, %fd14;
+	ld.global.nc.f64 	%fd18, [%rd24+16];
+	ld.global.nc.f64 	%fd19, [%rd25];
+	fma.rn.f64 	%fd20, %fd19, %fd18, %fd17;
+	ld.global.nc.f64 	%fd21, [%rd24+24];
+	ld.global.nc.f64 	%fd22, [%rd25+8];
+	fma.rn.f64 	%fd29, %fd22, %fd21, %fd20;
+	add.s32 	%r24, %r24, 4;
+	add.s64 	%rd25, %rd25, 32;
+	add.s64 	%rd24, %rd24, 32;
+	add.s32 	%r23, %r23, -4;
+	setp.ne.s32 	%p4, %r23, 0;
+	@%p4 bra 	$L__BB9_4;
+
+$L__BB9_5:
+	setp.eq.s32 	%p5, %r25, 0;
+	@%p5 bra 	$L__BB9_8;
+
+	mul.wide.s32 	%rd19, %r24, 8;
+	add.s64 	%rd27, %rd1, %rd19;
+	add.s32 	%r20, %r2, %r24;
+	add.s32 	%r21, %r20, %r1;
+	mul.wide.s32 	%rd20, %r21, 8;
+	add.s64 	%rd26, %rd2, %rd20;
+
+$L__BB9_7:
+	.pragma "nounroll";
+	ld.global.nc.f64 	%fd23, [%rd27];
+	ld.global.nc.f64 	%fd24, [%rd26];
+	fma.rn.f64 	%fd29, %fd24, %fd23, %fd29;
+	add.s64 	%rd27, %rd27, 8;
+	add.s64 	%rd26, %rd26, 8;
+	add.s32 	%r25, %r25, -1;
+	setp.ne.s32 	%p6, %r25, 0;
+	@%p6 bra 	$L__BB9_7;
+
+$L__BB9_8:
+	cvta.to.global.u64 	%rd21, %rd14;
+	mul.wide.s32 	%rd22, %r3, 8;
+	add.s64 	%rd23, %rd21, %rd22;
+	st.global.f64 	[%rd23], %fd29;
+
+$L__BB9_9:
 	ret;
 
 }

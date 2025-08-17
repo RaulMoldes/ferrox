@@ -319,6 +319,18 @@ where
         Ok(Box::new(CPUStorage::new(result)))
     }
 
+       fn cross_correlation1d(
+        &self,
+        other: &dyn StorageBackend<T>
+    ) -> Result<Box<dyn StorageBackend<T>>, String>{
+           let other_data = other.cpu_data()?;
+
+        let result = self.conv1d_impl(other_data)?;
+        Ok(Box::new(CPUStorage::new(result)))
+
+
+    }
+
     // Efficient in-place operations using helper method
     fn broadcast_to(&mut self, target_shape: &[usize]) -> Result<(), String> {
         let current_shape = self.shape();
@@ -1107,7 +1119,7 @@ where
         Ok(Box::new(CPUStorage::new(result)))
     }
 
-    fn cross_correlation(
+    fn cross_correlation2d(
         &self,
         other: &dyn StorageBackend<T>,
         output_shape: &[usize],
@@ -1122,7 +1134,7 @@ where
                     .to_string(),
             );
         }
-        let result = self.cross_correlation_impl(other_data, output_shape, stride, padding)?;
+        let result = self.cross_correlation2d_impl(other_data, output_shape, stride, padding)?;
         Ok(Box::new(CPUStorage::new(result)))
     }
 
