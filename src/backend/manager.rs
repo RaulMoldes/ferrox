@@ -50,7 +50,7 @@ impl<T: FerroxCudaN> BackendManager<T> {
         self.cuda_pool.as_ref()
     }
 
-
+    #[allow(unused_variables)]
     pub fn init(pool_config: Option<PoolConfig>) -> Self {
         #[cfg(not(feature = "cuda"))]
         {

@@ -144,7 +144,7 @@ pub struct PoolAllocation<T> {
     pub size: usize,
     pub allocation_id: u64,
 }
-
+#[allow(dead_code)]
 impl<T> PoolAllocation<T> {
     fn new(data: T, size: usize, allocation_id: u64) -> Self {
         Self {

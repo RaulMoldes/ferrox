@@ -665,3 +665,97 @@ void deconv1d_f64(const double* input, const double* filter, double* output,
     int input_size, int kernel_size, int output_size) {
     deconv1d_kernel<double>(input, filter, output, input_size, kernel_size, output_size);
 }
+
+
+
+// Pooling
+template <typename T>
+__device__ void maxpool2d_kernel(const T* input, T* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+
+    // Compute global indices
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = N * C * H_out * W_out;
+
+    if (idx >= total_elements) return;
+
+    // Decode indices (n, c, h_out, w_out)
+    int w_out_pos = idx % W_out;
+    int h_out_pos = (idx / W_out) % H_out;
+    int c = (idx / (W_out * H_out)) % C;
+    int n = idx / (W_out * H_out * C);
+
+    // Compute its position
+    int h_start = h_out_pos * stride - padding;
+    int w_start = w_out_pos * stride - padding;
+
+    // Each thread loads the kernel to shared memory
+    extern __shared__ unsigned char shmem[];
+    T* shared_input = reinterpret_cast<T*>(shmem);
+
+    // Compute thread offset
+    int tid = threadIdx.x;
+    int shared_offset = tid * kernel_size * kernel_size;
+
+    // Load data from kernel to shmem
+    int input_base = n * C * H * W + c * H * W;
+
+    for (int kh = 0; kh < kernel_size; kh++) {
+        for (int kw = 0; kw < kernel_size; kw++) {
+            int h_pos = h_start + kh;
+            int w_pos = w_start + kw;
+
+            T val = -(T)FLT_MAX;  // Default value for padding
+
+            // Check if we are within the limits
+            if (h_pos >= 0 && h_pos < H && w_pos >= 0 && w_pos < W) {
+                int input_idx = input_base + h_pos * W + w_pos;
+                val = input[input_idx];
+            }
+
+            // Load to shmem
+            int shared_idx = shared_offset + kh * kernel_size + kw;
+            shared_input[shared_idx] = val;
+        }
+    }
+
+    // Sincronizae this block
+    __syncthreads();
+
+    // Find the maximum in shmem
+    T max_val = -(T)FLT_MAX;
+
+    for (int i = 0; i < kernel_size * kernel_size; i++) {
+        int shared_idx = shared_offset + i;
+        max_val = max(max_val, shared_input[shared_idx]);
+    }
+
+    // Write result back to HBM
+    output[idx] = max_val;
+}
+
+
+extern "C" __global__ void  maxpool2d(const float* input, float* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+
+    maxpool2d_kernel<float>(input,output,
+        N,  C, H, W,
+        H_out, W_out,
+        kernel_size, stride,  padding);
+}
+
+
+extern "C" __global__ void  maxpool2d_f64(const double* input, double* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+
+    maxpool2d_kernel<double>(input, output,
+        N, C, H, W,
+        H_out, W_out,
+        kernel_size, stride, padding);
+}
