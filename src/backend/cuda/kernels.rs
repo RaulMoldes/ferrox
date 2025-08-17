@@ -147,6 +147,8 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "deconv1d_f64",
             "cross_correlation1d",
             "cross_correlation1d_f64",
+            "max_pool2d",
+            "max_pool2d_f64"
         ],
     },
     KernelConfig {

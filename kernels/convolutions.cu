@@ -667,18 +667,52 @@ void deconv1d_f64(const double* input, const double* filter, double* output,
 }
 
 
-
-// Pooling
+// POOLING OPS.
+// Wrote This structs for reusability.
 template <typename T>
-__device__ void maxpool2d_kernel(const T* input, T* output,
+struct MaxPoolOp {
+    __device__ static T init_value() { return -(T)FLT_MAX; }
+
+    __device__ static T padding_value() { return -(T)FLT_MAX; }
+
+    __device__ static void accumulate(T& accumulator, T value, int& count, bool is_valid) {
+        if (is_valid) {
+            accumulator = max(accumulator, value);
+        }
+    }
+
+    __device__ static T finalize(T accumulator, int valid_count) {
+        return accumulator;
+    }
+};
+
+template <typename T>
+struct AvgPoolOp {
+    __device__ static T init_value() { return (T)0; }
+
+    __device__ static T padding_value() { return (T)0; }
+
+    __device__ static void accumulate(T& accumulator, T value, int& count, bool is_valid) {
+        if (is_valid) {
+            accumulator += value;
+            count++;
+        }
+    }
+
+    __device__ static T finalize(T accumulator, int valid_count) {
+        return (valid_count > 0) ? accumulator / (T)valid_count : (T)0;
+    }
+};
+
+// Generic pooling kernel
+template <typename T, typename PoolOp>
+__device__ void pool2d_kernel(const T* input, T* output,
     int N, int C, int H, int W,
     int H_out, int W_out,
     int kernel_size, int stride, int padding) {
-
     // Compute global indices
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int total_elements = N * C * H_out * W_out;
-
     if (idx >= total_elements) return;
 
     // Decode indices (n, c, h_out, w_out)
@@ -706,8 +740,7 @@ __device__ void maxpool2d_kernel(const T* input, T* output,
         for (int kw = 0; kw < kernel_size; kw++) {
             int h_pos = h_start + kh;
             int w_pos = w_start + kw;
-
-            T val = -(T)FLT_MAX;  // Default value for padding
+            T val = PoolOp::padding_value(); // Operation-specific padding value
 
             // Check if we are within the limits
             if (h_pos >= 0 && h_pos < H && w_pos >= 0 && w_pos < W) {
@@ -721,41 +754,205 @@ __device__ void maxpool2d_kernel(const T* input, T* output,
         }
     }
 
-    // Sincronizae this block
+    // Synchronize this block
     __syncthreads();
 
-    // Find the maximum in shmem
-    T max_val = -(T)FLT_MAX;
+    // Perform pooling operation from shmem
+    T accumulator = PoolOp::init_value();
+    int valid_count = 0;
 
-    for (int i = 0; i < kernel_size * kernel_size; i++) {
-        int shared_idx = shared_offset + i;
-        max_val = max(max_val, shared_input[shared_idx]);
+    for (int kh = 0; kh < kernel_size; kh++) {
+        for (int kw = 0; kw < kernel_size; kw++) {
+            int h_pos = h_start + kh;
+            int w_pos = w_start + kw;
+            bool is_valid = (h_pos >= 0 && h_pos < H && w_pos >= 0 && w_pos < W);
+
+            int shared_idx = shared_offset + kh * kernel_size + kw;
+            T value = shared_input[shared_idx];
+
+            PoolOp::accumulate(accumulator, value, valid_count, is_valid);
+        }
     }
 
+    // Finalize result
+    T result = PoolOp::finalize(accumulator, valid_count);
+
     // Write result back to HBM
-    output[idx] = max_val;
+    output[idx] = result;
 }
 
 
-extern "C" __global__ void  maxpool2d(const float* input, float* output,
-    int N, int C, int H, int W,
-    int H_out, int W_out,
+// 1D pooling kernel
+template <typename T, typename PoolOp>
+__device__ void pool1d_kernel(const T* input, T* output,
+    int N, int C, int L,
+    int L_out,
     int kernel_size, int stride, int padding) {
+    // Compute global indices
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_elements = N * C * L_out;
+    if (idx >= total_elements) return;
 
-    maxpool2d_kernel<float>(input,output,
-        N,  C, H, W,
-        H_out, W_out,
-        kernel_size, stride,  padding);
+    // Decode indices (n, c, l_out)
+    int l_out_pos = idx % L_out;
+    int c = (idx / L_out) % C;
+    int n = idx / (L_out * C);
+
+    // Compute its position
+    int l_start = l_out_pos * stride - padding;
+
+    // Each thread loads the kernel to shared memory
+    extern __shared__ unsigned char shmem[];
+    T* shared_input = reinterpret_cast<T*>(shmem);
+
+    // Compute thread offset
+    int tid = threadIdx.x;
+    int shared_offset = tid * kernel_size;
+
+    // Load data from kernel to shmem
+    int input_base = n * C * L + c * L;
+
+    for (int kl = 0; kl < kernel_size; kl++) {
+        int l_pos = l_start + kl;
+        T val = PoolOp::padding_value();
+
+        // Check if we are within the limits
+        if (l_pos >= 0 && l_pos < L) {
+            int input_idx = input_base + l_pos;
+            val = input[input_idx];
+        }
+
+        // Load to shmem
+        int shared_idx = shared_offset + kl;
+        shared_input[shared_idx] = val;
+    }
+
+    // Synchronize this block
+    __syncthreads();
+
+    // Perform pooling operation from shmem
+    T accumulator = PoolOp::init_value();
+    int valid_count = 0;
+
+    for (int kl = 0; kl < kernel_size; kl++) {
+        int l_pos = l_start + kl;
+        bool is_valid = (l_pos >= 0 && l_pos < L);
+
+        int shared_idx = shared_offset + kl;
+        T value = shared_input[shared_idx];
+
+        PoolOp::accumulate(accumulator, value, valid_count, is_valid);
+    }
+
+    // Finalize result
+    T result = PoolOp::finalize(accumulator, valid_count);
+
+    // Write result back to HBM
+    output[idx] = result;
 }
 
 
-extern "C" __global__ void  maxpool2d_f64(const double* input, double* output,
+// Convenience wrappers
+template <typename T>
+__device__ void maxpool2d_kernel(const T* input, T* output,
     int N, int C, int H, int W,
     int H_out, int W_out,
     int kernel_size, int stride, int padding) {
+    pool2d_kernel<T, MaxPoolOp<T>>(input, output, N, C, H, W,
+        H_out, W_out, kernel_size, stride, padding);
+}
 
-    maxpool2d_kernel<double>(input, output,
-        N, C, H, W,
-        H_out, W_out,
+template <typename T>
+__device__ void avgpool2d_kernel(const T* input, T* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    pool2d_kernel<T, AvgPoolOp<T>>(input, output, N, C, H, W,
+        H_out, W_out, kernel_size, stride, padding);
+}
+
+
+// 1D Convenience wrappers
+template <typename T>
+__device__ void maxpool1d_kernel(const T* input, T* output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    pool1d_kernel<T, MaxPoolOp<T>>(input, output, N, C, L, L_out,
+        kernel_size, stride, padding);
+}
+
+template <typename T>
+__device__ void avgpool1d_kernel(const T* input, T* output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    pool1d_kernel<T, AvgPoolOp<T>>(input, output, N, C, L, L_out,
+        kernel_size, stride, padding);
+}
+
+
+
+// POOLING KERNEL LAUNCHERS
+extern "C" __global__ void maxpool_2d(const float* input, float* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    maxpool2d_kernel<float>(input, output, N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+// POOLING KERNEL LAUNCHERS
+extern "C" __global__ void maxpool_2d_f64(const double* input, double* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    maxpool2d_kernel<double>(input, output, N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+
+extern "C" __global__ void avgpool_2d(const float* input, float* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    avgpool2d_kernel<float>(input, output, N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+// POOLING KERNEL LAUNCHERS
+extern "C" __global__ void avgpool_2d_f64(const double* input, double* output,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    avgpool2d_kernel<double>(input, output, N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+
+extern "C" __global__ void maxpool1d(const float* input, float* output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    maxpool1d_kernel<float>(input, output, N, C, L, L_out,
+        kernel_size, stride, padding);
+}
+
+
+
+extern "C" __global__ void maxpool1d_f64(const double* input, double* output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    maxpool1d_kernel<double>(input, output, N, C, L, L_out,
+        kernel_size, stride, padding);
+}
+
+
+extern "C" __global__ void avgpool1d(const float* input, float* output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    maxpool1d_kernel<float>(input, output, N, C, L, L_out,
+        kernel_size, stride, padding);
+}
+
+
+
+extern "C" __global__ void avgpool1d_f64(const double* input, double* output,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    maxpool1d_kernel<double>(input, output, N, C, L, L_out,
         kernel_size, stride, padding);
 }

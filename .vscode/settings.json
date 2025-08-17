@@ -7,6 +7,7 @@
     "Dockerfile*": "dockerfile",
     "*.toml": "toml",
     "*.ron": "rust",
-    "__locale": "cpp"
+    "__locale": "cpp",
+    "__config": "cpp"
   }
 }
