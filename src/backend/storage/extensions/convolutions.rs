@@ -381,7 +381,7 @@ where
     /// Returns: gradient w.r.t. filter
     pub fn cross_correlation1d(
         &self,
-        input2_data: ArrayD<T>,
+        input2_data: &ArrayD<T>,
     ) -> Result<ArrayD<T>, String> {
 
          let arrayd = self.cpu_data()?;
@@ -416,5 +416,48 @@ where
         }
 
         Ok(output.into_dyn())
+    }
+
+
+    /// Performs 1D deconvolution for gradient computation
+    /// Used to compute input gradients in conv1d backward pass
+    /// grad_output: gradient from next layer, filter: convolution filter
+    /// Returns: gradient w.r.t. input
+    pub fn deconv1d_impl(&self, filter_data: &ArrayD<T>) -> Result<ArrayD<T>, String> {
+        let arrayd = self.cpu_data()?;
+        let grad_output: ArrayView1<T> = arrayd
+            .view()
+            .into_dimensionality::<Ix1>()
+            .map_err(|_| "Grad output array is not 1D".to_string())?;
+
+        let filter: ArrayView1<T> = filter_data
+            .view()
+            .into_dimensionality::<Ix1>()
+            .map_err(|_| "Filter array is not 1D".to_string())?;
+
+        let grad_size = grad_output.len();
+        let kernel_size = filter.len();
+        let input_size = grad_size + kernel_size - 1;
+
+        let mut grad_input = Array1::zeros(input_size);
+
+        // Deconvolution: for each position in grad_input, accumulate from relevant grad_output positions
+        for i in 0..input_size {
+            let mut sum = FerroxN::zero();
+
+            // For each position in grad_output that affects grad_input[i]
+            for j in 0..grad_size {
+                let k = i - j; // Filter index (will be flipped)
+                if k == 0_usize && k < kernel_size {
+                    // Use flipped filter: filter[kernel_size - 1 - k]
+                    let filter_idx = kernel_size - 1 - k;
+                    sum += grad_output[j] * filter[filter_idx];
+                }
+            }
+
+            grad_input[i] = sum;
+        }
+
+        Ok(grad_input.into_dyn())
     }
 }

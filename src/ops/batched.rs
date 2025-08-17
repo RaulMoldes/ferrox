@@ -224,3 +224,71 @@ where
         Box::new(self.clone())
     }
 }
+
+
+
+/// 1D Convolution operation for simple arrays
+/// Performs cross-correlation on flattened input and filter tensors
+/// Input: flat 1D array, Filter: flat 1D kernel
+/// Output: 1D result array with size (input_size - kernel_size + 1)
+#[derive(Debug, Clone)]
+pub struct Conv1dOp;
+
+
+
+impl<T> Operator<T> for Conv1dOp
+where
+    T: FerroxCudaF,
+{
+    fn compute(&self, inputs: &mut [&Tensor<T>]) -> Result<Tensor<T>, String> {
+        if inputs.len() != 2 {
+            return Err("Conv1d operation requires exactly 2 inputs (input, filter)".to_string());
+        }
+
+        let input = inputs[0];
+        let filter = inputs[1];
+
+        // Get input and filter sizes
+        let input_size = input.shape().iter().product::<usize>();
+        let kernel_size = filter.shape().iter().product::<usize>();
+
+        // Calculate output size
+        let output_size = input_size - kernel_size + 1;
+        if output_size == 0 {
+            return Err("Kernel size cannot be larger than input size".to_string());
+        }
+
+        // Call tensor-level conv1d implementation
+        input.conv1d(filter)
+    }
+
+    fn gradient(
+        &self,
+        grad_output: Tensor<T>,
+        inputs: &mut [&Tensor<T>],
+        _output: Option<&Tensor<T>>,
+    ) -> Result<Vec<Tensor<T>>, String> {
+        if inputs.len() != 2 {
+            return Err("Conv1d gradient requires exactly 2 inputs".to_string());
+        }
+
+        let input = inputs[0];
+        let filter = inputs[1];
+
+        // Compute gradient w.r.t. input using deconv1d
+        let grad_input = grad_output.deconv1d(filter)?;
+
+        // Compute gradient w.r.t. filter using cross_correlation1d
+        let grad_filter = input.cross_correlation1d(&grad_output)?;
+
+        Ok(vec![grad_input, grad_filter])
+    }
+
+    fn num_inputs(&self) -> usize {
+        2
+    }
+
+    fn clone_op(&self) -> Box<dyn Operator<T>> {
+        Box::new(self.clone())
+    }
+}

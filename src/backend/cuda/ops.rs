@@ -1407,6 +1407,56 @@ impl<T: FerroxCudaN> CudaOps<T> {
     Ok(result)
 }
 
+
+pub fn deconv1d(
+    &self,
+    input_in: &CudaTensor<T>,
+    filter_in: &CudaTensor<T>,
+) -> Result<CudaTensor<T>, String> {
+    // Materialize inputs if needed
+    let grad_output = if input_in.needs_materialization() {
+        &self.materialize(input_in)?
+    } else {
+        input_in
+    };
+
+    let filter = if filter_in.needs_materialization() {
+        &self.materialize(filter_in)?
+    } else {
+        filter_in
+    };
+
+    // Calculate sizes
+    let grad_size = grad_output.shape.iter().product::<usize>();
+    let kernel_size = filter.shape.iter().product::<usize>();
+    let input_size = grad_size + kernel_size - 1;
+
+    let output_shape = [input_size];
+    let mut result = self.get_tensor(&output_shape)?;
+
+    // Configure launch parameters
+    let grid_size = input_size.div_ceil(BLOCK_SIZE as usize);
+
+    let cfg = LaunchConfig {
+        grid_dim: (grid_size as u32, 1, 1),
+        block_dim: (BLOCK_SIZE, 1, 1),
+        shared_mem_bytes: 0,
+    };
+
+    // Launch deconv1d kernel
+    self.kernels.launch_deconv1d(
+        cfg,
+        grad_output.data(),
+        filter.data(),
+        result.data_mut(),
+        grad_size as i32,
+        kernel_size as i32,
+        input_size as i32,
+    )?;
+
+    Ok(result)
+}
+
     #[allow(clippy::too_many_arguments)]
     pub fn deconv2d(
         &self,

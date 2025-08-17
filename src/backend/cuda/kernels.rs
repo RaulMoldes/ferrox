@@ -143,6 +143,10 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "cross_correlation2d_f64",
             "conv1d_forward",
             "conv1d_forward_f64",
+            "deconv1d",
+            "deconv1d_f64",
+            "cross_correlation1d",
+            "cross_correlation1d_f64",
         ],
     },
     KernelConfig {
@@ -1284,6 +1288,34 @@ where
         output,
         &input1_size,
         &input2_size,
+        &output_size
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn launch_deconv1d<T>(
+    &self,
+    cfg: LaunchConfig,
+    input: &CudaSlice<T>,
+    filter: &CudaSlice<T>,
+    output: &mut CudaSlice<T>,
+    input_size: i32,
+    kernel_size: i32,
+    output_size: i32,
+) -> Result<(), String>
+where
+    T: FerroxCudaN + 'static,
+{
+    let kernel_name = self.get_kernel_name::<T>("deconv1d");
+    launch_kernel!(
+        self,
+        &kernel_name,
+        cfg,
+        input,
+        filter,
+        output,
+        &input_size,
+        &kernel_size,
         &output_size
     )
 }

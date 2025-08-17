@@ -612,13 +612,56 @@ __device__ void cross_correlation1d_kernel(const T* __restrict__ input1,
 
 // Convenience wrappers
 extern "C" __global__
-void cross_correlation1d(const float* input, const float* grad_output, float* grad_filter,
-    int input_size, int grad_size, int kernel_size) {
-    cross_correlation1d_kernel<float>(input, grad_output, grad_filter, input_size, grad_size, kernel_size);
+void cross_correlation1d(const float* input1, const float* input2, float* output,
+    int input1_size, int input2_size, int output_size) {
+    cross_correlation1d_kernel<float>(input1, input2, output, input1_size, input2_size, output_size);
 }
 
+
+
+// Convenience wrappers
 extern "C" __global__
-void cross_correlation1d_f64(const double* input, const double* grad_output, double* grad_filter,
-    int input_size, int grad_size, int kernel_size) {
-    cross_correlation1d_kernel<double>(input, grad_output, grad_filter, input_size, grad_size, kernel_size);
+void cross_correlation1d_f64(const double* input1, const double* input2, double* output,
+    int input1_size, int input2_size, int output_size) {
+    cross_correlation1d_kernel<double>(input1, input2, output, input1_size, input2_size, output_size);
+}
+
+
+
+template <typename T>
+__device__ void deconv1d_kernel(const T* __restrict__ input,
+    const T* __restrict__ filter,
+    T* __restrict__ output,
+    int input_size, int kernel_size, int output_size)
+{
+    int i = get_global_idx();
+    if (i >= output_size) return;
+
+    T sum = 0;
+
+    // For each position in output, accumulate from relevant input positions
+    // output[i] = sum over j where j+k=i and j is valid input index
+    for (int j = 0; j < input_size; ++j) {
+        int k = i - j;  // Filter index (flipped)
+        if (k >= 0 && k < kernel_size) {
+            // Use flipped filter: filter[kernel_size - 1 - k]
+            sum += input[j] * filter[kernel_size - 1 - k];
+        }
+    }
+
+    output[i] = sum;
+}
+
+// Convenience wrappers
+extern "C" __global__
+void deconv1d(const float* input, const float* filter, float* output,
+    int input_size, int kernel_size, int output_size) {
+    deconv1d_kernel<float>(input, filter, output, input_size, kernel_size, output_size);
+}
+
+
+extern "C" __global__
+void deconv1d_f64(const double* input, const double* filter, double* output,
+    int input_size, int kernel_size, int output_size) {
+    deconv1d_kernel<double>(input, filter, output, input_size, kernel_size, output_size);
 }

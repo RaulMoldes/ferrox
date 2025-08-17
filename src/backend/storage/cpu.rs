@@ -325,7 +325,20 @@ where
     ) -> Result<Box<dyn StorageBackend<T>>, String>{
            let other_data = other.cpu_data()?;
 
-        let result = self.conv1d_impl(other_data)?;
+        let result = self.cross_correlation1d(other_data)?;
+        Ok(Box::new(CPUStorage::new(result)))
+
+
+    }
+
+
+      fn deconv1d(
+        &self,
+        other: &dyn StorageBackend<T>
+    ) -> Result<Box<dyn StorageBackend<T>>, String>{
+           let other_data = other.cpu_data()?;
+
+        let result = self.deconv1d_impl(other_data)?;
         Ok(Box::new(CPUStorage::new(result)))
 
 

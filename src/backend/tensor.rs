@@ -1357,6 +1357,41 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
+
+
+
+    /// 1D deconvolution using storage backend - replaces old direct implementation
+    pub fn deconv1d(&self, filter: &Self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let filter_storage = filter
+            .storage
+            .as_ref()
+            .ok_or("Filter tensor has no storage backend")?;
+
+        let result_storage = storage.deconv1d(filter_storage.as_ref())?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    //1D cross_correlation using storage backend - replaces old direct implementation
+    pub fn cross_correlation1d(&self, other: &Self) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+        let other_storage = other
+            .storage
+            .as_ref()
+            .ok_or("Filter tensor has no storage backend")?;
+
+        let result_storage = storage.cross_correlation1d(other_storage.as_ref())?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
     /// 2D Convolution using storage backend - replaces old direct implementation
     pub fn conv2d(
         &self,
