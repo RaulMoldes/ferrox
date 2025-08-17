@@ -225,16 +225,12 @@ where
     }
 }
 
-
-
 /// 1D Convolution operation for simple arrays
 /// Performs cross-correlation on flattened input and filter tensors
 /// Input: flat 1D array, Filter: flat 1D kernel
 /// Output: 1D result array with size (input_size - kernel_size + 1)
 #[derive(Debug, Clone)]
 pub struct Conv1dOp;
-
-
 
 impl<T> Operator<T> for Conv1dOp
 where

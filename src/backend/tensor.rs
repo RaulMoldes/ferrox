@@ -1357,9 +1357,6 @@ where
         Self::from_storage_backend(result_storage, self.device)
     }
 
-
-
-
     /// 1D deconvolution using storage backend - replaces old direct implementation
     pub fn deconv1d(&self, filter: &Self) -> Result<Self, String> {
         let storage = self
@@ -1484,6 +1481,203 @@ where
         )?;
 
         Self::from_storage_backend(result_storage, self.device)
+    }
+}
+
+
+/// POOLING OPERATIONS AND UTILITES
+impl<T> Tensor<T>
+where
+    T: FerroxCudaF,
+{
+    /// 2D Max Pooling operation
+    /// Performs max pooling over spatial dimensions (H, W)
+    ///
+    /// # Arguments
+    /// * `kernel_size` - Size of the pooling window (square kernel)
+    /// * `stride` - Step size for the pooling window
+    /// * `padding` - Zero-padding added to input boundaries
+    ///
+    /// # Input Shape
+    /// [batch_size, channels, height, width]
+    ///
+    /// # Output Shape
+    /// [batch_size, channels, height_out, width_out] where:
+    /// - height_out = (height + 2*padding - kernel_size) / stride + 1
+    /// - width_out = (width + 2*padding - kernel_size) / stride + 1
+    pub fn maxpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.maxpool2d(kernel_size, stride, padding)?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    /// 2D Average Pooling operation
+    /// Performs average pooling over spatial dimensions (H, W)
+    ///
+    /// # Arguments
+    /// * `kernel_size` - Size of the pooling window (square kernel)
+    /// * `stride` - Step size for the pooling window
+    /// * `padding` - Zero-padding added to input boundaries
+    ///
+    /// # Input Shape
+    /// [batch_size, channels, height, width]
+    ///
+    /// # Output Shape
+    /// [batch_size, channels, height_out, width_out] where:
+    /// - height_out = (height + 2*padding - kernel_size) / stride + 1
+    /// - width_out = (width + 2*padding - kernel_size) / stride + 1
+    pub fn avgpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.avgpool2d(kernel_size, stride, padding)?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    /// 1D Max Pooling operation
+    /// Performs max pooling over temporal/sequential dimension (L)
+    ///
+    /// # Arguments
+    /// * `kernel_size` - Size of the pooling window
+    /// * `stride` - Step size for the pooling window
+    /// * `padding` - Zero-padding added to input boundaries
+    ///
+    /// # Input Shape
+    /// [batch_size, channels, length]
+    ///
+    /// # Output Shape
+    /// [batch_size, channels, length_out] where:
+    /// - length_out = (length + 2*padding - kernel_size) / stride + 1
+    pub fn maxpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.maxpool1d(kernel_size, stride, padding)?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+
+    /// 1D Average Pooling operation
+    /// Performs average pooling over temporal/sequential dimension (L)
+    ///
+    /// # Arguments
+    /// * `kernel_size` - Size of the pooling window
+    /// * `stride` - Step size for the pooling window
+    /// * `padding` - Zero-padding added to input boundaries
+    ///
+    /// # Input Shape
+    /// [batch_size, channels, length]
+    ///
+    /// # Output Shape
+    /// [batch_size, channels, length_out] where:
+    /// - length_out = (length + 2*padding - kernel_size) / stride + 1
+    pub fn avgpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Self, String> {
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or("Tensor has no storage backend")?;
+
+        let result_storage = storage.avgpool1d(kernel_size, stride, padding)?;
+
+        Self::from_storage_backend(result_storage, self.device)
+    }
+}
+
+// Convenience methods for common pooling configurations
+
+impl<T> Tensor<T>
+where
+    T: FerroxCudaF,
+{
+    /// 2D Max Pooling with 2x2 kernel and stride 2 (common configuration)
+    /// Reduces spatial dimensions by half
+    pub fn maxpool2d_2x2(&self) -> Result<Self, String> {
+        self.maxpool2d(2, 2, 0)
+    }
+
+    /// 2D Average Pooling with 2x2 kernel and stride 2 (common configuration)
+    /// Reduces spatial dimensions by half
+    pub fn avgpool2d_2x2(&self) -> Result<Self, String> {
+        self.avgpool2d(2, 2, 0)
+    }
+
+    /// Global Average Pooling 2D
+    /// Pools each channel to a single value by averaging all spatial locations
+    /// Common in modern architectures like ResNet, replacing fully connected layers
+    ///
+    /// # Input Shape
+    /// [batch_size, channels, height, width]
+    ///
+    /// # Output Shape
+    /// [batch_size, channels, 1, 1]
+    pub fn global_avgpool2d(&self) -> Result<Self, String> {
+        let shape = self.shape();
+        if shape.len() != 4 {
+            return Err("Global average pooling requires 4D tensor [N, C, H, W]".to_string());
+        }
+
+        let (h, w) = (shape[2], shape[3]);
+        // Use kernel size equal to spatial dimensions with stride 1 and no padding
+        self.avgpool2d(h.max(w), 1, 0)
+    }
+
+    /// Adaptive Average Pooling 2D
+    /// Pools to a specific output size regardless of input size
+    /// Useful for handling variable input sizes
+    ///
+    /// # Arguments
+    /// * `output_size` - Target spatial dimensions [height_out, width_out]
+    pub fn adaptive_avgpool2d(&self, output_size: &[usize; 2]) -> Result<Self, String> {
+        let shape = self.shape();
+        if shape.len() != 4 {
+            return Err("Adaptive average pooling requires 4D tensor [N, C, H, W]".to_string());
+        }
+
+        let (in_h, in_w) = (shape[2], shape[3]);
+        let (out_h, out_w) = (output_size[0], output_size[1]);
+
+        // Calculate adaptive kernel size and stride
+        let kernel_h = in_h.div_ceil(out_h); // Ceiling division
+        let kernel_w = in_h.div_ceil(out_h); 
+
+        let stride_h = in_h / out_h;
+        let stride_w = in_w / out_w;
+
+        // For simplicity, use square kernel with average of dimensions
+        let kernel_size = (kernel_h + kernel_w) / 2;
+        let stride = (stride_h + stride_w) / 2;
+
+        self.avgpool2d(kernel_size, stride, 0)
     }
 }
 

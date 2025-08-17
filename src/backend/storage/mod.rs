@@ -282,7 +282,10 @@ where
 
     fn conv1d(&self, filter: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-    fn deconv1d(&self, filter: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String>;
+    fn deconv1d(
+        &self,
+        filter: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     fn cross_correlation2d(
         &self,
@@ -292,10 +295,9 @@ where
         padding: (usize, usize),
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
-
     fn cross_correlation1d(
         &self,
-        other: &dyn StorageBackend<T>
+        other: &dyn StorageBackend<T>,
     ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     fn deconv2d(
@@ -317,6 +319,51 @@ where
     /// Get multi-dimensional index access to elements (if supported)
     /// Returns None if storage doesn't support multi-dim indexing
     fn get_multi(&self, indices: &[usize]) -> Result<Option<T>, String>;
+
+
+    /// 2D Max Pooling operation
+    /// Performs max pooling over spatial dimensions
+    /// Input shape: [batch, channels, height, width]
+    /// Output shape: [batch, channels, height_out, width_out]
+    fn maxpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// 2D Average Pooling operation
+    /// Performs average pooling over spatial dimensions
+    /// Input shape: [batch, channels, height, width]
+    /// Output shape: [batch, channels, height_out, width_out]
+    fn avgpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// 1D Max Pooling operation
+    /// Performs max pooling over temporal/sequential dimension
+    /// Input shape: [batch, channels, length]
+    /// Output shape: [batch, channels, length_out]
+    fn maxpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
+
+    /// 1D Average Pooling operation
+    /// Performs average pooling over temporal/sequential dimension
+    /// Input shape: [batch, channels, length]
+    /// Output shape: [batch, channels, length_out]
+    fn avgpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>;
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String>;*/
 }

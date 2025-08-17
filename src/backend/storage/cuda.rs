@@ -1061,8 +1061,10 @@ where
         }
     }
 
-
-     fn cross_correlation1d(&self, other: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
+    fn cross_correlation1d(
+        &self,
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
         let other_shape = other.shape();
         // Validate input dimensions for conv2d
         if other_shape.len() != 1 || self.shape().len() != 1 {
@@ -1090,10 +1092,11 @@ where
         }
     }
 
-
-
-    fn deconv1d(&self, filter: &dyn StorageBackend<T>) -> Result<Box<dyn StorageBackend<T>>, String> {
-         let filter_shape = filter.shape();
+    fn deconv1d(
+        &self,
+        filter: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let filter_shape = filter.shape();
         // Validate input dimensions for conv2d
         if filter_shape.len() != 1 || self.shape().len() != 1 {
             return Err("Deconv1D requires flattened tensors ".to_string());
@@ -1118,6 +1121,75 @@ where
                     .to_string(),
             )
         }
+    }
+
+
+    fn maxpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let input_shape = self.shape();
+        if input_shape.len() != 4 {
+            return Err("Maxpool2d requires 4D tensor [N, C, H, W]".to_string());
+        }
+
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+            ops.maxpool2d(&self.cuda_data, kernel_size, stride, padding)
+        })?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
+    }
+
+    fn avgpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let input_shape = self.shape();
+        if input_shape.len() != 4 {
+            return Err("Avgpool2d requires 4D tensor [N, C, H, W]".to_string());
+        }
+
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+            ops.avgpool2d(&self.cuda_data, kernel_size, stride, padding)
+        })?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
+    }
+
+    fn maxpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let input_shape = self.shape();
+        if input_shape.len() != 3 {
+            return Err("Maxpool1d requires 3D tensor [N, C, L]".to_string());
+        }
+
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+            ops.maxpool1d(&self.cuda_data, kernel_size, stride, padding)
+        })?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
+    }
+
+    fn avgpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let input_shape = self.shape();
+        if input_shape.len() != 3 {
+            return Err("Avgpool1d requires 3D tensor [N, C, L]".to_string());
+        }
+
+        let result_cuda = with_cuda_ops(|ops: &CudaOps<T>| {
+            ops.avgpool1d(&self.cuda_data, kernel_size, stride, padding)
+        })?;
+        Ok(Box::new(CUDAStorage::new(result_cuda)))
     }
 
     /*fn execute_custom_op<R>(&self, op: Box<dyn CustomOperation<T, R>>) -> Result<R, String> {

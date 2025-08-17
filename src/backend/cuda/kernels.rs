@@ -147,8 +147,14 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "deconv1d_f64",
             "cross_correlation1d",
             "cross_correlation1d_f64",
-            "max_pool2d",
-            "max_pool2d_f64"
+            "maxpool2d",
+            "maxpool2d_f64",
+            "avgpool2d",
+            "avgpool2d_f64",
+            "maxpool1d",
+            "maxpool1d_f64",
+            "avgpool1d",
+            "avgpool1d_f64",
         ],
     },
     KernelConfig {
@@ -1268,59 +1274,59 @@ impl KernelManager {
 
     #[allow(clippy::too_many_arguments)]
     pub fn launch_cross_correlation1d<T>(
-    &self,
-    cfg: LaunchConfig,
-    input1: &CudaSlice<T>,
-    input2: &CudaSlice<T>,
-    output: &mut CudaSlice<T>,
-    input1_size: i32,
-    input2_size: i32,
-    output_size: i32,
-) -> Result<(), String>
-where
-    T: FerroxCudaN + 'static,
-{
-    let kernel_name = self.get_kernel_name::<T>("cross_correlation1d");
-    launch_kernel!(
-        self,
-        &kernel_name,
-        cfg,
-        input1,
-        input2,
-        output,
-        &input1_size,
-        &input2_size,
-        &output_size
-    )
-}
+        &self,
+        cfg: LaunchConfig,
+        input1: &CudaSlice<T>,
+        input2: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        input1_size: i32,
+        input2_size: i32,
+        output_size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("cross_correlation1d");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input1,
+            input2,
+            output,
+            &input1_size,
+            &input2_size,
+            &output_size
+        )
+    }
 
-#[allow(clippy::too_many_arguments)]
-pub fn launch_deconv1d<T>(
-    &self,
-    cfg: LaunchConfig,
-    input: &CudaSlice<T>,
-    filter: &CudaSlice<T>,
-    output: &mut CudaSlice<T>,
-    input_size: i32,
-    kernel_size: i32,
-    output_size: i32,
-) -> Result<(), String>
-where
-    T: FerroxCudaN + 'static,
-{
-    let kernel_name = self.get_kernel_name::<T>("deconv1d");
-    launch_kernel!(
-        self,
-        &kernel_name,
-        cfg,
-        input,
-        filter,
-        output,
-        &input_size,
-        &kernel_size,
-        &output_size
-    )
-}
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_deconv1d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        input_size: i32,
+        kernel_size: i32,
+        output_size: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>("deconv1d");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            filter,
+            output,
+            &input_size,
+            &kernel_size,
+            &output_size
+        )
+    }
 
     #[allow(clippy::too_many_arguments)]
     pub fn launch_deconv2d<T>(
@@ -1411,6 +1417,242 @@ where
             stride_w,
             pad_h,
             pad_w,
+        )
+    }
+
+    // ===== 2D POOLING LAUNCHER =====
+
+    /// Generic launcher for 2D pooling operations (maxpool2d, avgpool2d)
+    /// This handles all 2D pooling where input tensor (N,C,H,W) produces output tensor (N,C,H_out,W_out)
+    /// The operation parameter determines which specific pooling kernel to dispatch to
+    #[allow(clippy::too_many_arguments)]
+    fn launch_pool2d<T>(
+        &self,
+        operation: &str, // "maxpool2d" or "avgpool2d"
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        height: i32,
+        width: i32,
+        height_out: i32,
+        width_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(operation);
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            output,
+            &batch_size,
+            &channels,
+            &height,
+            &width,
+            &height_out,
+            &width_out,
+            &kernel_size,
+            &stride,
+            &padding
+        )
+    }
+
+    // ===== PUBLIC API - 2D POOLING OPERATIONS =====
+
+    /// Launch 2D max pooling operation
+    /// This operation finds the maximum value in each pooling window
+    /// Essential for downsampling in convolutional neural networks while preserving important features
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_max_pool2d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        height: i32,
+        width: i32,
+        height_out: i32,
+        width_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_pool2d(
+            "maxpool2d",
+            cfg,
+            input,
+            output,
+            batch_size,
+            channels,
+            height,
+            width,
+            height_out,
+            width_out,
+            kernel_size,
+            stride,
+            padding,
+        )
+    }
+
+    /// Launch 2D average pooling operation
+    /// This operation computes the average value in each pooling window
+    /// Useful for feature averaging and reducing spatial dimensions with smooth downsampling
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_avg_pool2d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        height: i32,
+        width: i32,
+        height_out: i32,
+        width_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_pool2d(
+            "avgpool2d",
+            cfg,
+            input,
+            output,
+            batch_size,
+            channels,
+            height,
+            width,
+            height_out,
+            width_out,
+            kernel_size,
+            stride,
+            padding,
+        )
+    }
+
+    // ===== 1D POOLING LAUNCHER =====
+
+    /// Generic launcher for 1D pooling operations (maxpool1d, avgpool1d)
+    /// This handles all 1D pooling where input tensor (N,C,L) produces output tensor (N,C,L_out)
+    /// The operation parameter determines which specific pooling kernel to dispatch to
+    #[allow(clippy::too_many_arguments)]
+    fn launch_pool1d<T>(
+        &self,
+        operation: &str, // "maxpool1d" or "avgpool1d"
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        length: i32,
+        length_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        let kernel_name = self.get_kernel_name::<T>(operation);
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            output,
+            &batch_size,
+            &channels,
+            &length,
+            &length_out,
+            &kernel_size,
+            &stride,
+            &padding
+        )
+    }
+
+    // ===== PUBLIC API - 1D POOLING OPERATIONS =====
+
+    /// Launch 1D max pooling operation
+    /// This operation finds the maximum value in each pooling window along the length dimension
+    /// Essential for sequence processing and temporal feature extraction in 1D CNNs
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_max_pool1d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        length: i32,
+        length_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_pool1d(
+            "maxpool1d",
+            cfg,
+            input,
+            output,
+            batch_size,
+            channels,
+            length,
+            length_out,
+            kernel_size,
+            stride,
+            padding,
+        )
+    }
+
+    /// Launch 1D average pooling operation
+    /// This operation computes the average value in each pooling window along the length dimension
+    /// Useful for smooth temporal downsampling and feature averaging in sequence models
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_avg_pool1d<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        batch_size: i32,
+        channels: i32,
+        length: i32,
+        length_out: i32,
+        kernel_size: i32,
+        stride: i32,
+        padding: i32,
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+        self.launch_pool1d(
+            "avgpool1d",
+            cfg,
+            input,
+            output,
+            batch_size,
+            channels,
+            length,
+            length_out,
+            kernel_size,
+            stride,
+            padding,
         )
     }
 

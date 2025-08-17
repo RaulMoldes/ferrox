@@ -319,29 +319,80 @@ where
         Ok(Box::new(CPUStorage::new(result)))
     }
 
-       fn cross_correlation1d(
+    fn cross_correlation1d(
         &self,
-        other: &dyn StorageBackend<T>
-    ) -> Result<Box<dyn StorageBackend<T>>, String>{
-           let other_data = other.cpu_data()?;
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
 
         let result = self.cross_correlation1d(other_data)?;
         Ok(Box::new(CPUStorage::new(result)))
-
-
     }
 
-
-      fn deconv1d(
+    fn deconv1d(
         &self,
-        other: &dyn StorageBackend<T>
-    ) -> Result<Box<dyn StorageBackend<T>>, String>{
-           let other_data = other.cpu_data()?;
+        other: &dyn StorageBackend<T>,
+    ) -> Result<Box<dyn StorageBackend<T>>, String> {
+        let other_data = other.cpu_data()?;
 
         let result = self.deconv1d_impl(other_data)?;
         Ok(Box::new(CPUStorage::new(result)))
+    }
 
+    /// 2D Max Pooling operation
+    /// Performs max pooling over spatial dimensions
+    /// Input shape: [batch, channels, height, width]
+    /// Output shape: [batch, channels, height_out, width_out]
+    fn maxpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>{
+        let result = self.maxpool2d_impl(kernel_size, stride, padding)?;
+        Ok(Box::new(CPUStorage::new(result)))
+    }
 
+    /// 2D Average Pooling operation
+    /// Performs average pooling over spatial dimensions
+    /// Input shape: [batch, channels, height, width]
+    /// Output shape: [batch, channels, height_out, width_out]
+    fn avgpool2d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>{
+        let result = self.avgpool2d_impl(kernel_size, stride, padding)?;
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
+    /// 1D Max Pooling operation
+    /// Performs max pooling over temporal/sequential dimension
+    /// Input shape: [batch, channels, length]
+    /// Output shape: [batch, channels, length_out]
+    fn maxpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>{
+        let result = self.maxpool1d_impl(kernel_size, stride, padding)?;
+        Ok(Box::new(CPUStorage::new(result)))
+    }
+
+    /// 1D Average Pooling operation
+    /// Performs average pooling over temporal/sequential dimension
+    /// Input shape: [batch, channels, length]
+    /// Output shape: [batch, channels, length_out]
+    fn avgpool1d(
+        &self,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<Box<dyn StorageBackend<T>>, String>{
+        let result = self.avgpool1d_impl(kernel_size, stride, padding)?;
+        Ok(Box::new(CPUStorage::new(result)))
     }
 
     // Efficient in-place operations using helper method

@@ -3,7 +3,7 @@
 // Uses CudaContextManager instead of raw CudaContext for consistency
 
 #[cfg(feature = "cuda")]
-use super::{MemoryPool, PoolAllocation, PoolBucket, PoolStats, PoolConfig};
+use super::{MemoryPool, PoolAllocation, PoolBucket, PoolConfig, PoolStats};
 #[cfg(feature = "cuda")]
 use crate::FerroxCudaN;
 
@@ -15,7 +15,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use std::time::{SystemTime, UNIX_EPOCH};
-
 
 #[cfg(feature = "cuda")]
 pub struct CudaMemoryPool<T: FerroxCudaN> {

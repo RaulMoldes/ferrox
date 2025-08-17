@@ -373,24 +373,18 @@ where
         Ok(output.into_dyn())
     }
 
-
-
     /// Performs 1D cross-correlation for gradient computation
     /// Used to compute filter gradients in conv1d backward pass
     /// input: original input tensor, grad_output: gradient from next layer
     /// Returns: gradient w.r.t. filter
-    pub fn cross_correlation1d(
-        &self,
-        input2_data: &ArrayD<T>,
-    ) -> Result<ArrayD<T>, String> {
-
-         let arrayd = self.cpu_data()?;
+    pub fn cross_correlation1d(&self, input2_data: &ArrayD<T>) -> Result<ArrayD<T>, String> {
+        let arrayd = self.cpu_data()?;
         let input1: ArrayView1<T> = arrayd
             .view()
             .into_dimensionality::<Ix1>()
             .map_err(|_| "Input 1 array is not 1D".to_string())?;
 
-         let input2: ArrayView1<T> = input2_data
+        let input2: ArrayView1<T> = input2_data
             .view()
             .into_dimensionality::<Ix1>()
             .map_err(|_| "Input 2 array is not 1D".to_string())?;
@@ -417,7 +411,6 @@ where
 
         Ok(output.into_dyn())
     }
-
 
     /// Performs 1D deconvolution for gradient computation
     /// Used to compute input gradients in conv1d backward pass

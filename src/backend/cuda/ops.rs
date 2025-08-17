@@ -1352,110 +1352,107 @@ impl<T: FerroxCudaN> CudaOps<T> {
         Ok(result)
     }
 
-
-
     pub fn cross_correlation1d(
-    &self,
-    input1_in: &CudaTensor<T>,
-    input2_in: &CudaTensor<T>,
-) -> Result<CudaTensor<T>, String> {
-    // Materialize inputs if needed
-    let input1 = if input1_in.needs_materialization() {
-        &self.materialize(input1_in)?
-    } else {
-        input1_in
-    };
+        &self,
+        input1_in: &CudaTensor<T>,
+        input2_in: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String> {
+        // Materialize inputs if needed
+        let input1 = if input1_in.needs_materialization() {
+            &self.materialize(input1_in)?
+        } else {
+            input1_in
+        };
 
-    let input2 = if input2_in.needs_materialization() {
-        &self.materialize(input2_in)?
-    } else {
-        input2_in
-    };
+        let input2 = if input2_in.needs_materialization() {
+            &self.materialize(input2_in)?
+        } else {
+            input2_in
+        };
 
-    // Calculate sizes
-    let input1_size = input1.shape.iter().product::<usize>();
-    let input2_size = input2.shape.iter().product::<usize>();
-    let kernel_size = input1_size - input2_size + 1;
+        // Calculate sizes
+        let input1_size = input1.shape.iter().product::<usize>();
+        let input2_size = input2.shape.iter().product::<usize>();
+        let kernel_size = input1_size - input2_size + 1;
 
-    if kernel_size == 0 {
-        return Err("Invalid sizes for cross-correlation".to_string());
+        if kernel_size == 0 {
+            return Err("Invalid sizes for cross-correlation".to_string());
+        }
+
+        let output_shape = [kernel_size];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Configure launch parameters
+        let grid_size = kernel_size.div_ceil(BLOCK_SIZE as usize);
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (BLOCK_SIZE, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        // Launch kernel
+        self.kernels.launch_cross_correlation1d(
+            cfg,
+            input1.data(),
+            input2.data(),
+            result.data_mut(),
+            input1_size as i32,
+            input2_size as i32,
+            kernel_size as i32,
+        )?;
+
+        Ok(result)
     }
 
-    let output_shape = [kernel_size];
-    let mut result = self.get_tensor(&output_shape)?;
+    pub fn deconv1d(
+        &self,
+        input_in: &CudaTensor<T>,
+        filter_in: &CudaTensor<T>,
+    ) -> Result<CudaTensor<T>, String> {
+        // Materialize inputs if needed
+        let grad_output = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
 
-    // Configure launch parameters
-    let grid_size = kernel_size.div_ceil(BLOCK_SIZE as usize);
+        let filter = if filter_in.needs_materialization() {
+            &self.materialize(filter_in)?
+        } else {
+            filter_in
+        };
 
-    let cfg = LaunchConfig {
-        grid_dim: (grid_size as u32, 1, 1),
-        block_dim: (BLOCK_SIZE, 1, 1),
-        shared_mem_bytes: 0,
-    };
+        // Calculate sizes
+        let grad_size = grad_output.shape.iter().product::<usize>();
+        let kernel_size = filter.shape.iter().product::<usize>();
+        let input_size = grad_size + kernel_size - 1;
 
-    // Launch kernel
-    self.kernels.launch_cross_correlation1d(
-        cfg,
-        input1.data(),
-        input2.data(),
-        result.data_mut(),
-        input1_size as i32,
-        input2_size as i32,
-        kernel_size as i32,
-    )?;
+        let output_shape = [input_size];
+        let mut result = self.get_tensor(&output_shape)?;
 
-    Ok(result)
-}
+        // Configure launch parameters
+        let grid_size = input_size.div_ceil(BLOCK_SIZE as usize);
 
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size as u32, 1, 1),
+            block_dim: (BLOCK_SIZE, 1, 1),
+            shared_mem_bytes: 0,
+        };
 
-pub fn deconv1d(
-    &self,
-    input_in: &CudaTensor<T>,
-    filter_in: &CudaTensor<T>,
-) -> Result<CudaTensor<T>, String> {
-    // Materialize inputs if needed
-    let grad_output = if input_in.needs_materialization() {
-        &self.materialize(input_in)?
-    } else {
-        input_in
-    };
+        // Launch deconv1d kernel
+        self.kernels.launch_deconv1d(
+            cfg,
+            grad_output.data(),
+            filter.data(),
+            result.data_mut(),
+            grad_size as i32,
+            kernel_size as i32,
+            input_size as i32,
+        )?;
 
-    let filter = if filter_in.needs_materialization() {
-        &self.materialize(filter_in)?
-    } else {
-        filter_in
-    };
-
-    // Calculate sizes
-    let grad_size = grad_output.shape.iter().product::<usize>();
-    let kernel_size = filter.shape.iter().product::<usize>();
-    let input_size = grad_size + kernel_size - 1;
-
-    let output_shape = [input_size];
-    let mut result = self.get_tensor(&output_shape)?;
-
-    // Configure launch parameters
-    let grid_size = input_size.div_ceil(BLOCK_SIZE as usize);
-
-    let cfg = LaunchConfig {
-        grid_dim: (grid_size as u32, 1, 1),
-        block_dim: (BLOCK_SIZE, 1, 1),
-        shared_mem_bytes: 0,
-    };
-
-    // Launch deconv1d kernel
-    self.kernels.launch_deconv1d(
-        cfg,
-        grad_output.data(),
-        filter.data(),
-        result.data_mut(),
-        grad_size as i32,
-        kernel_size as i32,
-        input_size as i32,
-    )?;
-
-    Ok(result)
-}
+        Ok(result)
+    }
 
     #[allow(clippy::too_many_arguments)]
     pub fn deconv2d(
@@ -1619,6 +1616,232 @@ pub fn deconv1d(
             stride_w as i32,
             pad_h as i32,
             pad_w as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 2D Max Pooling operation
+    /// Input: [batch_size, channels, height, width]
+    /// Output: [batch_size, channels, height_out, width_out]
+    /// Downsamples the input by taking the maximum value in each pooling window
+    pub fn maxpool2d(
+        &self,
+        input_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let input = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        // Validate input dimensions
+        if input.shape.len() != 4 {
+            return Err(
+                "MaxPool2D requires 4D tensor [batch, channels, height, width]".to_string(),
+            );
+        }
+
+        let batch_size = input.shape[0];
+        let channels = input.shape[1];
+        let height = input.shape[2];
+        let width = input.shape[3];
+
+        // Calculate output dimensions
+        let height_out = (height + 2 * padding - kernel_size) / stride + 1;
+        let width_out = (width + 2 * padding - kernel_size) / stride + 1;
+
+        let output_shape = [batch_size, channels, height_out, width_out];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total output elements for launch configuration
+        let total_elements = batch_size * channels * height_out * width_out;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch max pool2d kernel
+        self.kernels.launch_max_pool2d(
+            cfg,
+            input.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            height as i32,
+            width as i32,
+            height_out as i32,
+            width_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 2D Average Pooling operation
+    /// Input: [batch_size, channels, height, width]
+    /// Output: [batch_size, channels, height_out, width_out]
+    /// Downsamples the input by computing the average value in each pooling window
+    pub fn avgpool2d(
+        &self,
+        input_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let input = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        // Validate input dimensions
+        if input.shape.len() != 4 {
+            return Err(
+                "AvgPool2D requires 4D tensor [batch, channels, height, width]".to_string(),
+            );
+        }
+
+        let batch_size = input.shape[0];
+        let channels = input.shape[1];
+        let height = input.shape[2];
+        let width = input.shape[3];
+
+        // Calculate output dimensions
+        let height_out = (height + 2 * padding - kernel_size) / stride + 1;
+        let width_out = (width + 2 * padding - kernel_size) / stride + 1;
+
+        let output_shape = [batch_size, channels, height_out, width_out];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total output elements for launch configuration
+        let total_elements = batch_size * channels * height_out * width_out;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch avg pool2d kernel
+        self.kernels.launch_avg_pool2d(
+            cfg,
+            input.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            height as i32,
+            width as i32,
+            height_out as i32,
+            width_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    // ===== 1D POOLING OPERATIONS =====
+
+    /// 1D Max Pooling operation
+    /// Input: [batch_size, channels, length]
+    /// Output: [batch_size, channels, length_out]
+    /// Downsamples the input by taking the maximum value in each pooling window along the length dimension
+    pub fn maxpool1d(
+        &self,
+        input_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let input = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        // Validate input dimensions
+        if input.shape.len() != 3 {
+            return Err("MaxPool1D requires 3D tensor [batch, channels, length]".to_string());
+        }
+
+        let batch_size = input.shape[0];
+        let channels = input.shape[1];
+        let length = input.shape[2];
+
+        // Calculate output dimensions
+        let length_out = (length + 2 * padding - kernel_size) / stride + 1;
+
+        let output_shape = [batch_size, channels, length_out];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total output elements for launch configuration
+        let total_elements = batch_size * channels * length_out;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch max pool1d kernel
+        self.kernels.launch_max_pool1d(
+            cfg,
+            input.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            length as i32,
+            length_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
+        )?;
+
+        Ok(result)
+    }
+
+    /// 1D Average Pooling operation
+    /// Input: [batch_size, channels, length]
+    /// Output: [batch_size, channels, length_out]
+    /// Downsamples the input by computing the average value in each pooling window along the length dimension
+    pub fn avgpool1d(
+        &self,
+        input_in: &CudaTensor<T>,
+        kernel_size: usize,
+        stride: usize,
+        padding: usize,
+    ) -> Result<CudaTensor<T>, String> {
+        let input = if input_in.needs_materialization() {
+            &self.materialize(input_in)?
+        } else {
+            input_in
+        };
+
+        // Validate input dimensions
+        if input.shape.len() != 3 {
+            return Err("AvgPool1D requires 3D tensor [batch, channels, length]".to_string());
+        }
+
+        let batch_size = input.shape[0];
+        let channels = input.shape[1];
+        let length = input.shape[2];
+
+        // Calculate output dimensions
+        let length_out = (length + 2 * padding - kernel_size) / stride + 1;
+
+        let output_shape = [batch_size, channels, length_out];
+        let mut result = self.get_tensor(&output_shape)?;
+
+        // Calculate total output elements for launch configuration
+        let total_elements = batch_size * channels * length_out;
+        let cfg = self.get_launch_config(total_elements);
+
+        // Launch avg pool1d kernel
+        self.kernels.launch_avg_pool1d(
+            cfg,
+            input.data(),
+            result.data_mut(),
+            batch_size as i32,
+            channels as i32,
+            length as i32,
+            length_out as i32,
+            kernel_size as i32,
+            stride as i32,
+            padding as i32,
         )?;
 
         Ok(result)
