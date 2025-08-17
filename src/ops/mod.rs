@@ -9,6 +9,8 @@ use crate::backend::Tensor;
 #[allow(unused_imports)]
 use crate::graph::AutoFerroxEngine;
 use std::any::type_name;
+
+pub mod pooling;
 // All operators in the computational graph implement this trait.
 pub trait Operator<T>: std::fmt::Debug
 where

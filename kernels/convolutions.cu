@@ -955,3 +955,268 @@ extern "C" __global__ void avgpool1d_f64(const double* input, double* output,
     avgpool1d_kernel<double>(input, output, N, C, L, L_out,
         kernel_size, stride, padding);
 }
+
+
+
+
+// UNPOOLING KERNELS FOR GRADIENT COMPUTATION
+// These kernels reverse the pooling operations for backpropagation
+
+// Generic unpooling kernel for 2D operations
+template <typename T, typename UnpoolOp>
+__device__ void unpool2d_kernel(const T* grad_output, const T* original_input, const T* pooled_output,
+    T* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+
+    // Compute global indices for input tensor
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_input_elements = N * C * H * W;
+    if (idx >= total_input_elements) return;
+
+    // Decode input indices (n, c, h, w)
+    int w_pos = idx % W;
+    int h_pos = (idx / W) % H;
+    int c = (idx / (W * H)) % C;
+    int n = idx / (W * H * C);
+
+    T grad_accumulator = UnpoolOp::init_value();
+
+    // Find all output positions that this input position could have contributed to
+    for (int out_h = 0; out_h < H_out; out_h++) {
+        for (int out_w = 0; out_w < W_out; out_w++) {
+            // Calculate the input window for this output position
+            int h_start = out_h * stride - padding;
+            int w_start = out_w * stride - padding;
+            int h_end = h_start + kernel_size;
+            int w_end = w_start + kernel_size;
+
+            // Check if current input position is within this window
+            if (h_pos >= h_start && h_pos < h_end && w_pos >= w_start && w_pos < w_end) {
+                // Get indices for accessing tensors
+                int output_idx = n * (C * H_out * W_out) + c * (H_out * W_out) + out_h * W_out + out_w;
+                int input_val_idx = idx; // Current input position
+
+                T original_val = original_input[input_val_idx];
+                T pooled_val = pooled_output[output_idx];
+                T grad_out_val = grad_output[output_idx];
+
+                // Let the operation determine how to accumulate gradients
+                UnpoolOp::accumulate_gradient(grad_accumulator, grad_out_val, original_val, pooled_val,
+                    h_pos, w_pos, h_start, w_start, kernel_size, stride);
+            }
+        }
+    }
+
+    grad_input[idx] = UnpoolOp::finalize_gradient(grad_accumulator);
+}
+
+// Generic unpooling kernel for 1D operations
+template <typename T, typename UnpoolOp>
+__device__ void unpool1d_kernel(const T* grad_output, const T* original_input, const T* pooled_output,
+    T* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+
+    // Compute global indices for input tensor
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total_input_elements = N * C * L;
+    if (idx >= total_input_elements) return;
+
+    // Decode input indices (n, c, l)
+    int l_pos = idx % L;
+    int c = (idx / L) % C;
+    int n = idx / (L * C);
+
+    T grad_accumulator = UnpoolOp::init_value();
+
+    // Find all output positions that this input position could have contributed to
+    for (int out_l = 0; out_l < L_out; out_l++) {
+        // Calculate the input window for this output position
+        int l_start = out_l * stride - padding;
+        int l_end = l_start + kernel_size;
+
+        // Check if current input position is within this window
+        if (l_pos >= l_start && l_pos < l_end) {
+            // Get indices for accessing tensors
+            int output_idx = n * (C * L_out) + c * L_out + out_l;
+            int input_val_idx = idx; // Current input position
+
+            T original_val = original_input[input_val_idx];
+            T pooled_val = pooled_output[output_idx];
+            T grad_out_val = grad_output[output_idx];
+
+            // Let the operation determine how to accumulate gradients
+            UnpoolOp::accumulate_gradient(grad_accumulator, grad_out_val, original_val, pooled_val,
+                l_pos, l_start, kernel_size);
+        }
+    }
+
+    grad_input[idx] = UnpoolOp::finalize_gradient(grad_accumulator);
+}
+
+// Max unpooling operation - only passes gradients to positions that were selected
+template <typename T>
+struct MaxUnpoolOp {
+    __device__ static T init_value() { return (T)0; }
+
+    // For 2D max unpooling
+    __device__ static void accumulate_gradient(T& accumulator, T grad_out, T original_val, T pooled_val,
+        int h_pos, int w_pos, int h_start, int w_start, int kernel_size, int stride) {
+        // Only accumulate gradient if this position produced the max value
+        // Use small epsilon for floating point comparison
+        const T epsilon = (T)1e-8;
+        if (abs(original_val - pooled_val) < epsilon) {
+            accumulator += grad_out;
+        }
+    }
+
+    // For 1D max unpooling
+    __device__ static void accumulate_gradient(T& accumulator, T grad_out, T original_val, T pooled_val,
+        int l_pos, int l_start, int kernel_size) {
+        const T epsilon = (T)1e-8;
+        if (abs(original_val - pooled_val) < epsilon) {
+            accumulator += grad_out;
+        }
+    }
+
+    __device__ static T finalize_gradient(T accumulator) {
+        return accumulator;
+    }
+};
+
+// Average unpooling operation - distributes gradients uniformly
+template <typename T>
+struct AvgUnpoolOp {
+    __device__ static T init_value() { return (T)0; }
+
+    // For 2D average unpooling
+    __device__ static void accumulate_gradient(T& accumulator, T grad_out, T original_val, T pooled_val,
+        int h_pos, int w_pos, int h_start, int w_start, int kernel_size, int stride) {
+        // Distribute gradient uniformly - each input position gets 1/kernel_area of the output gradient
+        T kernel_area = (T)(kernel_size * kernel_size);
+        accumulator += grad_out / kernel_area;
+    }
+
+    // For 1D average unpooling
+    __device__ static void accumulate_gradient(T& accumulator, T grad_out, T original_val, T pooled_val,
+        int l_pos, int l_start, int kernel_size) {
+        // Distribute gradient uniformly - each input position gets 1/kernel_size of the output gradient
+        T kernel_size_t = (T)kernel_size;
+        accumulator += grad_out / kernel_size_t;
+    }
+
+    __device__ static T finalize_gradient(T accumulator) {
+        return accumulator;
+    }
+};
+
+// Convenience wrapper functions for 2D unpooling
+template <typename T>
+__device__ void max_unpool2d_kernel(const T* grad_output, const T* original_input, const T* pooled_output,
+    T* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    unpool2d_kernel<T, MaxUnpoolOp<T>>(grad_output, original_input, pooled_output, grad_input,
+        N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+template <typename T>
+__device__ void avg_unpool2d_kernel(const T* grad_output, const T* original_input, const T* pooled_output,
+    T* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    unpool2d_kernel<T, AvgUnpoolOp<T>>(grad_output, original_input, pooled_output, grad_input,
+        N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+// Convenience wrapper functions for 1D unpooling
+template <typename T>
+__device__ void max_unpool1d_kernel(const T* grad_output, const T* original_input, const T* pooled_output,
+    T* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    unpool1d_kernel<T, MaxUnpoolOp<T>>(grad_output, original_input, pooled_output, grad_input,
+        N, C, L, L_out, kernel_size, stride, padding);
+}
+
+template <typename T>
+__device__ void avg_unpool1d_kernel(const T* grad_output, const T* original_input, const T* pooled_output,
+    T* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    unpool1d_kernel<T, AvgUnpoolOp<T>>(grad_output, original_input, pooled_output, grad_input,
+        N, C, L, L_out, kernel_size, stride, padding);
+}
+
+// UNPOOLING KERNEL LAUNCHERS
+extern "C" __global__ void max_unpool2d(const float* grad_output, const float* original_input,
+    const float* pooled_output, float* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    max_unpool2d_kernel<float>(grad_output, original_input, pooled_output, grad_input,
+        N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void max_unpool2d_f64(const double* grad_output, const double* original_input,
+    const double* pooled_output, double* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    max_unpool2d_kernel<double>(grad_output, original_input, pooled_output, grad_input,
+        N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void avg_unpool2d(const float* grad_output, const float* original_input,
+    const float* pooled_output, float* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    avg_unpool2d_kernel<float>(grad_output, original_input, pooled_output, grad_input,
+        N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void avg_unpool2d_f64(const double* grad_output, const double* original_input,
+    const double* pooled_output, double* grad_input,
+    int N, int C, int H, int W,
+    int H_out, int W_out,
+    int kernel_size, int stride, int padding) {
+    avg_unpool2d_kernel<double>(grad_output, original_input, pooled_output, grad_input,
+        N, C, H, W, H_out, W_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void max_unpool1d(const float* grad_output, const float* original_input,
+    const float* pooled_output, float* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    max_unpool1d_kernel<float>(grad_output, original_input, pooled_output, grad_input,
+        N, C, L, L_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void max_unpool1d_f64(const double* grad_output, const double* original_input,
+    const double* pooled_output, double* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    max_unpool1d_kernel<double>(grad_output, original_input, pooled_output, grad_input,
+        N, C, L, L_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void avg_unpool1d(const float* grad_output, const float* original_input,
+    const float* pooled_output, float* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    avg_unpool1d_kernel<float>(grad_output, original_input, pooled_output, grad_input,
+        N, C, L, L_out, kernel_size, stride, padding);
+}
+
+extern "C" __global__ void avg_unpool1d_f64(const double* grad_output, const double* original_input,
+    const double* pooled_output, double* grad_input,
+    int N, int C, int L, int L_out,
+    int kernel_size, int stride, int padding) {
+    avg_unpool1d_kernel<double>(grad_output, original_input, pooled_output, grad_input,
+        N, C, L, L_out, kernel_size, stride, padding);
+}
