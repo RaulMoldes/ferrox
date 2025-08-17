@@ -141,6 +141,8 @@ const KERNEL_CONFIGS: &[KernelConfig] = &[
             "deconv2d_f64",
             "cross_correlation",
             "cross_correlation_f64",
+            "conv1d_forward",
+            "conv1d_forward_f64",
         ],
     },
     KernelConfig {
@@ -1232,6 +1234,36 @@ impl KernelManager {
             pad_w,
         )
     }
+
+
+
+     pub fn launch_conv1d_forward<T>(
+        &self,
+        cfg: LaunchConfig,
+        input: &CudaSlice<T>,
+        filter: &CudaSlice<T>,
+        output: &mut CudaSlice<T>,
+        input_size: i32,
+        kernel_size: i32,
+
+    ) -> Result<(), String>
+    where
+        T: FerroxCudaN + 'static,
+    {
+
+         let kernel_name = self.get_kernel_name::<T>("conv1d_forward");
+        launch_kernel!(
+            self,
+            &kernel_name,
+            cfg,
+            input,
+            filter,
+            output,
+        &input_size,
+        &kernel_size
+        )
+    }
+
 
     #[allow(clippy::too_many_arguments)]
     pub fn launch_deconv2d<T>(
