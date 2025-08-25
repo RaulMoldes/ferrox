@@ -72,9 +72,9 @@ impl<T: FerroxCudaN> BackendManager<T> {
                 let cuda_pool = CudaMemoryPool::new(stream.clone(), pool_config);
                 manager.cuda_backend = Some(cuda_backend);
                 manager.cuda_pool = Some(Mutex::new(cuda_pool));
-                println!("CUDA backend and pool initialized successfully");
+              //  println!("CUDA backend and pool initialized successfully");
             } else {
-                println!("CUDA backend not available, using CPU only");
+                eprintln!("CUDA backend not available, using CPU only");
             }
 
             manager

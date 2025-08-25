@@ -142,7 +142,7 @@ where
         engine: &mut AutoFerroxEngine<T>,
     ) -> HashMap<String, NodeId> {
         let mut param_map = HashMap::new();
-        println!("Initializing Conv2d parameters in graph!");
+    //    println!("Initializing Conv2d parameters in graph!");
 
         // Create weight node
         let weight_node =

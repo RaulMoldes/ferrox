@@ -1924,6 +1924,6 @@ pub fn load_all_kernels(kernels: &mut KernelManager, ctx: &Arc<CudaContext>) -> 
         kernels.load_kernel(ctx, config.name, config.ptx)?;
     }
 
-    println!("Loaded {} CUDA kernels successfully", KERNEL_CONFIGS.len());
+   // println!("Loaded {} CUDA kernels successfully", KERNEL_CONFIGS.len());
     Ok(())
 }

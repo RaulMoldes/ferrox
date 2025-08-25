@@ -6,6 +6,7 @@ use crate::backend::number::FerroxCudaF;
 use crate::graph::{AutoFerroxEngine, NodeId};
 use crate::nn::parameter::Parameter;
 use crate::nn::Module;
+use crate::ops::pooling::*;
 use crate::ops::reduction::Mean;
 use crate::ops::reshape::Reshape;
 use std::marker::PhantomData;
@@ -138,6 +139,394 @@ where
     }
 }
 
+
+/// 2D Max Pooling layer
+/// Applies 2D max pooling over input tensor
+/// Input: [batch, channels, height, width]
+/// Output: [batch, channels, height_out, width_out]
+#[derive(Debug, Clone)]
+pub struct MaxPool2d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Pooling kernel size (square kernel)
+    pub kernel_size: usize,
+    /// Stride for pooling window movement
+    pub stride: usize,
+    /// Zero padding applied to input
+    pub padding: usize,
+    /// Training mode flag
+    training: bool,
+    /// Phantom data for type parameter
+    _phantom: PhantomData<T>,
+}
+
+impl<T> MaxPool2d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Create new MaxPool2d layer
+    pub fn new(kernel_size: usize, stride: usize, padding: usize) -> Self {
+        Self {
+            kernel_size,
+            stride,
+            padding,
+            training: true,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Create MaxPool2d with default stride equal to kernel size (non-overlapping)
+    pub fn new_default_stride(kernel_size: usize, padding: usize) -> Self {
+        Self::new(kernel_size, kernel_size, padding)
+    }
+
+    /// Common 2x2 max pooling with stride 2 (typical downsampling)
+    pub fn new_2x2() -> Self {
+        Self::new(2, 2, 0)
+    }
+
+    /// Common 3x3 max pooling with stride 2 and padding 1
+    pub fn new_3x3() -> Self {
+        Self::new(3, 2, 1)
+    }
+}
+
+impl<T> Module<T> for MaxPool2d<T>
+where
+    T: FerroxCudaF,
+{
+    fn forward(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
+        // Validate input dimensions
+        let input_tensor = graph
+            .get_tensor(input)
+            .ok_or("Input tensor not found")?;
+        let input_shape = input_tensor.shape();
+
+        if input_shape.len() != 4 {
+            return Err("MaxPool2d requires 4D input [batch, channels, height, width]".to_string());
+        }
+
+        // Apply max pooling operation
+        let maxpool_op = Box::new(MaxPool2D::new(
+            self.kernel_size,
+            self.stride,
+            self.padding,
+        ));
+
+        graph
+            .apply_operation(maxpool_op, vec![input])
+            .map_err(|e| format!("MaxPool2d operation failed: {}", e))
+    }
+
+    fn parameters(&self) -> Vec<&Parameter<T>> {
+        Vec::new() // Pooling layers have no parameters
+    }
+
+    fn parameters_mut(&mut self) -> Vec<&mut Parameter<T>> {
+        Vec::new()
+    }
+
+    fn training(&self) -> bool {
+        self.training
+    }
+
+    fn set_training(&mut self, training: bool) {
+        self.training = training;
+    }
+}
+
+/// 2D Average Pooling layer
+/// Applies 2D average pooling over input tensor
+/// Input: [batch, channels, height, width]
+/// Output: [batch, channels, height_out, width_out]
+#[derive(Debug, Clone)]
+pub struct AvgPool2d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Pooling kernel size (square kernel)
+    pub kernel_size: usize,
+    /// Stride for pooling window movement
+    pub stride: usize,
+    /// Zero padding applied to input
+    pub padding: usize,
+    /// Training mode flag
+    training: bool,
+    /// Phantom data for type parameter
+    _phantom: PhantomData<T>,
+}
+
+impl<T> AvgPool2d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Create new AvgPool2d layer
+    pub fn new(kernel_size: usize, stride: usize, padding: usize) -> Self {
+        Self {
+            kernel_size,
+            stride,
+            padding,
+            training: true,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Create AvgPool2d with default stride equal to kernel size
+    pub fn new_default_stride(kernel_size: usize, padding: usize) -> Self {
+        Self::new(kernel_size, kernel_size, padding)
+    }
+
+    /// Common 2x2 average pooling
+    pub fn new_2x2() -> Self {
+        Self::new(2, 2, 0)
+    }
+
+    /// Common 3x3 average pooling with stride 2 and padding 1
+    pub fn new_3x3() -> Self {
+        Self::new(3, 2, 1)
+    }
+}
+
+impl<T> Module<T> for AvgPool2d<T>
+where
+    T: FerroxCudaF,
+{
+    fn forward(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
+        // Validate input dimensions
+        let input_tensor = graph
+            .get_tensor(input)
+            .ok_or("Input tensor not found")?;
+        let input_shape = input_tensor.shape();
+
+        if input_shape.len() != 4 {
+            return Err("AvgPool2d requires 4D input [batch, channels, height, width]".to_string());
+        }
+
+        // Apply average pooling operation
+        let avgpool_op = Box::new(AvgPool2D::new(
+            self.kernel_size,
+            self.stride,
+            self.padding,
+        ));
+
+        graph
+            .apply_operation(avgpool_op, vec![input])
+            .map_err(|e| format!("AvgPool2d operation failed: {}", e))
+    }
+
+    fn parameters(&self) -> Vec<&Parameter<T>> {
+        Vec::new()
+    }
+
+    fn parameters_mut(&mut self) -> Vec<&mut Parameter<T>> {
+        Vec::new()
+    }
+
+    fn training(&self) -> bool {
+        self.training
+    }
+
+    fn set_training(&mut self, training: bool) {
+        self.training = training;
+    }
+}
+
+/// 1D Max Pooling layer
+/// Applies 1D max pooling over input tensor along the last dimension
+/// Input: [batch, channels, length]
+/// Output: [batch, channels, length_out]
+#[derive(Debug, Clone)]
+pub struct MaxPool1d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Pooling kernel size
+    pub kernel_size: usize,
+    /// Stride for pooling window movement
+    pub stride: usize,
+    /// Zero padding applied to input
+    pub padding: usize,
+    /// Training mode flag
+    training: bool,
+    /// Phantom data for type parameter
+    _phantom: PhantomData<T>,
+}
+
+impl<T> MaxPool1d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Create new MaxPool1d layer
+    pub fn new(kernel_size: usize, stride: usize, padding: usize) -> Self {
+        Self {
+            kernel_size,
+            stride,
+            padding,
+            training: true,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Create MaxPool1d with default stride equal to kernel size
+    pub fn new_default_stride(kernel_size: usize, padding: usize) -> Self {
+        Self::new(kernel_size, kernel_size, padding)
+    }
+
+    /// Common kernel size 2 max pooling
+    pub fn new_kernel2() -> Self {
+        Self::new(2, 2, 0)
+    }
+
+    /// Common kernel size 3 max pooling with stride 2
+    pub fn new_kernel3() -> Self {
+        Self::new(3, 2, 1)
+    }
+}
+
+impl<T> Module<T> for MaxPool1d<T>
+where
+    T: FerroxCudaF,
+{
+    fn forward(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
+        // Validate input dimensions
+        let input_tensor = graph
+            .get_tensor(input)
+            .ok_or("Input tensor not found")?;
+        let input_shape = input_tensor.shape();
+
+        if input_shape.len() != 3 {
+            return Err("MaxPool1d requires 3D input [batch, channels, length]".to_string());
+        }
+
+        // Apply 1D max pooling operation
+        let maxpool_op = Box::new(MaxPool1D::new(
+            self.kernel_size,
+            self.stride,
+            self.padding,
+        ));
+
+        graph
+            .apply_operation(maxpool_op, vec![input])
+            .map_err(|e| format!("MaxPool1d operation failed: {}", e))
+    }
+
+    fn parameters(&self) -> Vec<&Parameter<T>> {
+        Vec::new()
+    }
+
+    fn parameters_mut(&mut self) -> Vec<&mut Parameter<T>> {
+        Vec::new()
+    }
+
+    fn training(&self) -> bool {
+        self.training
+    }
+
+    fn set_training(&mut self, training: bool) {
+        self.training = training;
+    }
+}
+
+/// 1D Average Pooling layer
+/// Applies 1D average pooling over input tensor along the last dimension
+/// Input: [batch, channels, length]
+/// Output: [batch, channels, length_out]
+#[derive(Debug, Clone)]
+pub struct AvgPool1d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Pooling kernel size
+    pub kernel_size: usize,
+    /// Stride for pooling window movement
+    pub stride: usize,
+    /// Zero padding applied to input
+    pub padding: usize,
+    /// Training mode flag
+    training: bool,
+    /// Phantom data for type parameter
+    _phantom: PhantomData<T>,
+}
+
+impl<T> AvgPool1d<T>
+where
+    T: FerroxCudaF,
+{
+    /// Create new AvgPool1d layer
+    pub fn new(kernel_size: usize, stride: usize, padding: usize) -> Self {
+        Self {
+            kernel_size,
+            stride,
+            padding,
+            training: true,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Create AvgPool1d with default stride equal to kernel size
+    pub fn new_default_stride(kernel_size: usize, padding: usize) -> Self {
+        Self::new(kernel_size, kernel_size, padding)
+    }
+
+    /// Common kernel size 2 average pooling
+    pub fn new_kernel2() -> Self {
+        Self::new(2, 2, 0)
+    }
+
+    /// Common kernel size 3 average pooling with stride 2
+    pub fn new_kernel3() -> Self {
+        Self::new(3, 2, 1)
+    }
+}
+
+impl<T> Module<T> for AvgPool1d<T>
+where
+    T: FerroxCudaF,
+{
+    fn forward(&self, graph: &mut AutoFerroxEngine<T>, input: NodeId) -> Result<NodeId, String> {
+        // Validate input dimensions
+        let input_tensor = graph
+            .get_tensor(input)
+            .ok_or("Input tensor not found")?;
+        let input_shape = input_tensor.shape();
+
+        if input_shape.len() != 3 {
+            return Err("AvgPool1d requires 3D input [batch, channels, length]".to_string());
+        }
+
+        // Apply 1D average pooling operation
+        let avgpool_op = Box::new(AvgPool1D::new(
+            self.kernel_size,
+            self.stride,
+            self.padding,
+        ));
+
+        graph
+            .apply_operation(avgpool_op, vec![input])
+            .map_err(|e| format!("AvgPool1d operation failed: {}", e))
+    }
+
+    fn parameters(&self) -> Vec<&Parameter<T>> {
+        Vec::new()
+    }
+
+    fn parameters_mut(&mut self) -> Vec<&mut Parameter<T>> {
+        Vec::new()
+    }
+
+    fn training(&self) -> bool {
+        self.training
+    }
+
+    fn set_training(&mut self, training: bool) {
+        self.training = training;
+    }
+}
+
+
+
+
 /// Global Average Pooling 2D layer: averages over all spatial dimensions
 /// Reduces spatial dimensions to 1x1 by computing mean over height and width
 /// Input shape: [batch_size, channels, height, width]
@@ -184,9 +573,7 @@ where
     #[allow(dead_code)]
     fn calculate_output_shape(&self, input_shape: &[usize]) -> Result<Vec<usize>, String> {
         if input_shape.len() != 4 {
-            return Err(
-                "GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string(),
-            );
+            return Err("GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string());
         }
 
         let batch_size = input_shape[0];
@@ -222,9 +609,7 @@ where
         let input_shape = input_tensor.shape();
 
         if input_shape.len() != 4 {
-            return Err(
-                "GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string(),
-            );
+            return Err("GlobalAvgPool2d requires 4D input [batch, channels, height, width]".to_string());
         }
 
         // Apply mean reduction along spatial dimensions (axes 2 and 3)

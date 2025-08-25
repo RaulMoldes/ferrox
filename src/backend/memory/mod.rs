@@ -211,7 +211,7 @@ pub struct BucketStats {
 
 impl BucketStats {
     fn new(max_allocations: usize) -> Self {
-        println!("Available allocations se inicaliza: {:?}", max_allocations);
+     //   println!("Available allocations se inicaliza: {:?}", max_allocations);
         Self {
             total_allocations: 0,
             total_evictions: 0,

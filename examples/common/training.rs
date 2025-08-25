@@ -1,4 +1,5 @@
 use super::configs::TrainingConfig;
+#[cfg(feature = "cuda")]
 use ferrox::backend::manager::show_memory_stats;
 use ferrox::backend::FerroxCudaF;
 use ferrox::dataset::BatchedDataset;
@@ -50,12 +51,13 @@ where
 
     // Forward pass
     let predictions = model.forward(graph, input_node)?;
-
+ 
     // Compute loss
     let loss_node = loss_fn.forward(graph, predictions, target_node)?;
 
     // Get loss value
     let loss_tensor = graph.get_tensor(loss_node).ok_or("Loss tensor not found")?;
+   // loss_tensor.debug("LOSS");
     let loss_value = loss_tensor.clone().first()?;
 
     // Check for training instability
@@ -138,7 +140,7 @@ where
         if epoch % 20 == 0 {
             graph.print_stats();
         }
-
+        #[cfg(feature = "cuda")]
         if (epoch + 1) % 50 == 0 {
             show_memory_stats::<T>()?;
         }
