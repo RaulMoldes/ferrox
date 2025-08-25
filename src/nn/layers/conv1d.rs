@@ -225,7 +225,7 @@ where
         }
 
         // Handle both 2D and 3D inputs
-        let (batch_size, input_channels, input_length) = match input_shape.len() {
+        let (_batch_size, input_channels, input_length) = match input_shape.len() {
             2 => (1, input_shape[0], input_shape[1]), // [channels, length] -> [1, channels, length]
             3 => (input_shape[0], input_shape[1], input_shape[2]), // [batch, channels, length]
             _ => unreachable!(),
@@ -295,4 +295,3 @@ where
         self.training = training;
     }
 }
-
