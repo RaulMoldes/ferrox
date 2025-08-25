@@ -7,11 +7,13 @@ pub mod dropout;
 pub mod linear;
 pub mod norm;
 pub mod pooling;
+pub mod conv1d;
 pub mod utils;
 
 // Re-export commonly used layers for convenience
 pub use activation::{ReLU, Sigmoid, Tanh};
 pub use conv2d::Conv2d;
+pub use conv1d::Conv1d;
 pub use dropout::Dropout;
 pub use linear::Linear;
 pub use norm::BatchNorm;
